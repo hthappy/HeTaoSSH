@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="author" content="yusufonaldi.com">
+
+    <title>Free Vector Icon Packs - Download PNG, SVG Icons</title>
+    
+    <link rel="shortcut icon" href="https://www.iconpacks.net/images/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="https://www.iconpacks.net/images/favicon.ico" type="image/x-icon">
+    <meta name="DESCRIPTION" content="Download completely free vector icons and packs in SVG, PNG and BASE64 format. Customize every icon to the color, size and style you want with icon editor and download now. Icons for websites, graphic designers and more. " />
+
+    <!-- Bootstrap core CSS -->
+    <link href="../../vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://www.iconpacks.net/css/layout.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.1/css/all.css" integrity="sha384-5sAR7xN1Nv6T6+dT2mhtzEpVJvfS3NScPQTrOxhwjIuvcA67KV2R5Jz6kr4abQsz" crossorigin="anonymous">
+    
+    
+    <meta property="og:image" content="http://www.iconpacks.net/images/facebook_share.png"/>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://www.iconpacks.net/css/layout_v40.min.css" rel="stylesheet">
+<link href="https://www.iconpacks.net/css/dropdown.css" rel="stylesheet">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css" integrity="sha512-aOG0c6nPNzGk+5zjwyJaoRUgCdOrfSDhmMID2u4+OIslr0GjpLKo7Xm0Ao3xmpM4T8AmIouRkqwj1nrdVsLKEQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+<meta name='impact-site-verification' value='1512057739' />
+<meta name="abuseipdb-verification" content="0gYQcpCu" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Kodchasan:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;1,200;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+        
+    
+  </head>
+
+  <body>
+
+    <!-- Navigation -->
+    <div class="container-fluid bg-dark">
+<div class="container-fluid">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+
+    <a class="navbar-brand" href="https://www.iconpacks.net"><img src="https://www.iconpacks.net/images/iconpacks.png" width="176" height="27" title="iconpacks logo"/>
+	</a>
+	
+    <button class="navbar-toggler navbar-toggler-right" style="justify-content:flex-end;" type="button" data-toggle="collapse" data-target="#navbar6" aria-label="Site menu">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+	
+    <div class="navbar-collapse collapse" id="navbar6">
+
+        <form id="navbar-search-form" class="mx-auto d-inline flex-grow-1 s-form" action="https://www.iconpacks.net/search/">
+            <div class="input-group">
+                        <input id="search_box" required type="text" class="form-control border border-right-0" name="icon" placeholder="Search for icons">
+                        
+                    
+                
+                        <span class="input-group-append">
+                        <button class="btn-search" type="submit">
+                        <img class="img-fluid" src="https://www.iconpacks.net/images/icon-search.svg" alt="search icons"/></button>
+                      </span>
+                    </div>
+        </form>
+		
+		<ul class="navbar-nav mr-5 ml-2 storage_icon">
+			<li class="nav-item">
+<a href="https://www.iconpacks.net/saved-icons" rel="nofollow" class="position-relative"><img class="img-fluid" src="https://www.iconpacks.net/images/icon-local-storage.svg" width="30" height="30" alt="menu"/>
+				<div id="local-counter" style="border-radius: 5rem;
+    background-color: #6ea22e;
+    position: absolute;
+    top: -.7rem;
+    right: -.9rem;
+    padding: .1rem .4rem;
+    font-size: .7rem;
+    color: #fff;">0</div></a>
+</li>
+			
+           
+        </ul>
+		
+		
+		<ul class="navbar-nav ml-auto d-inline">
+			
+	<li class="nav-item">
+        <a class="nav-link" href="https://www.iconpacks.net/free-online-tools">Free Tools</a>
+      </li>
+			
+   
+    </ul>
+
+      
+        
+    </div>
+</nav>
+</div>
+</div>
+
+    <!-- Page Content -->
+<div class="jumbotron text-center header-bg">
+  <h1>Oopps!</h1>
+  <p class="lead">The link you followed maybe broken, or the page may have been removed.</p>
+  <p class="lead">Why not check out or search other icons?</p>
+
+ 
+</div>
+<div class="wrapper">
+
+
+<section>
+<div class="container h-100" >
+<div class="row icons-container">
+<ul class="icons-container">
+
+<div class="col-sm-12 text-center" ><p><h2><i class="fas fa-heart"></i> Most Popular Icons</h2></p>
+<p>View most popular and most downloaded icons ever. Or make a search, choose your desired icon from the list. Then, customize icon online: size, color, border, width, height and download in PNG, SVG or Base64 format. </p>
+</div>
+     	
+        	<li id="icon-2431" class="icon text-center" onmouseover="setActiveId('2431');">
+              
+             
+                <a tabindex="0" id="icon-info-2431" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Youtube Logo Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-116.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/youtube-logo-2431.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-youtube-logo-2431.png" width="90" height="90" alt="Youtube Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-142" class="icon text-center" onmouseover="setActiveId('142');">
+              
+             
+                <a tabindex="0" id="icon-info-142" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Mail Icon</strong><hr>Pack: Mail Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/mail-12.html' title='Mail'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/mail-142.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-mail-142.png" width="90" height="90" alt="Mail icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-48" class="icon text-center" onmouseover="setActiveId('48');">
+              
+             
+                <a tabindex="0" id="icon-info-48" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Pin Icon</strong><hr>Pack: Location Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/location-6.html' title='Location'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/pin-48.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-pin-48.png" width="90" height="90" alt="Pin icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2384" class="icon text-center" onmouseover="setActiveId('2384');">
+              
+             
+                <a tabindex="0" id="icon-info-2384" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Click Icon</strong><hr>Pack: Hand Click Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/hand-click-113.html' title='Hand Click'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/click-2384.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-click-2384.png" width="90" height="90" alt="Click icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3497" class="icon text-center" onmouseover="setActiveId('3497');">
+              
+             
+                <a tabindex="0" id="icon-info-3497" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Black Instagram Logo Icon</strong><hr>Pack: Hand Click Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/hand-click-113.html' title='Hand Click'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/black-instagram-logo-3497.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-black-instagram-logo-3497.png" width="90" height="90" alt="Black Instagram Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-4456" class="icon text-center" onmouseover="setActiveId('4456');">
+              
+             
+                <a tabindex="0" id="icon-info-4456" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Whatsapp Logo Icon</strong><hr>Pack: Hand Click Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/hand-click-113.html' title='Hand Click'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/whatsapp-logo-4456.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-whatsapp-logo-4456.png" width="90" height="90" alt="Whatsapp Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2955" class="icon text-center" onmouseover="setActiveId('2955');">
+              
+             
+                <a tabindex="0" id="icon-info-2955" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Location Icon</strong><hr>Pack: Hand Click Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/hand-click-113.html' title='Hand Click'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/location-2955.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-location-2955.png" width="90" height="90" alt="Location icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-112" class="icon text-center" onmouseover="setActiveId('112');">
+              
+             
+                <a tabindex="0" id="icon-info-112" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Linkedin Icon</strong><hr>Pack: Social Media Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-10.html' title='Social Media'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/linkedin-112.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-linkedin-112.png" width="90" height="90" alt="Linkedin icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-1" class="icon text-center" onmouseover="setActiveId('1');">
+              
+             
+                <a tabindex="0" id="icon-info-1" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Phone Icon</strong><hr>Pack: Phone Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/phone-1.html' title='Phone'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/phone-1.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-phone-1.png" width="90" height="90" alt="Phone icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-342" class="icon text-center" onmouseover="setActiveId('342');">
+              
+             
+                <a tabindex="0" id="icon-info-342" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Microphone Icon</strong><hr>Pack: Basic Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/basic-ui-22.html' title='Basic Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/microphone-342.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-microphone-342.png" width="90" height="90" alt="Microphone icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2952" class="icon text-center" onmouseover="setActiveId('2952');">
+              
+             
+                <a tabindex="0" id="icon-info-2952" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Location Icon</strong><hr>Pack: Basic Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/basic-ui-22.html' title='Basic Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/location-2952.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-location-2952.png" width="90" height="90" alt="Location icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-20851" class="icon text-center" onmouseover="setActiveId('20851');">
+              
+             
+                <a tabindex="0" id="icon-info-20851" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Twitter X Logo Black Round Icon</strong><hr>Pack: Basic Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/basic-ui-22.html' title='Basic Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/twitter-x-logo-black-round-20851.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/free-icons-6/free-icon-twitter-x-logo-black-round-20851.png" width="90" height="90" alt="Twitter X Logo Black Round icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-121" class="icon text-center" onmouseover="setActiveId('121');">
+              
+             
+                <a tabindex="0" id="icon-info-121" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Whatsapp Icon</strong><hr>Pack: Social Media Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-10.html' title='Social Media'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/whatsapp-121.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-whatsapp-121.png" width="90" height="90" alt="Whatsapp icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-504" class="icon text-center" onmouseover="setActiveId('504');">
+              
+             
+                <a tabindex="0" id="icon-info-504" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Phone Icon</strong><hr>Pack: Phone Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/phone-27.html' title='Phone'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/phone-504.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-phone-504.png" width="90" height="90" alt="Phone icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2965" class="icon text-center" onmouseover="setActiveId('2965');">
+              
+             
+                <a tabindex="0" id="icon-info-2965" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Location Pin Icon</strong><hr>Pack: Phone Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/phone-27.html' title='Phone'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/location-pin-2965.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-location-pin-2965.png" width="90" height="90" alt="Location Pin icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-4500" class="icon text-center" onmouseover="setActiveId('4500');">
+              
+             
+                <a tabindex="0" id="icon-info-4500" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Tiktok Logo Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-116.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/tiktok-logo-4500.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-tiktok-logo-4500.png" width="90" height="90" alt="Tiktok Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3296" class="icon text-center" onmouseover="setActiveId('3296');">
+              
+             
+                <a tabindex="0" id="icon-info-3296" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>User Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-116.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/user-3296.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-user-3296.png" width="90" height="90" alt="User icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2617" class="icon text-center" onmouseover="setActiveId('2617');">
+              
+             
+                <a tabindex="0" id="icon-info-2617" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>PDF Download Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-116.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/pdf-download-2617.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-pdf-download-2617.png" width="90" height="90" alt="PDF Download icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-1453" class="icon text-center" onmouseover="setActiveId('1453');">
+              
+             
+                <a tabindex="0" id="icon-info-1453" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>File Icon</strong><hr>Pack: Files and Folders Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/free-files-and-folders-icon-pack-79.html' title='Files and Folders'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/file-1453.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-file-1453.png" width="90" height="90" alt="File icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-8869" class="icon text-center" onmouseover="setActiveId('8869');">
+              
+             
+                <a tabindex="0" id="icon-info-8869" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Instagram Logo Icon</strong><hr>Pack: Files and Folders Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/free-files-and-folders-icon-pack-79.html' title='Files and Folders'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/instagram-logo-8869.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/3/free-icon-instagram-logo-8869.png" width="90" height="90" alt="Instagram Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-123" class="icon text-center" onmouseover="setActiveId('123');">
+              
+             
+                <a tabindex="0" id="icon-info-123" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Youtube Icon</strong><hr>Pack: Social Media Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-10.html' title='Social Media'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/youtube-123.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-youtube-123.png" width="90" height="90" alt="Youtube icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3507" class="icon text-center" onmouseover="setActiveId('3507');">
+              
+             
+                <a tabindex="0" id="icon-info-3507" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Instagram Like Icon</strong><hr>Pack: Social Media Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-10.html' title='Social Media'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/instagram-like-3507.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-instagram-like-3507.png" width="90" height="90" alt="Instagram Like icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3101" class="icon text-center" onmouseover="setActiveId('3101');">
+              
+             
+                <a tabindex="0" id="icon-info-3101" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Arrow Down Icon</strong><hr>Pack: Ecommerce Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/ecommerce-ui-119.html' title='Ecommerce Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/arrow-down-3101.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-arrow-down-3101.png" width="90" height="90" alt="Arrow Down icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2961" class="icon text-center" onmouseover="setActiveId('2961');">
+              
+             
+                <a tabindex="0" id="icon-info-2961" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Location Pointer Icon</strong><hr>Pack: Ecommerce Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/ecommerce-ui-119.html' title='Ecommerce Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/location-pointer-2961.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-location-pointer-2961.png" width="90" height="90" alt="Location Pointer icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2436" class="icon text-center" onmouseover="setActiveId('2436');">
+              
+             
+                <a tabindex="0" id="icon-info-2436" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Reddit Logo Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-116.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/reddit-logo-2436.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-reddit-logo-2436.png" width="90" height="90" alt="Reddit Logo icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-2161" class="icon text-center" onmouseover="setActiveId('2161');">
+              
+             
+                <a tabindex="0" id="icon-info-2161" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Behance Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-103.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/behance-2161.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-behance-2161.png" width="90" height="90" alt="Behance icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3510" class="icon text-center" onmouseover="setActiveId('3510');">
+              
+             
+                <a tabindex="0" id="icon-info-3510" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Heart Icon</strong><hr>Pack: Social Media Brands Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/social-media-brands-103.html' title='Social Media Brands'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/heart-3510.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-heart-3510.png" width="90" height="90" alt="Heart icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-3110" class="icon text-center" onmouseover="setActiveId('3110');">
+              
+             
+                <a tabindex="0" id="icon-info-3110" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Settings Icon</strong><hr>Pack: Ecommerce Ui Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/ecommerce-ui-119.html' title='Ecommerce Ui'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/settings-3110.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/2/free-icon-settings-3110.png" width="90" height="90" alt="Settings icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-1058" class="icon text-center" onmouseover="setActiveId('1058');">
+              
+             
+                <a tabindex="0" id="icon-info-1058" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Truck Icon</strong><hr>Pack: Vehicles Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/vehicles-56.html' title='Vehicles'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/truck-1058.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-truck-1058.png" width="90" height="90" alt="Truck icon"/>
+                </a>
+          
+            </li>
+    
+           	
+        	<li id="icon-818" class="icon text-center" onmouseover="setActiveId('818');">
+              
+             
+                <a tabindex="0" id="icon-info-818" data-trigger="manual"  class="icon-info" role="button" data-placement="bottom"  data-toggle="popover" title="" data-content="<strong>Video Icon</strong><hr>Pack: Youtube Icon Pack<br><a href='http://www.iconpacks.net/free-icon-pack/youtube-41.html' title='Youtube'>View Pack</a>"><i class="fas fa-info-circle"></i>
+                </a>
+                
+        		<a class="icon-link"  href="https://www.iconpacks.net/free-icon/video-818.html">
+                	<img class="img-fluid" src="https://www.iconpacks.net/icons/1/free-icon-video-818.png" width="90" height="90" alt="Video icon"/>
+                </a>
+          
+            </li>
+    
+        
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+       <li class="icon icon-empty"></li>
+      
+       
+       </ul>
+
+
+<div class="col-md-12 col-lg-12 col-12 text-center ">
+<p>
+<a class="btn btn-md btn-success" href="/search/">View All Popular & Most Downloaded Icons</a>
+	</p>
+    <br>
+</div>
+
+
+
+</div>
+</div>
+
+
+
+</section>
+</div>
+
+	
+    <footer>
+
+        <div class="container">
+           
+       <div class="row"> 
+       <div class="col-lg-12 col-md-12 col-12">
+       <p>
+       <br>
+       </p>
+       </div>
+        <div class="col-lg-3 col-md-3 col-12">
+        <p>
+                <img class="img-fluid" src="https://www.iconpacks.net/images/iconpacks.png" width="176" height="27" alt="iconpacks logo"/> 
+                </p>
+			 <p>
+        
+       
+           <a href="https://www.facebook.com/Iconpacks-2180744015576866/" target="_blank"><img src="https://www.iconpacks.net/images/icon-facebook.svg" alt="facebook" class="img-fluid"/></a>&nbsp;&nbsp;
+           <a href="https://twitter.com/IconPacks1" target="_blank"><img src="https://www.iconpacks.net/images/icon-twitter.svg" alt="twitter" class="img-fluid"/></a>
+           
+           &nbsp;&nbsp;<a href="http://pinterest.com/iconpacks" target="_blank"><img src="https://www.iconpacks.net/images/icon-pinterest.svg" alt="pinterest" class="img-fluid"/></a>
+     
+          </p>
+                <p style="font-size:.8rem; color:#6E6E6E;">
+                Free PNG, SVG icons <br>for commercial or personal use.
+                </p>
+               <p style="font-size:.8rem; color:#6E6E6E;">
+                Copyright © 2026 IconPacks. <br>All <a href="secure-pot.php" style="color:#6E6E6E !important; font-size: .8rem;">security</a> rights reserved.
+                </p>
+        
+        </div>
+        <div class="col-lg-2 col-md-2 col-12">
+        <p>
+        <strong>ICONPACKS</strong>
+        </p>
+        <p>
+        <a href="https://www.iconpacks.net/advertise-with-us.php">Advertise With Us</a><br>
+        <a href="https://www.iconpacks.net/about/">About</a><br>
+          <a href="https://www.iconpacks.net/contact.php">Contact</a><br>
+          <a href="https://www.iconpacks.net/terms/">Terms & Conditions</a> <br>
+          <a href="https://www.iconpacks.net/privacy.php">Privacy Policy</a><br>
+		  <a href="https://www.iconpacks.net/credits.php">Credits</a><br>
+          </p>
+        </div>
+            <div class="col-lg-2 col-md-2 col-12">
+             <p>
+        <strong>CONTENT</strong>
+        </p>
+        <p>
+        
+       <a href="https://www.iconpacks.net/top-icons/">Top Icons</a><br> 
+       <a href="https://www.iconpacks.net/new-icons/">New Icons</a><br>
+       <a href="https://www.iconpacks.net/free-icon-packs/">Icon Packs</a><br>
+       <a href="https://www.iconpacks.net/icon-tags/">Tags</a><br>
+       
+          </p>
+        </div>
+		   
+		   
+		   <div class="col-lg-2 col-md-2 col-12">
+             <p>
+        <strong>FREE TOOLS</strong>
+        </p>
+        <p>
+       <a href="https://www.iconpacks.net/free-online-qr-code-generator-with-logo">QR Code Generator</a><br> 
+        
+       <a href="https://www.iconpacks.net/color-palette-from-image-photo-generator">Color Palette From Image</a><br> 
+			
+			<a href="https://www.iconpacks.net/color-name-finder">Color Name Finder</a><br> 
+          </p>
+        </div>
+       
+        <div class="col-lg-3 col-md-3 col-12">
+             <p>
+        <strong>FREE ICONS</strong>
+        </p>
+        <p>
+       <a href="https://www.iconpacks.net/free-icons-for-figma">Free Icons For Figma</a><br> 
+        
+       <a href="https://www.iconpacks.net/free-icons-for-website-design">Free Icons For Website Design</a><br> 
+			
+			<a href="https://www.iconpacks.net/free-icons-for-powerpoint">Free Icons For Powerpoint</a><br>
+			
+			<a href="https://www.iconpacks.net/free-icons-logos-for-social-media">Free Icons For Social Media</a><br>
+			<a href="https://www.iconpacks.net/free-icons-for-commercial-use">Free Icons For Commercial Use</a><br>
+
+			
+          </p>
+        </div>
+         <div class="col-lg-12 col-md-12 col-12">
+       <p>
+       <br><br><br><br>
+       </p>
+       </div>
+         
+           
+        </div>
+        </div>
+
+    
+</footer>
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B1NN7S7359"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-B1NN7S7359');
+</script>
+
+    <!-- Bootstrap core JavaScript -->
+    <script src="https://www.iconpacks.net/vendor/jquery/jquery.min.js"></script>
+    <script src="https://www.iconpacks.net/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    
+
+
+	<script src="https://www.iconpacks.net/js/popovers.js"></script>
+
+	<script>
+
+$(document).ready(function(){
+	// local storage
+	
+	const keyLocalStorage = "cachedIds_ipacks";
+	
+	function clearLocalStorage() {
+    // Check if localStorage is supported by the browser
+    if (typeof Storage !== "undefined") {
+        localStorage.clear();
+        console.log("All data cleared from localStorage.");
+    } else {
+        console.error("localStorage is not supported in this browser.");
+    }
+}
+	
+	//clearLocalStorage();
+	
+	function addToLocalStorage(key, value) {
+    if (typeof Storage !== "undefined") {
+        let existingData = JSON.parse(localStorage.getItem(key)) || [];
+        const id = value[0];
+        const idExists = existingData.some(row => row[0] === id);
+
+        if (idExists) {
+            console.log('ID '+id+' already exists in localStorage');
+            return; // Exit the function if ID exists
+        }
+        existingData.push(value);
+        localStorage.setItem(key, JSON.stringify(existingData));
+
+        console.log('Item '+JSON.stringify(value)+' added to localStorage');
+    } else {
+        console.error("localStorage is not supported in this browser.");
+    }
+}
+	
+	
+	function viewLocalStorageData() {
+		if (typeof Storage !== "undefined") {
+			for (let i = 0; i < localStorage.length; i++) {
+			
+				const value = JSON.parse(localStorage.getItem(keyLocalStorage));
+			}
+		} else {
+			console.error("localStorage is not supported in this browser.");
+		}
+	}
+	
+	
+	function countStorageData() {
+		if (typeof Storage !== "undefined") {
+			var storedIds = JSON.parse(localStorage.getItem(keyLocalStorage)) || [];
+			var countLocalStorage=storedIds.length;		
+			$("#local-counter").html(countLocalStorage);
+		} else {
+			console.error("localStorage is not supported in this browser.");
+		}
+	}
+	
+	countStorageData();
+	
+	
+	function getStored() {
+
+		var storedIds = JSON.parse(localStorage.getItem(keyLocalStorage)) || [];
+
+		var slides = document.getElementsByClassName("icon-save");
+		var get_attr_id;
+		for (var i = 0; i < slides.length; i++) {
+		   get_attr_id=slides[i].getAttribute("data-id");
+			
+		   let existingData = JSON.parse(localStorage.getItem(keyLocalStorage)) || [];
+		   const foundRow = existingData.find(row => row[0] === get_attr_id);
+			if (foundRow) {	
+				$("#icon-save-"+get_attr_id).find('path').css("fill", "#b5b5b6");
+			}
+		
+		}
+	}
+	
+	
+	
+	function removeFromLocalStorageByID(key, id) {
+ 
+		if (typeof Storage !== "undefined") {
+			let existingData = JSON.parse(localStorage.getItem(key)) || [];
+			const newData = existingData.filter(row => row[0] !== id);
+			localStorage.setItem(key, JSON.stringify(newData));
+		} else {
+			console.error("localStorage is not supported in this browser.");
+		}
+	}
+	
+	getStored();
+	
+	
+	
+	
+	
+	$(".icon-save").hide();
+	
+	$(".icon").hover(function(){
+		$(".icon-save").hide();
+		$(this).find(".icon-save").show(); 
+	}, function(){});
+	
+	
+	
+	$(".icon-save, .icon-save-2").click(function(){
+		var id = $(this).attr("data-id");
+		var path=$(this).attr("data-path");
+		var perma=$(this).attr("data-perma");
+		var imgname=$(this).attr("data-imgname");
+		
+		console.log(id+","+path+","+perma);
+
+		if($(this).find('path').css("fill")=="none")
+		{
+			$(this).find('path').css("fill", "#b5b5b6");
+			const newValue1 = [id, path, perma,imgname];
+			addToLocalStorage(keyLocalStorage, newValue1);
+			//viewLocalStorageData();
+			
+
+		}
+		else
+		{
+			$(this).find('path').css("fill", "none");
+			removeFromLocalStorageByID(keyLocalStorage,id);
+			viewLocalStorageData();
+		}
+		countStorageData();
+	
+});
+	
+  
+}); // d ready
+
+
+</script>
+  </body>
+
+</html>

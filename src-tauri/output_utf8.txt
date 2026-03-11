@@ -1,0 +1,41 @@
+﻿cargo :     Finished `dev` profile [unoptim
+ized + debuginfo] target(s) in 0.74s
+所在位置 行:1 字符: 1
++ cargo run --no-default-features > output.
+txt 2>&1 ; cat output.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo          : NotSpecified 
+   : (    Finished `d...get(s) in 0.74s:S  
+  tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeComman 
+   dError
+ 
+     Running `target\debug\hetaossh.exe`
+[2026-03-10T12:33:47Z INFO  hetaossh] Start
+ing HetaoSSH...
+[2026-03-10T12:33:47Z INFO  hetaossh::confi
+g] Database path: "C:\\Users\\hetao\\AppDat
+a\\Local\\HetaoSSH\\hetaossh.db"
+[2026-03-10T12:33:47Z INFO  hetaossh::confi
+g] DB file exists before connect: true
+[2026-03-10T12:33:47Z INFO  hetaossh::confi
+g] Connecting to: C:\Users\hetao\AppData\Lo
+cal\HetaoSSH\hetaossh.db
+[2026-03-10T12:33:47Z INFO  hetaossh::confi
+g] Database initialized
+[2026-03-10T12:33:47Z INFO  hetaossh::snipp
+ets] Snippets database path: "C:\\Users\\he
+tao\\AppData\\Local\\HetaoSSH\\snippets.db"
+
+thread 'main' panicked at src\main.rs:48:10
+:
+error while running tauri application: Plug
+inInitialization("fs", "Error deserializing
+ 'plugins.fs' within your Tauri configurati
+on: unknown field `scope`, expected `requir
+eLiteralLeadingDot`")
+note: run with `RUST_BACKTRACE=1` environme
+nt variable to display a backtrace
+error: process didn't exit successfully: `t
+arget\debug\hetaossh.exe` (exit code: 101)

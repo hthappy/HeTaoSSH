@@ -1,0 +1,13 @@
+{
+  "identifier": "main-capability",
+  "description": "Main capability for HetaoSSH",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-execute",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}

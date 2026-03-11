@@ -1,0 +1,14 @@
+{
+  "name": "hetaossh",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["web"],
+  "scripts": {
+    "dev": "cd web && pnpm dev",
+    "build": "cd web && pnpm build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}
