@@ -1,9 +1,13 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { WebglAddon } from 'xterm-addon-webgl';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
+
+export type TerminalHandle = {
+  write: (data: string | Uint8Array) => void;
+  focus: () => void;
+};
 
 interface TerminalProps {
   className?: string;
@@ -13,14 +17,17 @@ interface TerminalProps {
   incomingData?: string;
 }
 
-export const Terminal = forwardRef(function Terminal({ className, onData, onResize, disconnected = false, incomingData }: TerminalProps, ref) {
+export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
+  { className, onData, onResize, disconnected = false, incomingData },
+  ref
+) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
   // Expose write method to parent
   useImperativeHandle(ref, () => ({
-    write: (data: string) => {
+    write: (data: string | Uint8Array) => {
       if (xtermRef.current) {
         xtermRef.current.write(data);
       }
@@ -74,37 +81,53 @@ export const Terminal = forwardRef(function Terminal({ className, onData, onResi
     term.loadAddon(fitAddon);
     fitAddonRef.current = fitAddon;
 
-    // Try to load WebGL addon
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        console.warn('WebGL context lost, falling back to canvas renderer');
-      });
-      term.loadAddon(webglAddon);
-    } catch (err) {
-      console.warn('WebGL not available, using canvas renderer');
-    }
+    let isUnmounted = false;
 
     // Open terminal
     term.open(terminalRef.current);
     xtermRef.current = term;
 
-    // Fit terminal
-    fitAddon.fit();
+    // Fit terminal after a tiny delay to ensure DOM dimensions are computed
+    const initialFitTimeout = setTimeout(() => {
+      if (isUnmounted) return;
+      try {
+        if (term.element && term.element.clientWidth > 0) {
+          fitAddon.fit();
+          // Ensure remote PTY size matches the initial fitted size
+          if (onResize && term.cols && term.rows) {
+            onResize(term.cols, term.rows);
+          }
+        }
+      } catch (e) {
+        console.warn('Initial fit failed', e);
+      }
+    }, 10);
 
     // Handle data (user input)
-    term.onData((data) => {
+    const onDataDisposable = term.onData((data) => {
       if (!disconnected && onData) {
         onData(data);
       }
     });
 
-    // Handle resize
+    // Handle resize with debounce/raf to prevent "dimensions undefined" errors
+    let resizeTimeout: ReturnType<typeof setTimeout>;
     const handleResize = () => {
-      fitAddon.fit();
-      if (onResize && term.cols && term.rows) {
-        onResize(term.cols, term.rows);
-      }
+      if (isUnmounted) return;
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (isUnmounted) return;
+        try {
+          if (term.element && term.element.clientWidth > 0) {
+            fitAddon.fit();
+            if (onResize && term.cols && term.rows) {
+              onResize(term.cols, term.rows);
+            }
+          }
+        } catch (e) {
+          console.warn('Resize fit failed', e);
+        }
+      }, 50);
     };
 
     // Resize observer
@@ -115,8 +138,16 @@ export const Terminal = forwardRef(function Terminal({ className, onData, onResi
     term.focus();
 
     return () => {
+      isUnmounted = true;
+      clearTimeout(initialFitTimeout);
+      clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
-      term.dispose();
+      onDataDisposable.dispose();
+      try {
+        term.dispose();
+      } catch (e) {
+        console.error('Error disposing terminal', e);
+      }
       xtermRef.current = null;
       fitAddonRef.current = null;
     };

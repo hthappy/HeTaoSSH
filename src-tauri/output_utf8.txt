@@ -1,41 +1,120 @@
-﻿cargo :     Finished `dev` profile [unoptim
-ized + debuginfo] target(s) in 0.74s
+﻿cargo :     Checking hetaossh v0.1.0 (D:\pr
+oject\HetaoSSH\src-tauri)
 所在位置 行:1 字符: 1
-+ cargo run --no-default-features > output.
-txt 2>&1 ; cat output.txt
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-~~~~~~~~
++ cargo check 2> output.txt; cat output.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified 
-   : (    Finished `d...get(s) in 0.74s:S  
+   : (    Checking he...oSSH\src-tauri):S  
   tring) [], RemoteException
     + FullyQualifiedErrorId : NativeComman 
    dError
  
-     Running `target\debug\hetaossh.exe`
-[2026-03-10T12:33:47Z INFO  hetaossh] Start
-ing HetaoSSH...
-[2026-03-10T12:33:47Z INFO  hetaossh::confi
-g] Database path: "C:\\Users\\hetao\\AppDat
-a\\Local\\HetaoSSH\\hetaossh.db"
-[2026-03-10T12:33:47Z INFO  hetaossh::confi
-g] DB file exists before connect: true
-[2026-03-10T12:33:47Z INFO  hetaossh::confi
-g] Connecting to: C:\Users\hetao\AppData\Lo
-cal\HetaoSSH\hetaossh.db
-[2026-03-10T12:33:47Z INFO  hetaossh::confi
-g] Database initialized
-[2026-03-10T12:33:47Z INFO  hetaossh::snipp
-ets] Snippets database path: "C:\\Users\\he
-tao\\AppData\\Local\\HetaoSSH\\snippets.db"
+warning: unused variable: `known_hosts`
+  --> src\ssh\connection.rs:44:17
+   |
+44 |         let mut known_hosts = match ru
+ssh_keys::check_known_hosts_path(
+   |                 ^^^^^^^^^^^ help: if t
+his is intentional, prefix it with an under
+score: `_known_hosts`
+   |
+   = note: `#[warn(unused_variables)]` on b
+y default
 
-thread 'main' panicked at src\main.rs:48:10
-:
-error while running tauri application: Plug
-inInitialization("fs", "Error deserializing
- 'plugins.fs' within your Tauri configurati
-on: unknown field `scope`, expected `requir
-eLiteralLeadingDot`")
-note: run with `RUST_BACKTRACE=1` environme
-nt variable to display a backtrace
-error: process didn't exit successfully: `t
-arget\debug\hetaossh.exe` (exit code: 101)
+warning: unused variable: `tab_id`
+  --> src\commands.rs:80:31
+   |
+80 | pub async fn sftp_remove_file(tab_id: 
+String, path: String) -> Result<()> {
+   |                               ^^^^^^ h
+elp: if this is intentional, prefix it with
+ an underscore: `_tab_id`
+
+warning: unused variable: `path`
+  --> src\commands.rs:80:47
+   |
+80 | pub async fn sftp_remove_file(tab_id: 
+String, path: String) -> Result<()> {
+   |                                       
+        ^^^^ help: if this is intentional, 
+prefix it with an underscore: `_path`
+
+warning: unused variable: `tab_id`
+  --> src\commands.rs:85:30
+   |
+85 | pub async fn sftp_create_dir(tab_id: S
+tring, path: String) -> Result<()> {
+   |                              ^^^^^^ he
+lp: if this is intentional, prefix it with 
+an underscore: `_tab_id`
+
+warning: unused variable: `path`
+  --> src\commands.rs:85:46
+   |
+85 | pub async fn sftp_create_dir(tab_id: S
+tring, path: String) -> Result<()> {
+   |                                       
+       ^^^^ help: if this is intentional, p
+refix it with an underscore: `_path`
+
+warning: variable does not need to be mutab
+le
+  --> src\ssh\handler.rs:32:13
+   |
+32 |         let mut channel = session
+   |             ----^^^^^^^
+   |             |
+   |             help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` on by defa
+ult
+
+error[E0599]: no method named `stat` found 
+for mutable reference `&mut SftpSession` in
+ the current scope
+   --> src\ssh\manager.rs:110:25
+    |
+110 |         let stat = sftp.stat(path).aw
+ait
+    |                         ^^^^ method n
+ot found in `&mut SftpSession`
+
+error[E0599]: no method named `read` found 
+for struct `russh_sftp::client::fs::ReadDir
+` in the current scope
+   --> src\ssh\manager.rs:119:54
+    |
+119 |         while let Some((file_name, fi
+le_stat)) = dir.read().await
+    |                                      
+                ^^^^ method not found in `r
+ussh_sftp::client::fs::ReadDir`
+
+error[E0599]: no method named `open_file_re
+adonly` found for mutable reference `&mut S
+ftpSession` in the current scope
+   --> src\ssh\manager.rs:156:29
+    |
+156 |         let mut file = sftp.open_file
+_readonly(path).await
+    |                             ^^^^^^^^^
+^^^^^^^^^ method not found in `&mut SftpSes
+sion`
+
+error[E0599]: no method named `create_file_
+write_only` found for mutable reference `&m
+ut SftpSession` in the current scope
+   --> src\ssh\manager.rs:173:29
+    |
+173 |         let mut file = sftp.create_fi
+le_write_only(path).await
+    |                             ^^^^^^^^^
+^^^^^^^^^^^^^ method not found in `&mut Sft
+pSession`
+
+For more information about this error, try 
+`rustc --explain E0599`.
+warning: `hetaossh` (lib) generated 6 warni
+ngs
+error: could not compile `hetaossh` (lib) d
+ue to 4 previous errors; 6 warnings emitted

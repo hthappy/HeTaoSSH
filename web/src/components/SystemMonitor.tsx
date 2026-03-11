@@ -1,4 +1,6 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Cpu, HardDrive, MemoryStick, Network } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface SystemUsage {
   cpu_usage: number;
@@ -18,8 +20,7 @@ interface SystemUsage {
 }
 
 interface SystemMonitorProps {
-  usage?: SystemUsage;
-  isLoading?: boolean;
+  tabId?: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -41,37 +42,52 @@ function ProgressBar({ value, color = 'bg-blue-500' }: { value: number; color?: 
   );
 }
 
-export function SystemMonitor({ usage, isLoading = false }: SystemMonitorProps) {
-  // Mock data for development
-  const mockUsage: SystemUsage = usage || {
-    cpu_usage: 45.2,
-    memory_usage: 62.5,
-    memory_total: 16 * 1024 * 1024 * 1024,
-    memory_used: 10 * 1024 * 1024 * 1024,
-    memory_available: 6 * 1024 * 1024 * 1024,
-    network_rx: 1234567890,
-    network_tx: 987654321,
-    disk_usage: [
-      {
-        mount_point: '/',
-        total: 500 * 1024 * 1024 * 1024,
-        used: 350 * 1024 * 1024 * 1024,
-        available: 150 * 1024 * 1024 * 1024,
-        usage_percent: 70,
-      },
-      {
-        mount_point: '/home',
-        total: 200 * 1024 * 1024 * 1024,
-        used: 120 * 1024 * 1024 * 1024,
-        available: 80 * 1024 * 1024 * 1024,
-        usage_percent: 60,
-      },
-    ],
-  };
+export function SystemMonitor({ tabId }: SystemMonitorProps) {
+  const [usage, setUsage] = useState<SystemUsage | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (isLoading) {
+  const fetchUsage = useCallback(async () => {
+    if (!tabId) return;
+    try {
+      const data = await invoke<SystemUsage>('get_system_usage', { tabId });
+      setUsage(data);
+      setError(null);
+    } catch (err) {
+      setError(`${err}`);
+    }
+  }, [tabId]);
+
+  // 首次加载 + 每 5 秒自动刷新
+  useEffect(() => {
+    if (!tabId) return;
+    setIsLoading(true);
+    fetchUsage().finally(() => setIsLoading(false));
+    const interval = setInterval(fetchUsage, 5000);
+    return () => clearInterval(interval);
+  }, [tabId, fetchUsage]);
+
+  if (!tabId) {
+    return (
+      <div className="p-4 text-zinc-500 text-sm">Connect to a server to view system info.</div>
+    );
+  }
+
+  if (isLoading && !usage) {
     return (
       <div className="p-4 text-zinc-400 text-sm">Loading system info...</div>
+    );
+  }
+
+  if (error && !usage) {
+    return (
+      <div className="p-4 text-red-400 text-sm">{error}</div>
+    );
+  }
+
+  if (!usage) {
+    return (
+      <div className="p-4 text-zinc-500 text-sm">No data available.</div>
     );
   }
 
@@ -85,10 +101,10 @@ export function SystemMonitor({ usage, isLoading = false }: SystemMonitorProps) 
         </div>
         <div className="flex items-center gap-4">
           <div className="text-3xl font-bold text-blue-400">
-            {mockUsage.cpu_usage.toFixed(1)}%
+            {usage.cpu_usage.toFixed(1)}%
           </div>
           <div className="flex-1">
-            <ProgressBar value={mockUsage.cpu_usage} color="bg-blue-500" />
+            <ProgressBar value={usage.cpu_usage} color="bg-blue-500" />
           </div>
         </div>
       </div>
@@ -103,14 +119,14 @@ export function SystemMonitor({ usage, isLoading = false }: SystemMonitorProps) 
           <div className="flex items-center justify-between text-sm">
             <span className="text-zinc-400">Usage</span>
             <span className="text-green-400 font-semibold">
-              {mockUsage.memory_usage.toFixed(1)}%
+              {usage.memory_usage.toFixed(1)}%
             </span>
           </div>
-          <ProgressBar value={mockUsage.memory_usage} color="bg-green-500" />
+          <ProgressBar value={usage.memory_usage} color="bg-green-500" />
           <div className="flex items-center justify-between text-xs text-zinc-500 mt-2">
-            <span>Used: {formatBytes(mockUsage.memory_used)}</span>
-            <span>Total: {formatBytes(mockUsage.memory_total)}</span>
-            <span>Available: {formatBytes(mockUsage.memory_available)}</span>
+            <span>Used: {formatBytes(usage.memory_used)}</span>
+            <span>Total: {formatBytes(usage.memory_total)}</span>
+            <span>Avail: {formatBytes(usage.memory_available)}</span>
           </div>
         </div>
       </div>
@@ -125,42 +141,44 @@ export function SystemMonitor({ usage, isLoading = false }: SystemMonitorProps) 
           <div>
             <div className="text-xs text-zinc-500 mb-1">Received</div>
             <div className="text-lg text-purple-400 font-semibold">
-              {formatBytes(mockUsage.network_rx)}
+              {formatBytes(usage.network_rx)}
             </div>
           </div>
           <div>
             <div className="text-xs text-zinc-500 mb-1">Transmitted</div>
             <div className="text-lg text-purple-400 font-semibold">
-              {formatBytes(mockUsage.network_tx)}
+              {formatBytes(usage.network_tx)}
             </div>
           </div>
         </div>
       </div>
 
       {/* Disk */}
-      <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
-        <div className="flex items-center gap-2 mb-3">
-          <HardDrive className="w-5 h-5 text-orange-400" />
-          <h3 className="text-sm font-semibold text-zinc-200">Disk Usage</h3>
-        </div>
-        <div className="space-y-3">
-          {mockUsage.disk_usage.map((disk, index) => (
-            <div key={index} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-300 font-medium">{disk.mount_point}</span>
-                <span className="text-orange-400 font-semibold">
-                  {disk.usage_percent.toFixed(0)}%
-                </span>
+      {usage.disk_usage.length > 0 && (
+        <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
+          <div className="flex items-center gap-2 mb-3">
+            <HardDrive className="w-5 h-5 text-orange-400" />
+            <h3 className="text-sm font-semibold text-zinc-200">Disk Usage</h3>
+          </div>
+          <div className="space-y-3">
+            {usage.disk_usage.map((disk, index) => (
+              <div key={index} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-300 font-medium">{disk.mount_point}</span>
+                  <span className="text-orange-400 font-semibold">
+                    {disk.usage_percent.toFixed(0)}%
+                  </span>
+                </div>
+                <ProgressBar value={disk.usage_percent} color="bg-orange-500" />
+                <div className="flex items-center justify-between text-xs text-zinc-500">
+                  <span>Used: {formatBytes(disk.used)}</span>
+                  <span>Available: {formatBytes(disk.available)}</span>
+                </div>
               </div>
-              <ProgressBar value={disk.usage_percent} color="bg-orange-500" />
-              <div className="flex items-center justify-between text-xs text-zinc-500">
-                <span>Used: {formatBytes(disk.used)}</span>
-                <span>Available: {formatBytes(disk.available)}</span>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

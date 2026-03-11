@@ -2,20 +2,21 @@
 import React, { useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
+import { useToast } from '@/components/Toast';
 
 interface FileEditorProps {
+  tabId: string;
   filePath: string | null;
-  onClose?: () => void;
 }
 
-export function FileEditor({ filePath, onClose }: FileEditorProps) {
+export function FileEditor({ tabId, filePath }: FileEditorProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
   const [content, setContent] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hasChanges, setHasChanges] = React.useState(false);
+  const { showToast } = useToast();
 
   React.useEffect(() => {
     if (filePath) {
@@ -27,11 +28,13 @@ export function FileEditor({ filePath, onClose }: FileEditorProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const fileContent = await invoke<string>('sftp_read_file', { path });
+      const fileContent = await invoke<string>('sftp_read_file', { tabId, path });
       setContent(fileContent);
       setHasChanges(false);
     } catch (err) {
-      setError(`Failed to load file: ${err}`);
+      const msg = `Failed to load file: ${err}`;
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -39,22 +42,22 @@ export function FileEditor({ filePath, onClose }: FileEditorProps) {
 
   const saveFile = async () => {
     if (!filePath) return;
-    
-    setIsSaving(true);
+
     setError(null);
     try {
-      await invoke('sftp_write_file', { path: filePath, content });
+      await invoke('sftp_write_file', { tabId, path: filePath, content });
       setHasChanges(false);
+      showToast('File saved successfully', 'success');
     } catch (err) {
-      setError(`Failed to save file: ${err}`);
-    } finally {
-      setIsSaving(false);
+      const msg = `Failed to save file: ${err}`;
+      setError(msg);
+      showToast(msg, 'error');
     }
   };
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
-    
+
     editor.updateOptions({
       minimap: { enabled: false },
       fontSize: 14,
@@ -125,38 +128,7 @@ export function FileEditor({ filePath, onClose }: FileEditorProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden">
-      <div className="h-10 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-300 truncate max-w-md">
-            {filePath}
-          </span>
-          {hasChanges && (
-            <span className="text-xs text-yellow-400">● Unsaved</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {isSaving ? (
-            <span className="text-xs text-zinc-400">Saving...</span>
-          ) : hasChanges ? (
-            <button
-              onClick={saveFile}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors"
-            >
-              Save (Ctrl+S)
-            </button>
-          ) : null}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-xs text-zinc-400 hover:text-zinc-200"
-            >
-              Close
-            </button>
-          )}
-        </div>
-      </div>
-
+    <div className="flex-1 flex flex-col min-h-0 bg-zinc-950 overflow-hidden">
       <div className="flex-1 overflow-hidden">
         {isLoading ? (
           <div className="h-full flex items-center justify-center text-zinc-400">

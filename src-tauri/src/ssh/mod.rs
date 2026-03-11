@@ -6,4 +6,4 @@ pub mod manager;
 pub use connection::SshConnection;
 pub use handler::SshChannelHandler;
 pub use manager::ConnectionManager;
-pub use sftp::{SftpClient, SftpEntry};
+pub use sftp::SftpEntry;

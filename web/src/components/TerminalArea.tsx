@@ -1,33 +1,66 @@
-import { useState, useRef, useCallback } from 'react';
-import { Terminal as TerminalComponent } from '@/components/Terminal';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { Terminal as TerminalComponent, type TerminalHandle } from '@/components/Terminal';
 import { ResourcePanel } from '@/components/ResourcePanel';
+import { ResizeHandle } from '@/components/ResizeHandle';
 import { useSshStore } from '@/stores/ssh-store';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 
-export function TerminalArea() {
-  const { tabs, activeTabId, sendToTerminal } = useSshStore();
+export function TerminalArea({ serverId }: { serverId: number }) {
+  const { connections, sendToTerminal } = useSshStore();
   const [showPanel, setShowPanel] = useState(true);
-  const terminalRef = useRef<any>(null);
+  const [panelWidth, setPanelWidth] = useState(300); // 右侧监控面板宽度 (px)
+  const terminalRef = useRef<TerminalHandle | null>(null);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeConnection = connections.find((c) => c.serverId === serverId);
+  const tabId = `conn-${serverId}`;
 
   const handleTerminalData = useCallback((data: string) => {
-    if (activeTabId) {
-      sendToTerminal(activeTabId, data);
-    }
-  }, [activeTabId, sendToTerminal]);
+    sendToTerminal(serverId, data);
+  }, [serverId, sendToTerminal]);
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
-    console.log('Terminal resize:', cols, rows);
-    // TODO: Send resize to SSH backend
-  }, []);
+    invoke('ssh_resize', { tabId, cols, rows }).catch(err => {
+      console.error('Failed to resize terminal:', err);
+    });
+  }, [tabId]);
+
+  useEffect(() => {
+    if (!activeConnection || activeConnection.status !== 'connected') return;
+
+    let unlisten: (() => void) | undefined;
+    let isMounted = true;
+
+    const setupListener = async () => {
+      const unlistenFn = await listen<number[]>(`ssh-data-${tabId}`, (event) => {
+        if (terminalRef.current) {
+          // Xterm accepts Uint8Array directly, avoiding JS UTF-8 string conversion issues
+          terminalRef.current.write(new Uint8Array(event.payload));
+        }
+      });
+      if (!isMounted) {
+        unlistenFn();
+      } else {
+        unlisten = unlistenFn;
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      isMounted = false;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [tabId, activeConnection]);
 
   const handleExecuteCommand = (command: string) => {
-    console.log('Execute command:', command);
-    // TODO: Send command to terminal
+    sendToTerminal(serverId, command + '\n');
   };
 
-  if (!activeTab) {
+  if (!activeConnection) {
     return (
       <div className="flex-1 flex items-center justify-center bg-zinc-950">
         <div className="text-center text-zinc-500">
@@ -40,50 +73,65 @@ export function TerminalArea() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-zinc-950">
-      {activeTab.status === 'connecting' ? (
+      {activeConnection.status === 'connecting' ? (
         <div className="flex-1 flex items-center justify-center text-zinc-400">
           <div className="text-center">
             <div className="w-8 h-8 border-4 border-zinc-600 border-t-zinc-300 rounded-full animate-spin mx-auto mb-4" />
-            <p>Connecting to {activeTab.serverName}...</p>
+            <p>Connecting to server...</p>
           </div>
         </div>
-      ) : activeTab.status === 'connected' ? (
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col overflow-hidden">
+      ) : activeConnection.status === 'connected' ? (
+        <div className="flex-1 flex overflow-hidden relative">
+          <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">
             <TerminalComponent
               ref={terminalRef}
               onData={handleTerminalData}
               onResize={handleTerminalResize}
               disconnected={false}
             />
+            {/* 展开按钮：面板隐藏时，贴在终端右侧边缘，向外凸出 */}
+            {!showPanel && (
+              <button
+                onClick={() => setShowPanel(true)}
+                className="absolute top-3 -right-3 z-20 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-l-md rounded-r-none border border-zinc-700 border-r-0 shadow-md"
+                title="Show panel"
+              >
+                <PanelRightOpen className="w-4 h-4 text-zinc-300" />
+              </button>
+            )}
           </div>
           {showPanel && (
-            <ResourcePanel onExecuteCommand={handleExecuteCommand} />
+            <>
+              <div className="relative flex-shrink-0 flex items-stretch">
+                {/* 隐藏按钮：贴在 Snippets 窗口外左侧，向终端区域凸出 */}
+                <button
+                  onClick={() => setShowPanel(false)}
+                  className="absolute top-3 -left-3 z-20 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-r-md rounded-l-none border border-zinc-700 border-l-0 shadow-md"
+                  title="Hide panel"
+                >
+                  <PanelRightClose className="w-4 h-4 text-zinc-300" />
+                </button>
+                <ResizeHandle
+                  direction="horizontal"
+                  onResize={(delta) => setPanelWidth(prev => Math.max(180, Math.min(prev - delta, 600)))}
+                  className="bg-transparent hover:bg-blue-500/40"
+                />
+              </div>
+              <div style={{ width: panelWidth }} className="flex-shrink-0 h-full overflow-hidden">
+                <ResourcePanel onExecuteCommand={handleExecuteCommand} />
+              </div>
+            </>
           )}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-zinc-400">
           <div className="text-center">
             <p className="text-lg mb-2 text-red-400">Connection failed</p>
-            <p>{activeTab.error}</p>
+            <p>{activeConnection.error}</p>
           </div>
         </div>
       )}
 
-      {/* Panel Toggle Button */}
-      {activeTab.status === 'connected' && (
-        <button
-          onClick={() => setShowPanel(!showPanel)}
-          className="absolute top-2 right-2 z-10 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-md transition-colors"
-          title={showPanel ? 'Hide panel' : 'Show panel'}
-        >
-          {showPanel ? (
-            <PanelRightClose className="w-4 h-4 text-zinc-400" />
-          ) : (
-            <PanelRightOpen className="w-4 h-4 text-zinc-400" />
-          )}
-        </button>
-      )}
     </div>
   );
 }

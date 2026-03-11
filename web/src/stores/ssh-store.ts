@@ -2,10 +2,16 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { ServerConfig } from '@/types/config';
 
-export interface ConnectionTab {
-  id: string;
+export interface WorkspaceTab {
+  id: string; // Unique ID for this tab (e.g., 'term-1', 'file-123')
+  serverId: number; // The backend connection it belongs to
+  type: 'terminal' | 'file';
+  title: string;
+  filePath?: string; // Only valid if type === 'file'
+}
+
+export interface ConnectionStatus {
   serverId: number;
-  serverName: string;
   status: 'connected' | 'connecting' | 'disconnected';
   error?: string;
 }
@@ -14,25 +20,39 @@ interface SshState {
   servers: ServerConfig[];
   loading: boolean;
   error: string | null;
-  tabs: ConnectionTab[];
+
+  // Track connections separately from UI Tabs
+  connections: ConnectionStatus[];
+  
+  // UI IDE Workspace Tabs
+  workspaceTabs: WorkspaceTab[];
   activeTabId: string | null;
 
   loadServers: () => Promise<void>;
   saveServer: (config: ServerConfig) => Promise<void>;
   deleteServer: (id: number) => Promise<void>;
   testConnection: (config: ServerConfig) => Promise<boolean>;
-  openTab: (serverId: number) => Promise<void>;
+
+  // Connection Management
+  connectServer: (serverId: number) => Promise<void>;
+  updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => void;
+
+  // Tab Management
+  openTerminalTab: (serverId: number) => void;
+  openFileTab: (serverId: number, filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
-  updateTabStatus: (tabId: string, status: Partial<ConnectionTab>) => void;
-  sendToTerminal: (tabId: string, data: string) => Promise<void>;
+
+  // Terminal API
+  sendToTerminal: (serverId: number, data: string) => Promise<void>;
 }
 
 export const useSshStore = create<SshState>((set, get) => ({
   servers: [],
   loading: false,
   error: null,
-  tabs: [],
+  connections: [],
+  workspaceTabs: [],
   activeTabId: null,
 
   loadServers: async () => {
@@ -77,58 +97,113 @@ export const useSshStore = create<SshState>((set, get) => ({
     }
   },
 
-  openTab: async (serverId: number) => {
+  connectServer: async (serverId: number) => {
     const server = get().servers.find(s => s.id === serverId);
     if (!server) {
       console.error('Server not found:', serverId);
       return;
     }
 
-    const tabId = `tab-${Date.now()}-${serverId}`;
-    const newTab: ConnectionTab = {
-      id: tabId,
-      serverId,
-      serverName: server.name,
-      status: 'connecting',
-    };
+    // 如果该服务器已经处于连接状态，直接聚焦到它的终端标签
+    const existing = get().connections.find(c => c.serverId === serverId);
+    if (existing && existing.status === 'connected') {
+      get().openTerminalTab(serverId);
+      return;
+    }
 
-    set({ tabs: [...get().tabs, newTab], activeTabId: tabId });
+    // Initialize Connection State
+    if (!get().connections.find(c => c.serverId === serverId)) {
+      set({
+        connections: [
+          ...get().connections,
+          { serverId, status: 'connecting' }
+        ]
+      });
+    } else {
+      get().updateConnectionStatus(serverId, { status: 'connecting' });
+    }
+
+    // Always ensure a Terminal Tab is spawned when a connection starts
+    get().openTerminalTab(serverId);
 
     try {
-      await invoke('ssh_connect', { tabId, config: server });
-      get().updateTabStatus(tabId, { status: 'connected' });
+      // Backend expects a stable string identifier for the connection
+      await invoke('ssh_connect', { tabId: `conn-${serverId}`, config: server });
+      get().updateConnectionStatus(serverId, { status: 'connected' });
     } catch (err) {
-      get().updateTabStatus(tabId, { 
+      get().updateConnectionStatus(serverId, { 
         status: 'disconnected', 
         error: `Failed to connect: ${err}` 
       });
     }
   },
 
+  openTerminalTab: (serverId: number) => {
+    const server = get().servers.find(s => s.id === serverId);
+    if (!server) return;
+
+    // Check if terminal already exists for this server
+    const existingTerm = get().workspaceTabs.find(t => t.serverId === serverId && t.type === 'terminal');
+    if (existingTerm) {
+      set({ activeTabId: existingTerm.id });
+      return;
+    }
+
+    const newTab: WorkspaceTab = {
+      id: `term-${Date.now()}-${serverId}`,
+      serverId,
+      type: 'terminal',
+      title: `>_ ${server.name}`,
+    };
+
+    set({ workspaceTabs: [...get().workspaceTabs, newTab], activeTabId: newTab.id });
+  },
+
+  openFileTab: (serverId: number, filePath: string, fileName: string) => {
+    // Check if file is already open
+    const existingFile = get().workspaceTabs.find(t => t.serverId === serverId && t.type === 'file' && t.filePath === filePath);
+    if (existingFile) {
+      set({ activeTabId: existingFile.id });
+      return;
+    }
+
+    const newTab: WorkspaceTab = {
+      id: `file-${Date.now()}`,
+      serverId,
+      type: 'file',
+      title: fileName,
+      filePath,
+    };
+
+    set({ workspaceTabs: [...get().workspaceTabs, newTab], activeTabId: newTab.id });
+  },
+
   closeTab: (tabId: string) => {
-    const newTabs = get().tabs.filter(t => t.id !== tabId);
+    const newTabs = get().workspaceTabs.filter(t => t.id !== tabId);
     let newActiveTabId = get().activeTabId;
 
     if (newActiveTabId === tabId) {
       newActiveTabId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
     }
 
-    set({ tabs: newTabs, activeTabId: newActiveTabId });
+    // If closing the last tab belonging to a server, we might want to shut down connection
+    // For now we keep the persistent connection alive until explicitly disconnected.
+    set({ workspaceTabs: newTabs, activeTabId: newActiveTabId });
   },
 
   setActiveTab: (tabId: string) => {
     set({ activeTabId: tabId });
   },
 
-  updateTabStatus: (tabId: string, status: Partial<ConnectionTab>) => {
+  updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => {
     set({
-      tabs: get().tabs.map(t => (t.id === tabId ? { ...t, ...status } : t)),
+      connections: get().connections.map(c => (c.serverId === serverId ? { ...c, ...status } : c)),
     });
   },
 
-  sendToTerminal: async (tabId: string, data: string) => {
+  sendToTerminal: async (serverId: number, data: string) => {
     try {
-      await invoke('ssh_send', { tabId, data });
+      await invoke('ssh_send', { tabId: `conn-${serverId}`, data });
     } catch (err) {
       console.error('Failed to send data:', err);
     }

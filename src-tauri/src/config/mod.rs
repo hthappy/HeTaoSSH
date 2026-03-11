@@ -148,13 +148,26 @@ impl ConfigManager {
             let password_encrypted: Option<String> = row.get("password_encrypted");
             let passphrase_encrypted: Option<String> = row.get("passphrase_encrypted");
 
-            let password = password_encrypted.map(|enc| {
-                self.crypto.decrypt(&enc).map_err(|e| SshError::Config(format!("Decryption failed: {}", e)))
-            }).transpose()?;
+            // 解密失败时优雅降级：清空无法解密的字段（可能是密钥迁移后旧数据）
+            let password = password_encrypted.and_then(|enc| {
+                match self.crypto.decrypt(&enc) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        log::warn!("Password decryption failed (key migration?): {}", e);
+                        None
+                    }
+                }
+            });
             
-            let passphrase = passphrase_encrypted.map(|enc| {
-                self.crypto.decrypt(&enc).map_err(|e| SshError::Config(format!("Decryption failed: {}", e)))
-            }).transpose()?;
+            let passphrase = passphrase_encrypted.and_then(|enc| {
+                match self.crypto.decrypt(&enc) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        log::warn!("Passphrase decryption failed (key migration?): {}", e);
+                        None
+                    }
+                }
+            });
 
             servers.push(ServerConfig {
                 id: row.get("id"),

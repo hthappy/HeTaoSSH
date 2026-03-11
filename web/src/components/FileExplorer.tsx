@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { FileTree } from './FileTree';
 import { FileEditor } from './FileEditor';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useSshStore } from '@/stores/ssh-store';
 import { cn } from '@/lib/utils';
 
 export function FileExplorer() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  const { activeTabId } = useSshStore();
 
   const handleFileSelect = (path: string) => {
     setSelectedFile(path);
@@ -15,6 +18,14 @@ export function FileExplorer() {
   const handleCloseEditor = () => {
     setSelectedFile(null);
   };
+
+  if (!activeTabId) {
+    return (
+      <div className="flex w-full h-full items-center justify-center text-zinc-500 bg-zinc-950">
+        <p>Connect to a server to view files.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -37,11 +48,12 @@ export function FileExplorer() {
         )}
         style={{ marginTop: '40px' }}
       >
-        <FileTree onFileSelect={handleFileSelect} />
+        <FileTree tabId={activeTabId} onFileSelect={handleFileSelect} />
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <FileEditor
+          tabId={activeTabId}
           filePath={selectedFile}
           onClose={handleCloseEditor}
         />

@@ -45,43 +45,54 @@ pub async fn test_connection(config: ServerConfig) -> Result<String> {
     }
 }
 
-// SFTP File operations (placeholder for Phase 3)
+// SFTP File operations
 #[tauri::command]
-pub async fn sftp_list_dir(path: String) -> Result<Vec<crate::ssh::SftpEntry>> {
-    let client = crate::ssh::SftpClient::new()?;
-    client.list_dir(&path).await
+pub async fn sftp_list_dir(
+    tab_id: String,
+    path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<Vec<crate::ssh::SftpEntry>> {
+    state.sftp_list_dir(&tab_id, &path).await
 }
 
 #[tauri::command]
-pub async fn sftp_read_file(path: String) -> Result<String> {
-    let client = crate::ssh::SftpClient::new()?;
-    let content = client.read_file(&path).await?;
+pub async fn sftp_read_file(
+    tab_id: String,
+    path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<String> {
+    let content = state.sftp_read_file(&tab_id, &path).await?;
     String::from_utf8(content)
         .map_err(|e| crate::error::SshError::Channel(format!("Invalid UTF-8: {}", e)))
 }
 
 #[tauri::command]
-pub async fn sftp_write_file(path: String, content: String) -> Result<()> {
-    let client = crate::ssh::SftpClient::new()?;
-    client.write_file(&path, content.as_bytes()).await
+pub async fn sftp_write_file(
+    tab_id: String,
+    path: String,
+    content: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<()> {
+    state.sftp_write_file(&tab_id, &path, content.as_bytes()).await
 }
 
 #[tauri::command]
-pub async fn sftp_remove_file(path: String) -> Result<()> {
-    let client = crate::ssh::SftpClient::new()?;
-    client.remove_file(&path).await
+pub async fn sftp_remove_file(_tab_id: String, _path: String) -> Result<()> {
+    Err(crate::error::SshError::Channel("Not implemented".to_string()))
 }
 
 #[tauri::command]
-pub async fn sftp_create_dir(path: String) -> Result<()> {
-    let client = crate::ssh::SftpClient::new()?;
-    client.create_dir(&path).await
+pub async fn sftp_create_dir(_tab_id: String, _path: String) -> Result<()> {
+    Err(crate::error::SshError::Channel("Not implemented".to_string()))
 }
 
-// System monitoring
+// 远程系统监控
 #[tauri::command]
-pub fn get_system_usage() -> Result<monitor::SystemUsage> {
-    monitor::get_system_usage()
+pub async fn get_system_usage(
+    tab_id: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<monitor::SystemUsage> {
+    state.get_remote_system_usage(&tab_id).await
 }
 
 // Command snippets
@@ -114,11 +125,12 @@ pub async fn delete_snippet(
 // SSH Connection management
 #[tauri::command]
 pub async fn ssh_connect(
+    app_handle: tauri::AppHandle,
     tab_id: String,
     config: ServerConfig,
     state: State<'_, Arc<ConnectionManager>>,
 ) -> Result<String> {
-    state.create_connection(&tab_id, config).await?;
+    state.create_connection(&tab_id, config, app_handle).await?;
     Ok("Connected".to_string())
 }
 

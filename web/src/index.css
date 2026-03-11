@@ -56,6 +56,21 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Custom Slim Dark Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-zinc-950/50;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700/50 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-600/80;
+  }
 }
 
 html, body, #root {
@@ -63,4 +78,16 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* Toast 入场动画 */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }

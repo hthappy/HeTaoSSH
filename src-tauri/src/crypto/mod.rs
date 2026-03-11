@@ -15,8 +15,33 @@ pub struct CryptoManager {
 
 impl CryptoManager {
     pub fn new() -> Result<Self> {
+        let entry = keyring::Entry::new("HetaoSSH", "master-key")
+            .map_err(|e| SshError::Encryption(format!("Failed to init keyring: {}", e)))?;
+
         let mut key = [0u8; KEY_SIZE];
-        rand::thread_rng().fill_bytes(&mut key);
+
+        match entry.get_password() {
+            Ok(stored_key_base64) => {
+                let decoded = STANDARD.decode(&stored_key_base64)
+                    .map_err(|_| SshError::Encryption("Invalid master key format in keyring".into()))?;
+                
+                if decoded.len() != KEY_SIZE {
+                    return Err(SshError::Encryption("Invalid master key length in keyring".into()));
+                }
+                key.copy_from_slice(&decoded);
+            }
+            Err(keyring::Error::NoEntry) => {
+                // Generate and save new key
+                rand::thread_rng().fill_bytes(&mut key);
+                let encoded_key = STANDARD.encode(&key);
+                entry.set_password(&encoded_key)
+                    .map_err(|e| SshError::Encryption(format!("Failed to save master key to keyring: {}", e)))?;
+            }
+            Err(e) => {
+                return Err(SshError::Encryption(format!("Failed to read keyring: {}", e)));
+            }
+        }
+
         Ok(Self { key })
     }
 

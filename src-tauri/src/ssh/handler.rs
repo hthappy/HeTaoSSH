@@ -1,6 +1,7 @@
 use crate::error::{Result, SshError};
-use log::info;
+use log::{error, info};
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
 
@@ -17,7 +18,7 @@ pub struct SshChannelHandler {
 
 impl SshChannelHandler {
     pub fn new() -> Self {
-        let (_output_tx, output_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
+        let (_output_tx, output_rx) = mpsc::channel(100);
         Self {
             channel_tx: None,
             output_rx: Arc::new(Mutex::new(output_rx)),
@@ -29,7 +30,7 @@ impl SshChannelHandler {
         &mut self,
         session: &mut russh::client::Handle<crate::ssh::connection::ClientHandler>,
     ) -> Result<()> {
-        let mut channel = session
+        let channel = session
             .channel_open_session()
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
@@ -44,11 +45,63 @@ impl SshChannelHandler {
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
-        info!("SSH channel opened successfully");
+        info!("SSH channel (shell) opened successfully");
 
-        let (channel_tx, _channel_rx): (Sender<ChannelMessage>, Receiver<ChannelMessage>) =
-            mpsc::channel(100);
+        // Convert the channel into an AsyncRead/AsyncWrite stream
+        let stream = channel.into_stream();
+        let (mut read_half, mut write_half) = tokio::io::split(stream);
+
+        // Setup channels for data flow
+        let (output_tx, output_rx) = mpsc::channel(1024);
+        let (channel_tx, mut channel_rx) = mpsc::channel::<ChannelMessage>(1024);
+
+        self.output_rx = Arc::new(Mutex::new(output_rx));
         self.channel_tx = Some(channel_tx);
+
+        // Spawn reader task (Reads from SSH, sends to output_tx)
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 8192];
+            loop {
+                match read_half.read(&mut buf).await {
+                    Ok(0) => {
+                        info!("SSH channel reader EOF");
+                        break;
+                    }
+                    Ok(n) => {
+                        if output_tx.send(buf[..n].to_vec()).await.is_err() {
+                            break; // Receiver dropped
+                        }
+                    }
+                    Err(e) => {
+                        error!("SSH channel read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Spawn writer task (Reads from channel_rx, writes to SSH stream)
+        tokio::spawn(async move {
+            while let Some(msg) = channel_rx.recv().await {
+                match msg {
+                    ChannelMessage::Data(data) => {
+                        if let Err(e) = write_half.write_all(&data).await {
+                            error!("SSH channel write error: {}", e);
+                            break;
+                        }
+                        let _ = write_half.flush().await; // Ensure data is flushed to the PTY
+                    }
+                    ChannelMessage::Resize { cols: _, rows: _ } => {
+                        // Resizing a raw stream isn't supported directly through AsyncWrite
+                        // In actual russh, window resizing requires the russh::Channel Handle
+                        // For now this handles data piping correctly
+                    }
+                    ChannelMessage::Disconnect => {
+                        break;
+                    }
+                }
+            }
+        });
 
         Ok(())
     }
@@ -68,11 +121,17 @@ impl SshChannelHandler {
         self.output_rx.lock().await.recv().await
     }
 
-    pub async fn resize(&self, _cols: u32, _rows: u32) -> Result<()> {
+    pub async fn resize(&self, cols: u32, rows: u32) -> Result<()> {
+        if let Some(tx) = &self.channel_tx {
+            let _ = tx.send(ChannelMessage::Resize { cols, rows }).await;
+        }
         Ok(())
     }
 
     pub async fn disconnect(&self) -> Result<()> {
+        if let Some(tx) = &self.channel_tx {
+            let _ = tx.send(ChannelMessage::Disconnect).await;
+        }
         Ok(())
     }
 }

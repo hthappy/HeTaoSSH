@@ -1,5 +1,4 @@
 node_modules
-docs
 target
 .env
 .env.local

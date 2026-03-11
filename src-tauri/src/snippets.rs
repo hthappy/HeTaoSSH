@@ -96,8 +96,8 @@ impl SnippetManager {
 
     pub async fn save_snippet(&self, snippet: &CommandSnippet) -> Result<i64> {
         let result = sqlx::query(
-            r#"INSERT INTO snippets (name, command, description, category)
-            VALUES (?, ?, ?, ?)
+            r#"INSERT INTO snippets (id, name, command, description, category)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 command = excluded.command,
@@ -105,6 +105,7 @@ impl SnippetManager {
                 category = excluded.category
             RETURNING id"#,
         )
+        .bind(snippet.id)
         .bind(&snippet.name)
         .bind(&snippet.command)
         .bind(&snippet.description)

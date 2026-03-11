@@ -3,6 +3,7 @@ import { Plus, Trash2, Edit2, Plug, CheckCircle2 } from 'lucide-react';
 import { useSshStore } from '@/stores/ssh-store';
 import type { ServerConfig } from '@/types/config';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/Toast';
 
 interface ServerListProps {
   onServerClick: (serverId: number) => void;
@@ -13,7 +14,7 @@ export function ServerList({ onServerClick }: ServerListProps) {
     servers,
     loading,
     error,
-    tabs,
+    connections,
     loadServers,
     saveServer,
     deleteServer,
@@ -23,6 +24,7 @@ export function ServerList({ onServerClick }: ServerListProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingServer, setEditingServer] = useState<ServerConfig | null>(null);
   const [testingServerId, setTestingServerId] = useState<number | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     loadServers();
@@ -47,12 +49,16 @@ export function ServerList({ onServerClick }: ServerListProps) {
   const handleTestConnection = async (server: ServerConfig) => {
     setTestingServerId(server.id ?? null);
     const success = await testConnection(server);
-    alert(success ? 'Connection successful!' : 'Connection failed');
+    if (success) {
+      showToast('Connection successful!', 'success');
+    } else {
+      showToast('Connection failed or rejected.', 'error');
+    }
     setTestingServerId(null);
   };
 
   return (
-    <div className="w-64 h-screen bg-zinc-900 border-r border-zinc-800 flex flex-col">
+    <div className="w-full flex-shrink-0 h-full bg-zinc-900 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-100">Servers</h2>
@@ -76,8 +82,8 @@ export function ServerList({ onServerClick }: ServerListProps) {
         ) : (
           <div className="space-y-1">
             {servers.map((server) => {
-              const isConnected = tabs.some(
-                (t) => t.serverId === server.id && t.status === 'connected'
+              const isConnected = connections.some(
+                (c: { serverId: number; status: string }) => c.serverId === server.id && c.status === 'connected'
               );
               const isTesting = testingServerId === server.id;
 

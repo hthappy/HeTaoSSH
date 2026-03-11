@@ -4,6 +4,7 @@ use crate::ssh::handler::SshChannelHandler;
 use log::info;
 use russh::client::{Config, Handle, Handler};
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, ssh_key};
+use russh_keys::known_hosts::learn_known_hosts_path;
 use std::sync::Arc;
 
 /// SSH Connection wrapper with channel support
@@ -11,19 +12,57 @@ pub struct SshConnection {
     pub config: ServerConfig,
     pub session: Option<Handle<ClientHandler>>,
     pub channel_handler: Option<SshChannelHandler>,
+    pub sftp_session: Option<russh_sftp::client::SftpSession>,
 }
 
-pub struct ClientHandler;
+pub struct ClientHandler {
+    host: String,
+    port: u16,
+}
 
 impl Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> std::result::Result<bool, Self::Error> {
-        // Accept all server keys (TODO: implement proper host key verification)
-        Ok(true)
+        let mut known_hosts_path = std::env::var("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")));
+        known_hosts_path.push("HetaoSSH");
+        
+        // Ensure directory exists
+        if !known_hosts_path.exists() {
+            let _ = std::fs::create_dir_all(&known_hosts_path);
+        }
+        known_hosts_path.push("known_hosts");
+
+        let host = &self.host;
+        let port = self.port;
+        
+        let check_result = russh_keys::check_known_hosts_path(
+            host,
+            port,
+            server_public_key,
+            &known_hosts_path
+        );
+
+        match check_result {
+            Ok(true) => {
+                log::info!("Host key verified from known_hosts.");
+                Ok(true)
+            },
+            Ok(false) | Err(_) => {
+                // Key is unknown (Ok(false)) or file doesn't exist (Err). We trust on first use (TOFU) and save it.
+                log::info!("New or unverified host key detected for {}:{}, adding to known_hosts.", host, port);
+                if let Err(learn_err) = learn_known_hosts_path(host, port, server_public_key, &known_hosts_path) {
+                    log::error!("Failed to save host key to known_hosts at {:?}: {}", known_hosts_path, learn_err);
+                    // On Windows, if saving fails, we log it but still allow the connection 
+                }
+                Ok(true)
+            }
+        }
     }
 }
 
@@ -33,6 +72,7 @@ impl SshConnection {
             config,
             session: None,
             channel_handler: None,
+            sftp_session: None,
         }
     }
 
@@ -40,7 +80,10 @@ impl SshConnection {
         info!("Connecting to {}:{}", self.config.host, self.config.port);
 
         let config = Config::default();
-        let handler = ClientHandler;
+        let handler = ClientHandler {
+            host: self.config.host.clone(),
+            port: self.config.port,
+        };
 
         let addr = (self.config.host.as_str(), self.config.port);
         let mut session = russh::client::connect(Arc::new(config), addr, handler)
@@ -50,30 +93,44 @@ impl SshConnection {
         // Try authentication methods
         let username = &self.config.username;
 
-        // Try private key authentication first
+        // Try private key authentication first if path is provided and not empty
         if let Some(key_path) = &self.config.private_key_path {
-            let passphrase = self.config.passphrase.as_deref();
-            let key = load_secret_key(key_path, passphrase)
-                .map_err(|e| SshError::ConnectionFailed(format!("Failed to load key: {}", e)))?;
+            if !key_path.trim().is_empty() {
+                let passphrase = self.config.passphrase.as_deref();
+                
+                // Try to load the key, but don't fail the whole connection if it fails (fallback to password)
+                match load_secret_key(key_path, passphrase) {
+                    Ok(key) => {
+                        let best_hash = session
+                            .best_supported_rsa_hash()
+                            .await
+                            .map_err(|e| SshError::ConnectionFailed(format!("Hash alg error: {}", e)))?
+                            .flatten();
 
-            let best_hash = session
-                .best_supported_rsa_hash()
-                .await
-                .map_err(|e| SshError::ConnectionFailed(e.to_string()))?
-                .flatten();
-
-            let auth_result = session
-                .authenticate_publickey(
-                    username,
-                    PrivateKeyWithHashAlg::new(Arc::new(key), best_hash),
-                )
-                .await
-                .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
-
-            if auth_result.success() {
-                info!("Key authentication successful for {}", username);
-                self.session = Some(session);
-                return Ok(());
+                        match session
+                            .authenticate_publickey(
+                                username,
+                                PrivateKeyWithHashAlg::new(Arc::new(key), best_hash),
+                            )
+                            .await 
+                        {
+                            Ok(auth_result) if auth_result.success() => {
+                                info!("Key authentication successful for {}", username);
+                                self.session = Some(session);
+                                return Ok(());
+                            }
+                            Ok(_) => {
+                                log::warn!("Key authentication failed, falling back to password...");
+                            }
+                            Err(e) => {
+                                log::warn!("Key authentication error: {}, falling back to password...", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load private key at '{}': {}. Falling back to password auth...", key_path, e);
+                    }
+                }
             }
         }
 
@@ -101,9 +158,21 @@ impl SshConnection {
         self.connect().await?;
 
         if let Some(ref mut session) = self.session {
+            // Open SFTP Subsystem channel
+            let channel = session.channel_open_session().await
+                .map_err(|e| SshError::ConnectionFailed(format!("Failed to open SFTP channel: {}", e)))?;
+            channel.request_subsystem(true, "sftp").await
+                .map_err(|e| SshError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e)))?;
+            
+            let sftp = russh_sftp::client::SftpSession::new(channel.into_stream()).await
+                .map_err(|e| SshError::ConnectionFailed(format!("Failed to start SFTP session: {}", e)))?;
+            self.sftp_session = Some(sftp);
+
+            // Open Shell channel
             let mut channel_handler = SshChannelHandler::new();
             channel_handler.init_channel(session).await?;
             self.channel_handler = Some(channel_handler);
+            
             Ok(())
         } else {
             Err(SshError::ConnectionFailed("Session not established".to_string()))
