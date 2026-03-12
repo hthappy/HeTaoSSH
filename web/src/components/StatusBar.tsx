@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, FileType, Lock, Clock, Server } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
   latency?: number;
@@ -34,14 +35,16 @@ export function StatusBar({
   latency = 45,
   encoding = 'UTF-8',
   permissions = 'rw-r--r--',
-  serverName = 'Not connected',
+  serverName,
   isConnected = false,
   tabId,
 }: StatusBarProps) {
+  const { t } = useTranslation();
+
   const getLatencyColor = (ms: number) => {
-    if (ms < 50) return 'text-green-400';
-    if (ms < 100) return 'text-yellow-400';
-    return 'text-red-400';
+    if (ms < 50) return 'text-[var(--term-green)]';
+    if (ms < 100) return 'text-[var(--term-yellow)]';
+    return 'text-[var(--term-red)]';
   };
 
   const formatPermissions = (perm: string) => {
@@ -88,22 +91,22 @@ export function StatusBar({
   }, [usage]);
 
   return (
-    <div className="h-6 bg-zinc-900 border-t border-zinc-800 flex items-center px-3 text-xs text-zinc-400">
+    <div className="h-6 bg-[var(--term-bg)] border-t border-[var(--term-selection)] flex items-center px-3 text-xs text-[var(--term-fg)] opacity-80">
       {/* Left: connection info */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
         {/* Server Status */}
         <div className="flex items-center gap-1.5">
           <Server className="w-3 h-3" />
-          <span className={isConnected ? 'text-zinc-300' : 'text-zinc-500'}>
-            {serverName}
+          <span className={isConnected ? 'text-[var(--term-green)]' : 'text-[var(--term-fg)] opacity-50'}>
+            {serverName || t('status.not_connected')}
           </span>
         </div>
 
         {/* Connection Status */}
         <div className="flex items-center gap-1.5">
           <Wifi className="w-3 h-3" />
-          <span className={isConnected ? 'text-green-400' : 'text-zinc-500'}>
-            {isConnected ? 'Connected' : 'Disconnected'}
+          <span className={isConnected ? 'text-term-green' : 'text-term-brightBlack'}>
+            {isConnected ? t('status.connected') : t('status.disconnected')}
           </span>
         </div>
 
@@ -126,96 +129,96 @@ export function StatusBar({
         {/* Permissions */}
         <div className="flex items-center gap-1.5">
           <Lock className="w-3 h-3" />
-          <span className="font-mono text-zinc-500">{formatPermissions(permissions)}</span>
+          <span className="font-mono text-term-brightBlack">{formatPermissions(permissions)}</span>
         </div>
       </div>
 
       {/* Center: Mini Monitor (compact), 真正居中（左右各 flex-1 占位） */}
       {isConnected && tabId && (
         <div
-          className="hidden md:flex items-center gap-3 text-[11px] text-zinc-300 relative mx-auto"
+          className="hidden md:flex items-center gap-3 text-[11px] text-term-fg opacity-80 relative mx-auto"
           onMouseEnter={() => setMonitorHover(true)}
           onMouseLeave={() => setMonitorHover(false)}
         >
-          <div className="flex items-center gap-1 text-zinc-500">
+          <div className="flex items-center gap-1 text-term-brightBlack">
             <Activity className="w-3 h-3" />
-            <span>Monitor</span>
+            <span>{t('status.monitor')}</span>
           </div>
           {usage ? (
             <>
               <div className="flex items-center gap-1">
-                <Cpu className="w-3 h-3 text-blue-400" />
-                <span className="text-zinc-300">{usage.cpu_usage.toFixed(0)}%</span>
+                <Cpu className="w-3 h-3 text-term-blue" />
+                <span className="text-term-fg opacity-80">{usage.cpu_usage.toFixed(0)}%</span>
               </div>
               <div className="flex items-center gap-1">
-                <MemoryStick className="w-3 h-3 text-green-400" />
-                <span className="text-zinc-300">{usage.memory_usage.toFixed(0)}%</span>
+                <MemoryStick className="w-3 h-3 text-term-green" />
+                <span className="text-term-fg opacity-80">{usage.memory_usage.toFixed(0)}%</span>
               </div>
               <div className="flex items-center gap-1">
-                <Network className="w-3 h-3 text-purple-400" />
-                <span className="text-zinc-300">
+                <Network className="w-3 h-3 text-term-magenta" />
+                <span className="text-term-fg opacity-80">
                   ↓{formatBytes(usage.network_rx)} ↑{formatBytes(usage.network_tx)}
                 </span>
               </div>
               {rootDisk && (
                 <div className="flex items-center gap-1">
-                  <HardDrive className="w-3 h-3 text-orange-400" />
-                  <span className="text-zinc-300">/{rootDisk.usage_percent.toFixed(0)}%</span>
+                  <HardDrive className="w-3 h-3 text-term-yellow" />
+                  <span className="text-term-fg opacity-80">/{rootDisk.usage_percent.toFixed(0)}%</span>
                 </div>
               )}
             </>
           ) : (
-            <span className="text-zinc-500">{usageError ? '指标获取失败' : '加载中…'}</span>
+            <span className="text-term-brightBlack">{usageError ? t('common.error') : t('status.loading')}</span>
           )}
 
           {/* Themed tooltip */}
           {monitorHover && (
             <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 pointer-events-none">
-              <div className="rounded-md border border-zinc-700 bg-zinc-900/95 backdrop-blur-sm shadow-xl w-[520px] max-w-[80vw]">
-                <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
-                  <span className="text-[11px] text-zinc-200 font-medium">Monitor</span>
-                  <span className="text-[10px] text-zinc-500">5s 刷新</span>
+              <div className="rounded-md border border-term-selection bg-term-bg/95 backdrop-blur-sm shadow-xl w-[520px] max-w-[80vw]">
+                <div className="px-3 py-2 border-b border-term-selection flex items-center justify-between">
+                  <span className="text-[11px] text-term-fg font-medium">{t('status.monitor')}</span>
+                  <span className="text-[10px] text-term-brightBlack">{t('status.refresh_rate')}</span>
                 </div>
-                <div className="px-3 py-2 text-[11px] leading-5 text-zinc-200">
+                <div className="px-3 py-2 text-[11px] leading-5 text-term-fg">
                   {!usage ? (
-                    <div className="text-zinc-500">{usageError ? `获取失败：${usageError}` : '加载中…'}</div>
+                    <div className="text-term-brightBlack">{usageError ? t('status.fetch_failed', { error: usageError }) : t('status.loading')}</div>
                   ) : (
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-zinc-500">CPU</span>
+                          <span className="text-term-brightBlack">{t('status.cpu')}</span>
                           <span className="font-mono">{usage.cpu_usage.toFixed(1)}%</span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-zinc-500">内存</span>
+                          <span className="text-term-brightBlack">{t('status.memory')}</span>
                           <span className="font-mono">{usage.memory_usage.toFixed(1)}%</span>
                         </div>
                         <div className="flex items-center justify-between gap-2 col-span-2">
-                          <span className="text-zinc-500">网络</span>
+                          <span className="text-term-brightBlack">{t('status.network')}</span>
                           <span className="font-mono">↓{formatBytes(usage.network_rx)} ↑{formatBytes(usage.network_tx)}</span>
                         </div>
                       </div>
 
                       <div className="pt-1">
-                        <div className="text-zinc-500 mb-1">磁盘</div>
+                        <div className="text-term-brightBlack mb-1">{t('status.disk')}</div>
                         {diskTooltipRows.rows.length === 0 ? (
-                          <div className="text-zinc-500">(无数据)</div>
+                          <div className="text-term-brightBlack">{t('status.no_data')}</div>
                         ) : (
                           <div className="max-h-64 overflow-auto pr-1 no-scrollbar">
                             <div className="space-y-1">
                               {diskTooltipRows.rows.map((d) => (
                                 <div key={d.mount_point} className="flex items-center gap-2">
-                                  <span className="flex-1 min-w-0 truncate text-zinc-200" title={d.mount_point}>
+                                  <span className="flex-1 min-w-0 truncate text-term-fg" title={d.mount_point}>
                                     {d.mount_point}
                                   </span>
-                                  <span className="w-10 text-right font-mono text-zinc-300">
+                                  <span className="w-10 text-right font-mono text-term-fg opacity-80">
                                     {d.usage_percent.toFixed(0)}%
                                   </span>
                                 </div>
                               ))}
                               {diskTooltipRows.more > 0 && (
-                                <div className="text-zinc-500 pt-1">
-                                  还有 {diskTooltipRows.more} 项未显示…
+                                <div className="text-term-brightBlack pt-1">
+                                  {t('status.disk_more', { count: diskTooltipRows.more })}
                                 </div>
                               )}
                             </div>
@@ -226,7 +229,7 @@ export function StatusBar({
                   )}
                 </div>
               </div>
-              <div className="w-2 h-2 bg-zinc-900/95 border-r border-b border-zinc-700 rotate-45 ml-3 -mt-1" />
+              <div className="w-2 h-2 bg-term-bg/95 border-r border-b border-term-selection rotate-45 ml-3 -mt-1" />
             </div>
           )}
         </div>
@@ -234,7 +237,7 @@ export function StatusBar({
 
       {/* Right: version info */}
       <div className="flex items-center gap-4 flex-1 justify-end min-w-0">
-        <span className="text-zinc-500">HetaoSSH v0.1.0</span>
+        <span className="text-term-brightBlack">HetaoSSH v0.1.0</span>
       </div>
     </div>
   );

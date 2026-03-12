@@ -4,12 +4,14 @@ import { useSshStore } from '@/stores/ssh-store';
 import type { ServerConfig } from '@/types/config';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
+import { useTranslation } from 'react-i18next';
 
 interface ServerListProps {
   onServerClick: (serverId: number) => void;
 }
 
 export function ServerList({ onServerClick }: ServerListProps) {
+  const { t } = useTranslation();
   const {
     servers,
     loading,
@@ -41,7 +43,7 @@ export function ServerList({ onServerClick }: ServerListProps) {
   };
 
   const handleDeleteServer = async (id: number) => {
-    if (confirm('Are you sure you want to delete this server?')) {
+    if (confirm(t('server.delete_confirm'))) {
       await deleteServer(id);
     }
   };
@@ -50,35 +52,35 @@ export function ServerList({ onServerClick }: ServerListProps) {
     setTestingServerId(server.id ?? null);
     const success = await testConnection(server);
     if (success) {
-      showToast('Connection successful!', 'success');
+      showToast(t('server.test_success'), 'success');
     } else {
-      showToast('Connection failed or rejected.', 'error');
+      showToast(t('server.test_failed'), 'error');
     }
     setTestingServerId(null);
   };
 
   return (
-    <div className="w-full flex-shrink-0 h-full bg-zinc-900 flex flex-col">
+    <div className="w-full flex-shrink-0 h-full bg-term-bg flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-100">Servers</h2>
+      <div className="p-4 border-b border-term-selection flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-term-fg">{t('server.list')}</h2>
         <button
           onClick={handleAddServer}
-          className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors"
-          title="Add Server"
+          className="p-1.5 hover:bg-term-selection rounded-md transition-colors"
+          title={t('server.add')}
         >
-          <Plus className="w-4 h-4 text-zinc-400" />
+          <Plus className="w-4 h-4 text-term-fg/60" />
         </button>
       </div>
 
       {/* Server List */}
       <div className="flex-1 overflow-y-auto p-2">
         {loading && !servers.length ? (
-          <div className="text-center text-zinc-500 text-sm py-8">Loading...</div>
+          <div className="text-center text-term-fg/40 text-sm py-8">{t('common.loading')}</div>
         ) : error ? (
-          <div className="text-center text-red-400 text-sm py-8">{error}</div>
+          <div className="text-center text-term-red text-sm py-8">{error}</div>
         ) : !servers.length ? (
-          <div className="text-center text-zinc-500 text-sm py-8">No servers yet</div>
+          <div className="text-center text-term-fg/40 text-sm py-8">{t('server.no_servers')}</div>
         ) : (
           <div className="space-y-1">
             {servers.map((server) => {
@@ -93,26 +95,26 @@ export function ServerList({ onServerClick }: ServerListProps) {
                   className={cn(
                     'group flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors',
                     isConnected
-                      ? 'bg-green-900/30 border border-green-800'
-                      : 'hover:bg-zinc-800'
+                      ? 'bg-term-green/20 border border-term-green/50'
+                      : 'hover:bg-term-selection'
                   )}
                   onClick={() => onServerClick(server.id!)}
                 >
                   {/* Connection Status Icon */}
                   <div className="flex-shrink-0">
                     {isConnected ? (
-                      <Plug className="w-4 h-4 text-green-400" />
+                      <Plug className="w-4 h-4 text-term-green" />
                     ) : (
-                      <Plug className="w-4 h-4 text-zinc-500" />
+                      <Plug className="w-4 h-4 text-term-fg/40" />
                     )}
                   </div>
 
                   {/* Server Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-zinc-200 truncate">
+                    <div className="text-sm font-medium text-term-fg truncate">
                       {server.name}
                     </div>
-                    <div className="text-xs text-zinc-500 truncate">
+                    <div className="text-xs text-term-fg/40 truncate">
                       {server.username}@{server.host}:{server.port}
                     </div>
                   </div>
@@ -121,7 +123,7 @@ export function ServerList({ onServerClick }: ServerListProps) {
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {isTesting ? (
                       <div className="w-4 h-4 flex items-center justify-center">
-                        <div className="w-3 h-3 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                        <div className="w-3 h-3 border-2 border-term-fg/40 border-t-transparent rounded-full animate-spin" />
                       </div>
                     ) : (
                       <button
@@ -129,10 +131,10 @@ export function ServerList({ onServerClick }: ServerListProps) {
                           e.stopPropagation();
                           handleTestConnection(server);
                         }}
-                        className="p-1 hover:bg-zinc-700 rounded"
-                        title="Test Connection"
+                        className="p-1 hover:bg-term-selection rounded"
+                        title={t('common.connect')}
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-term-fg/60" />
                       </button>
                     )}
                     <button
@@ -140,20 +142,20 @@ export function ServerList({ onServerClick }: ServerListProps) {
                         e.stopPropagation();
                         handleEditServer(server);
                       }}
-                      className="p-1 hover:bg-zinc-700 rounded"
-                      title="Edit"
+                      className="p-1 hover:bg-term-selection rounded"
+                      title={t('common.edit')}
                     >
-                      <Edit2 className="w-3.5 h-3.5 text-zinc-400" />
+                      <Edit2 className="w-3.5 h-3.5 text-term-fg/60" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteServer(server.id!);
                       }}
-                      className="p-1 hover:bg-zinc-700 rounded"
-                      title="Delete"
+                      className="p-1 hover:bg-term-selection rounded"
+                      title={t('common.delete')}
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-zinc-400" />
+                      <Trash2 className="w-3.5 h-3.5 text-term-fg/60" />
                     </button>
                   </div>
                 </div>
@@ -185,6 +187,7 @@ interface ServerFormDialogProps {
 }
 
 function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogProps) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<ServerConfig>(
     server ?? {
       name: '',
@@ -210,42 +213,42 @@ function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-md p-6">
-        <h3 className="text-lg font-semibold text-zinc-100 mb-4">
-          {server ? 'Edit Server' : 'Add Server'}
+      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-md p-6">
+        <h3 className="text-lg font-semibold text-term-fg mb-4">
+          {server ? t('server.edit') : t('server.add')}
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Name</label>
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.name')}</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
               required
             />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
-              <label className="block text-sm text-zinc-400 mb-1">Host</label>
+              <label className="block text-sm text-term-fg/60 mb-1">{t('server.host')}</label>
               <input
                 type="text"
                 value={formData.host}
                 onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
                 placeholder="example.com"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Port</label>
+              <label className="block text-sm text-term-fg/60 mb-1">{t('server.port')}</label>
               <input
                 type="number"
                 value={formData.port}
                 onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
                 min={1}
                 max={65535}
               />
@@ -253,45 +256,45 @@ function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogProps) {
           </div>
 
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Username</label>
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.username')}</label>
             <input
               type="text"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Password (optional)</label>
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.password_optional')}</label>
             <input
               type="password"
               value={formData.password || ''}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Leave empty for key auth"
+              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
+              placeholder={t('server.password_placeholder')}
             />
           </div>
 
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Private Key Path (optional)</label>
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.private_key_path')}</label>
             <input
               type="text"
               value={formData.private_key_path || ''}
               onChange={(e) => setFormData({ ...formData, private_key_path: e.target.value })}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
               placeholder="~/.ssh/id_ed25519"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Passphrase (optional)</label>
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.passphrase')}</label>
             <input
               type="password"
               value={formData.passphrase || ''}
               onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue"
             />
           </div>
 
@@ -299,16 +302,16 @@ function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogProps) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-md text-zinc-300 transition-colors"
+              className="flex-1 px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded-md text-term-fg transition-colors"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded-md text-white transition-colors"
+              className="flex-1 px-4 py-2 bg-term-blue hover:bg-term-blue/80 disabled:bg-term-blue/50 rounded-md text-term-bg font-medium transition-colors"
             >
-              {saving ? 'Saving...' : server ? 'Update' : 'Add'}
+              {saving ? t('common.saving') : server ? t('common.update') : t('common.add')}
             </button>
           </div>
         </form>

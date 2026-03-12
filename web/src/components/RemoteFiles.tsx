@@ -1,12 +1,14 @@
 import { FileEditor } from '@/components/FileEditor';
+import { ITheme } from 'xterm';
 
 interface RemoteFilesProps {
   isActive?: boolean;
   tabId: string;
   filePath: string;
+  theme?: ITheme;
 }
 
-export function RemoteFiles({ isActive = false, tabId, filePath }: RemoteFilesProps) {
+export function RemoteFiles({ isActive = false, tabId, filePath, theme }: RemoteFilesProps) {
   if (!isActive || !tabId || !filePath) {
     return null;
   }
@@ -16,6 +18,7 @@ export function RemoteFiles({ isActive = false, tabId, filePath }: RemoteFilesPr
       <FileEditor
         tabId={tabId}
         filePath={filePath}
+        theme={theme}
       />
     </div>
   );

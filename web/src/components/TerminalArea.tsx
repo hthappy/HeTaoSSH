@@ -1,13 +1,23 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { ITheme } from 'xterm';
 import { Terminal as TerminalComponent, type TerminalHandle } from '@/components/Terminal';
 import { ResourcePanel } from '@/components/ResourcePanel';
 import { ResizeHandle } from '@/components/ResizeHandle';
 import { useSshStore } from '@/stores/ssh-store';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-export function TerminalArea({ serverId }: { serverId: number }) {
+interface TerminalAreaProps {
+  serverId: number;
+  theme?: ITheme;
+  fontSize?: number;
+  lineHeight?: number;
+}
+
+export function TerminalArea({ serverId, theme, fontSize, lineHeight }: TerminalAreaProps) {
+  const { t } = useTranslation();
   const { connections, sendToTerminal } = useSshStore();
   const [showPanel, setShowPanel] = useState(true);
   const [panelWidth, setPanelWidth] = useState(300); // 右侧监控面板宽度 (px)
@@ -62,22 +72,22 @@ export function TerminalArea({ serverId }: { serverId: number }) {
 
   if (!activeConnection) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <div className="text-center text-zinc-500">
-          <p className="text-lg mb-2">Welcome to HetaoSSH</p>
-          <p className="text-sm">Select a server from the left sidebar to connect</p>
+      <div className="flex-1 flex items-center justify-center bg-term-bg">
+        <div className="text-center text-term-fg opacity-50">
+          <p className="text-lg mb-2">{t('terminal.welcome')}</p>
+          <p className="text-sm">{t('terminal.start_tip')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-zinc-950">
+    <div className="flex-1 flex flex-col overflow-hidden bg-term-bg" style={{ backgroundColor: theme?.background }}>
       {activeConnection.status === 'connecting' ? (
-        <div className="flex-1 flex items-center justify-center text-zinc-400">
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
           <div className="text-center">
-            <div className="w-8 h-8 border-4 border-zinc-600 border-t-zinc-300 rounded-full animate-spin mx-auto mb-4" />
-            <p>Connecting to server...</p>
+            <div className="w-8 h-8 border-4 border-term-fg/30 border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
+            <p>{t('terminal.connecting')}</p>
           </div>
         </div>
       ) : activeConnection.status === 'connected' ? (
@@ -88,15 +98,18 @@ export function TerminalArea({ serverId }: { serverId: number }) {
               onData={handleTerminalData}
               onResize={handleTerminalResize}
               disconnected={false}
+              theme={theme}
+              fontSize={fontSize}
+              lineHeight={lineHeight}
             />
             {/* 展开按钮：面板隐藏时，贴在终端右侧边缘，向外凸出 */}
             {!showPanel && (
               <button
                 onClick={() => setShowPanel(true)}
-                className="absolute top-3 -right-3 z-20 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-l-md rounded-r-none border border-zinc-700 border-r-0 shadow-md"
-                title="Show panel"
+                className="absolute top-3 -right-3 z-20 p-1.5 bg-term-selection hover:opacity-80 rounded-l-md rounded-r-none border border-term-selection border-r-0 shadow-md"
+                title={t('terminal.show_panel')}
               >
-                <PanelRightOpen className="w-4 h-4 text-zinc-300" />
+                <PanelRightOpen className="w-4 h-4 text-term-fg" />
               </button>
             )}
           </div>
@@ -106,15 +119,15 @@ export function TerminalArea({ serverId }: { serverId: number }) {
                 {/* 隐藏按钮：贴在 Snippets 窗口外左侧，向终端区域凸出 */}
                 <button
                   onClick={() => setShowPanel(false)}
-                  className="absolute top-3 -left-3 z-20 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-r-md rounded-l-none border border-zinc-700 border-l-0 shadow-md"
-                  title="Hide panel"
+                  className="absolute top-3 -left-3 z-20 p-1.5 bg-term-selection hover:opacity-80 rounded-r-md rounded-l-none border border-term-selection border-l-0 shadow-md"
+                  title={t('terminal.hide_panel')}
                 >
-                  <PanelRightClose className="w-4 h-4 text-zinc-300" />
+                  <PanelRightClose className="w-4 h-4 text-term-fg" />
                 </button>
                 <ResizeHandle
                   direction="horizontal"
                   onResize={(delta) => setPanelWidth(prev => Math.max(180, Math.min(prev - delta, 600)))}
-                  className="bg-transparent hover:bg-blue-500/40"
+                  className="bg-transparent hover:bg-term-blue/40"
                 />
               </div>
               <div style={{ width: panelWidth }} className="flex-shrink-0 h-full overflow-hidden">
@@ -124,9 +137,9 @@ export function TerminalArea({ serverId }: { serverId: number }) {
           )}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-zinc-400">
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
           <div className="text-center">
-            <p className="text-lg mb-2 text-red-400">Connection failed</p>
+            <p className="text-lg mb-2 text-term-red">{t('server.test_failed')}</p>
             <p>{activeConnection.error}</p>
           </div>
         </div>

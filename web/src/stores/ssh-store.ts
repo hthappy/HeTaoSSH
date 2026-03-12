@@ -1,6 +1,26 @@
-import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
-import type { ServerConfig } from '@/types/config';
+import { create } from 'zustand'
+import { invoke } from '@tauri-apps/api/core'
+import type { ServerConfig } from '@/types/config'
+import { debounce } from 'lodash-es'
+import i18n from '@/i18n'
+
+// IPC 防抖函数：防止高频调用后端
+// 防抖窗口 50ms，最多等待 150ms
+const sendToTerminalDebounced = debounce(
+  async (serverId: number, data: string) => {
+    try {
+      await invoke('ssh_send', { tabId: `conn-${serverId}`, data })
+    } catch (err) {
+      console.error(i18n.t('store.send_data_failed', { error: err }))
+    }
+  },
+  50, // 50ms 防抖窗口
+  {
+    leading: false,
+    trailing: true,
+    maxWait: 150 // 最多等待 150ms
+  }
+)
 
 export interface WorkspaceTab {
   id: string; // Unique ID for this tab (e.g., 'term-1', 'file-123')
@@ -61,7 +81,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       const servers = await invoke<ServerConfig[]>('list_servers');
       set({ servers, loading: false });
     } catch (err) {
-      set({ error: `Failed to load servers: ${err}`, loading: false });
+      set({ error: i18n.t('store.load_servers_failed', { error: err }), loading: false });
     }
   },
 
@@ -71,7 +91,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       await invoke<number>('save_server', { config });
       await get().loadServers();
     } catch (err) {
-      set({ error: `Failed to save server: ${err}`, loading: false });
+      set({ error: i18n.t('store.save_server_failed', { error: err }), loading: false });
       throw err;
     }
   },
@@ -82,7 +102,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       await invoke('delete_server', { id });
       await get().loadServers();
     } catch (err) {
-      set({ error: `Failed to delete server: ${err}`, loading: false });
+      set({ error: i18n.t('store.delete_server_failed', { error: err }), loading: false });
       throw err;
     }
   },
@@ -92,7 +112,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       const result = await invoke<string>('test_connection', { config });
       return result === 'Connection successful';
     } catch (err) {
-      set({ error: `Connection test failed: ${err}` });
+      set({ error: i18n.t('store.connection_test_failed', { error: err }) });
       return false;
     }
   },
@@ -100,7 +120,7 @@ export const useSshStore = create<SshState>((set, get) => ({
   connectServer: async (serverId: number) => {
     const server = get().servers.find(s => s.id === serverId);
     if (!server) {
-      console.error('Server not found:', serverId);
+      console.error(i18n.t('store.server_not_found', { id: serverId }));
       return;
     }
 
@@ -133,7 +153,7 @@ export const useSshStore = create<SshState>((set, get) => ({
     } catch (err) {
       get().updateConnectionStatus(serverId, { 
         status: 'disconnected', 
-        error: `Failed to connect: ${err}` 
+        error: i18n.t('store.connect_failed', { error: err })
       });
     }
   },
@@ -153,7 +173,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       id: `term-${Date.now()}-${serverId}`,
       serverId,
       type: 'terminal',
-      title: `>_ ${server.name}`,
+      title: `${server.name}`,
     };
 
     set({ workspaceTabs: [...get().workspaceTabs, newTab], activeTabId: newTab.id });
@@ -179,6 +199,20 @@ export const useSshStore = create<SshState>((set, get) => ({
   },
 
   closeTab: (tabId: string) => {
+    const tab = get().workspaceTabs.find(t => t.id === tabId);
+    
+    // 如果关闭的是 terminal tab，同时断开连接
+    if (tab?.type === 'terminal') {
+      const serverId = tab.serverId;
+      const backendClosed = get().connections.find(c => c.serverId === serverId);
+      if (backendClosed && backendClosed.status === 'connected') {
+        invoke('ssh_disconnect', { tabId: `conn-${serverId}` }).catch(err => {
+          console.error('Failed to disconnect:', err);
+        });
+        get().updateConnectionStatus(serverId, { status: 'disconnected' });
+      }
+    }
+    
     const newTabs = get().workspaceTabs.filter(t => t.id !== tabId);
     let newActiveTabId = get().activeTabId;
 
@@ -186,8 +220,6 @@ export const useSshStore = create<SshState>((set, get) => ({
       newActiveTabId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
     }
 
-    // If closing the last tab belonging to a server, we might want to shut down connection
-    // For now we keep the persistent connection alive until explicitly disconnected.
     set({ workspaceTabs: newTabs, activeTabId: newActiveTabId });
   },
 
@@ -202,10 +234,7 @@ export const useSshStore = create<SshState>((set, get) => ({
   },
 
   sendToTerminal: async (serverId: number, data: string) => {
-    try {
-      await invoke('ssh_send', { tabId: `conn-${serverId}`, data });
-    } catch (err) {
-      console.error('Failed to send data:', err);
-    }
+    // 使用防抖版本，防止高频调用后端
+    sendToTerminalDebounced(serverId, data)
   },
 }));

@@ -58,10 +58,10 @@ export function ResizeHandle({ direction, onResize, className }: ResizeHandlePro
       className={cn(
         'flex-shrink-0 transition-colors z-10',
         direction === 'horizontal'
-          ? 'w-1 cursor-col-resize hover:bg-blue-500/50'
-          : 'h-1 cursor-row-resize hover:bg-blue-500/50',
-        isDragging && 'bg-blue-500/70',
-        !isDragging && 'bg-transparent hover:bg-zinc-600/50',
+          ? 'w-1 cursor-col-resize hover:bg-term-blue/50'
+          : 'h-1 cursor-row-resize hover:bg-term-blue/50',
+        isDragging && 'bg-term-blue/70',
+        !isDragging && 'bg-transparent hover:bg-term-selection/50',
         className
       )}
     />

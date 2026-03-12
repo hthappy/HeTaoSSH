@@ -4,8 +4,10 @@ import { FileEditor } from './FileEditor';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useSshStore } from '@/stores/ssh-store';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export function FileExplorer() {
+  const { t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
@@ -21,8 +23,8 @@ export function FileExplorer() {
 
   if (!activeTabId) {
     return (
-      <div className="flex w-full h-full items-center justify-center text-zinc-500 bg-zinc-950">
-        <p>Connect to a server to view files.</p>
+      <div className="flex w-full h-full items-center justify-center text-term-fg opacity-50 bg-term-bg">
+        <p>{t('file.connect_to_view')}</p>
       </div>
     );
   }
@@ -31,19 +33,19 @@ export function FileExplorer() {
     <div className="flex h-full overflow-hidden">
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute top-2 left-2 z-10 p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-md transition-colors"
-        title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+        className="absolute top-2 left-2 z-10 p-1.5 bg-term-selection hover:opacity-80 rounded-md transition-colors"
+        title={sidebarOpen ? t('file.sidebar_close') : t('file.sidebar_open')}
       >
         {sidebarOpen ? (
-          <PanelLeftClose className="w-4 h-4 text-zinc-400" />
+          <PanelLeftClose className="w-4 h-4 text-term-fg" />
         ) : (
-          <PanelLeftOpen className="w-4 h-4 text-zinc-400" />
+          <PanelLeftOpen className="w-4 h-4 text-term-fg" />
         )}
       </button>
 
       <div
         className={cn(
-          'w-64 border-r border-zinc-800 bg-zinc-900 transition-all duration-300',
+          'w-64 border-r border-term-selection bg-term-bg transition-all duration-300',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full absolute h-full'
         )}
         style={{ marginTop: '40px' }}

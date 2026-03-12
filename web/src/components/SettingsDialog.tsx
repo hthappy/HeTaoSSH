@@ -1,8 +1,17 @@
-import { useState } from 'react';
-import { Settings, Moon, Sun, Type, Monitor } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Type, Monitor, Globe, Palette, Upload } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readTextFile } from '@tauri-apps/plugin-fs';
+import { presets } from '../themes/presets';
+import { ThemeSchema } from '../types/theme';
 
-interface AppSettings {
+export interface AppSettings {
+  language: string;
   theme: 'dark' | 'light';
+  themeName: string;
+  customThemes: ThemeSchema[];
   terminalFontSize: number;
   terminalLineHeight: number;
   editorMinimap: boolean;
@@ -17,64 +26,306 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDialogProps) {
+  const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  const [importUrl, setImportUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Sync local settings when settings prop changes or dialog opens
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings, isOpen]);
+
+  // Clear messages when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setImportError(null);
+      setImportSuccess(null);
+      setImportUrl('');
+      setIsImporting(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
     onSave(localSettings);
+    // Change language immediately if changed
+    if (localSettings.language !== i18n.language) {
+      i18n.changeLanguage(localSettings.language);
+    }
     onClose();
   };
 
+  const processThemeContent = async (content: string, source: string) => {
+    try {
+      let theme: ThemeSchema;
+      
+      // Try parsing as JSON first
+      try {
+        const rawTheme = JSON.parse(content);
+        
+        // Check if it's a Gogh theme (flat structure)
+        if (rawTheme.name && rawTheme.background && rawTheme.black) {
+          // Convert Gogh format to our ThemeSchema
+          theme = {
+            name: rawTheme.name,
+            type: 'dark', // Default to dark for Gogh themes
+            colors: {
+              background: rawTheme.background,
+              foreground: rawTheme.foreground,
+              cursor: rawTheme.cursor,
+              cursorAccent: rawTheme.cursorAccent || rawTheme.background,
+              selection: rawTheme.selection,
+              
+              black: rawTheme.black,
+              red: rawTheme.red,
+              green: rawTheme.green,
+              yellow: rawTheme.yellow,
+              blue: rawTheme.blue,
+              magenta: rawTheme.magenta,
+              cyan: rawTheme.cyan,
+              white: rawTheme.white,
+              
+              brightBlack: rawTheme.brightBlack,
+              brightRed: rawTheme.brightRed,
+              brightGreen: rawTheme.brightGreen,
+              brightYellow: rawTheme.brightYellow,
+              brightBlue: rawTheme.brightBlue,
+              brightMagenta: rawTheme.brightMagenta,
+              brightCyan: rawTheme.brightCyan,
+              brightWhite: rawTheme.brightWhite,
+            }
+          };
+        } else if (rawTheme.colors && rawTheme.name) {
+          // Our format
+          theme = rawTheme;
+        } else {
+          throw new Error('Invalid theme JSON');
+        }
+      } catch (e) {
+        // Check if content looks like HTML (common mistake with GitHub URLs)
+        if (content.trim().toLowerCase().startsWith('<!doctype html') || content.includes('<html')) {
+          throw new Error(t('settings.html_content_error'));
+        }
+        
+        // Only try backend parsing if it wasn't a JSON parse error (which we handled above)
+        // or if we explicitly threw 'Invalid theme JSON'
+        if (e instanceof Error && e.message === 'Invalid theme JSON') {
+             // If JSON fails, try iTerm2 via backend
+             theme = await invoke<ThemeSchema>('parse_theme', { content });
+        } else {
+             // If it was a syntax error in JSON.parse, it might be an iTerm2 XML file
+             theme = await invoke<ThemeSchema>('parse_theme', { content });
+        }
+      }
+
+      // Check if theme with same name exists
+      const exists = localSettings.customThemes.some(t => t.name === theme.name);
+      if (exists) {
+        throw new Error(t('settings.theme_exists', { name: theme.name }));
+      }
+
+      // Add to custom themes
+      const newCustomThemes = [...localSettings.customThemes, theme];
+      setLocalSettings({
+        ...localSettings,
+        customThemes: newCustomThemes,
+        themeName: theme.name,
+        theme: theme.type // Auto switch mode
+      });
+      setImportSuccess(t('settings.theme_imported'));
+      setImportUrl('');
+    } catch (err) {
+      console.error(`Failed to process theme from ${source}:`, err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setImportError(t('settings.theme_import_failed', { error: (err as any).toString() }));
+    }
+  };
+
+  const convertGithubUrl = (url: string): string => {
+    // Convert github.com/user/repo/blob/... to raw.githubusercontent.com/user/repo/...
+    const githubRegex = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
+    const match = url.match(githubRegex);
+    if (match) {
+      const [, user, repo, branch, path] = match;
+      return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+    }
+    return url;
+  };
+
+  const handleImportUrl = async () => {
+    if (!importUrl) return;
+    
+    setIsImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      const finalUrl = convertGithubUrl(importUrl);
+      const content = await invoke<string>('fetch_url', { url: finalUrl });
+      await processThemeContent(content, 'URL');
+    } catch (err) {
+      console.error('Failed to fetch theme:', err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setImportError(t('settings.url_import_failed', { error: (err as any).toString() }));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportFile = async () => {
+    try {
+      setImportError(null);
+      setImportSuccess(null);
+      
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Theme Files',
+          extensions: ['json', 'itermcolors']
+        }]
+      });
+
+      if (selected && typeof selected === 'string') {
+        const content = await readTextFile(selected);
+        await processThemeContent(content, 'file');
+      }
+    } catch (err) {
+      console.error('Failed to import theme file:', err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setImportError(t('settings.theme_import_failed', { error: (err as any).toString() }));
+    }
+  };
+
+
+  const allThemes = [...presets, ...localSettings.customThemes];
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-lg p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Settings className="w-5 h-5 text-zinc-400" />
-          <h2 className="text-lg font-semibold text-zinc-100">Settings</h2>
+      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-lg p-6 flex flex-col max-h-[90vh]">
+        <div className="flex items-center gap-2 mb-6 flex-shrink-0">
+          <Settings className="w-5 h-5 text-term-fg/60" />
+          <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
         </div>
 
-        <div className="space-y-6">
-          {/* Theme */}
+        <div className="space-y-6 overflow-y-auto pr-2 flex-1">
+          {/* Language */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              {localSettings.theme === 'dark' ? (
-                <Moon className="w-4 h-4 text-blue-400" />
-              ) : (
-                <Sun className="w-4 h-4 text-yellow-400" />
-              )}
-              <label className="text-sm font-medium text-zinc-200">Theme</label>
+              <Globe className="w-4 h-4 text-term-fg/60" />
+              <label className="text-sm font-medium text-term-fg">{t('common.language')}</label>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setLocalSettings({ ...localSettings, theme: 'dark' })}
+                onClick={() => setLocalSettings({ ...localSettings, language: 'en' })}
                 className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
-                  localSettings.theme === 'dark'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  localSettings.language === 'en'
+                    ? 'bg-term-blue text-term-bg font-medium'
+                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
                 }`}
               >
-                Dark
+                English
               </button>
               <button
-                onClick={() => setLocalSettings({ ...localSettings, theme: 'light' })}
+                onClick={() => setLocalSettings({ ...localSettings, language: 'zh' })}
                 className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
-                  localSettings.theme === 'light'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  localSettings.language === 'zh'
+                    ? 'bg-term-blue text-term-bg font-medium'
+                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
                 }`}
               >
-                Light
+                中文
               </button>
             </div>
+          </div>
+
+          {/* Theme Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-term-fg/60" />
+                <label className="text-sm font-medium text-term-fg">{t('settings.theme_select')}</label>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              {allThemes.map((theme) => (
+                <button
+                  key={theme.name}
+                  onClick={() => setLocalSettings({ 
+                    ...localSettings, 
+                    themeName: theme.name,
+                    theme: theme.type 
+                  })}
+                  className={`
+                    relative p-3 rounded-lg border text-left transition-all
+                    ${localSettings.themeName === theme.name 
+                      ? 'border-term-selection bg-term-selection/20 ring-1 ring-term-selection' 
+                      : 'border-term-selection/50 hover:border-term-selection hover:bg-term-selection/10'}
+                  `}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-sm text-term-fg">{theme.name}</span>
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.background }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.foreground }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.blue }} />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-term-selection/50">
+              <label className="text-xs font-medium text-term-fg/70 mb-2 block">{t('settings.import_theme')}</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  placeholder={t('settings.url_placeholder')}
+                  className="flex-1 bg-term-bg border border-term-selection rounded px-3 py-1.5 text-sm text-term-fg focus:outline-none focus:border-term-blue"
+                />
+                <button
+                  onClick={handleImportUrl}
+                  disabled={!importUrl || isImporting}
+                  className="px-3 py-1.5 bg-term-selection hover:bg-term-selection/80 text-term-fg rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <div className="w-4 h-4 border-2 border-term-fg/30 border-t-term-fg rounded-full animate-spin" />
+                  ) : (
+                    <Globe className="w-4 h-4" />
+                  )}
+                  {t('settings.import_url')}
+                </button>
+              </div>
+              <button
+                onClick={handleImportFile}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-term-selection rounded-lg hover:bg-term-selection/10 text-term-fg/70 hover:text-term-fg transition-colors text-sm"
+              >
+                <Upload className="w-4 h-4" />
+                {t('settings.import_placeholder')}
+              </button>
+            </div>
+
+            {importSuccess && (
+              <p className="mt-2 text-xs text-term-green">{importSuccess}</p>
+            )}
+            {importError && (
+              <p className="mt-2 text-xs text-term-red">{importError}</p>
+            )}
           </div>
 
           {/* Terminal Font Size */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Type className="w-4 h-4 text-zinc-400" />
-              <label className="text-sm font-medium text-zinc-200">
-                Terminal Font Size: {localSettings.terminalFontSize}px
+              <Type className="w-4 h-4 text-term-fg/60" />
+              <label className="text-sm font-medium text-term-fg">
+                {t('settings.font_size')}: {localSettings.terminalFontSize}px
               </label>
             </div>
             <input
@@ -85,9 +336,9 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
               onChange={(e) =>
                 setLocalSettings({ ...localSettings, terminalFontSize: parseInt(e.target.value) })
               }
-              className="w-full accent-blue-600"
+              className="w-full accent-term-blue"
             />
-            <div className="flex justify-between text-xs text-zinc-500 mt-1">
+            <div className="flex justify-between text-xs text-term-fg/40 mt-1">
               <span>10px</span>
               <span>24px</span>
             </div>
@@ -96,9 +347,9 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
           {/* Terminal Line Height */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Monitor className="w-4 h-4 text-zinc-400" />
-              <label className="text-sm font-medium text-zinc-200">
-                Terminal Line Height: {localSettings.terminalLineHeight}
+              <Monitor className="w-4 h-4 text-term-fg/60" />
+              <label className="text-sm font-medium text-term-fg">
+                {t('settings.line_height')}: {localSettings.terminalLineHeight}
               </label>
             </div>
             <input
@@ -110,9 +361,9 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
               onChange={(e) =>
                 setLocalSettings({ ...localSettings, terminalLineHeight: parseFloat(e.target.value) })
               }
-              className="w-full accent-blue-600"
+              className="w-full accent-term-blue"
             />
-            <div className="flex justify-between text-xs text-zinc-500 mt-1">
+            <div className="flex justify-between text-xs text-term-fg/40 mt-1">
               <span>1.0</span>
               <span>2.0</span>
             </div>
@@ -120,7 +371,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
 
           {/* Editor Options */}
           <div>
-            <label className="text-sm font-medium text-zinc-200 mb-3 block">Editor Options</label>
+            <label className="text-sm font-medium text-term-fg mb-3 block">{t('settings.editor')}</label>
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -129,9 +380,9 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
                   onChange={(e) =>
                     setLocalSettings({ ...localSettings, editorMinimap: e.target.checked })
                   }
-                  className="accent-blue-600"
+                  className="accent-term-blue"
                 />
-                <span className="text-sm text-zinc-300">Show Minimap</span>
+                <span className="text-sm text-term-fg">{t('settings.minimap')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -140,27 +391,27 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
                   onChange={(e) =>
                     setLocalSettings({ ...localSettings, editorWordWrap: e.target.checked })
                   }
-                  className="accent-blue-600"
+                  className="accent-term-blue"
                 />
-                <span className="text-sm text-zinc-300">Word Wrap</span>
+                <span className="text-sm text-term-fg">{t('settings.word_wrap')}</span>
               </label>
             </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3 mt-8 pt-4 border-t border-zinc-800">
+        <div className="flex gap-3 mt-6 pt-4 border-t border-term-selection flex-shrink-0">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-md text-zinc-300 transition-colors"
+            className="flex-1 px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded-md text-term-fg transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-white transition-colors"
+            className="flex-1 px-4 py-2 bg-term-blue hover:bg-term-blue/80 rounded-md text-term-bg font-medium transition-colors"
           >
-            Save Settings
+            {t('common.save')}
           </button>
         </div>
       </div>

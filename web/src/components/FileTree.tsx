@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 import type { SftpEntry } from '@/types/sftp';
 import { cn } from '@/lib/utils';
 
@@ -45,8 +46,8 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
     <div>
       <div
         className={cn(
-          'flex items-center gap-1 py-1 px-2 hover:bg-zinc-800 cursor-pointer rounded',
-          !entry.is_dir && 'cursor-pointer hover:bg-blue-900/30'
+          'flex items-center gap-1 py-1 px-2 hover:bg-term-selection cursor-pointer rounded',
+          !entry.is_dir && 'cursor-pointer hover:bg-term-blue/20'
         )}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleToggle}
@@ -54,27 +55,27 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
         {entry.is_dir ? (
           <>
             {isLoading ? (
-              <Loader2 className="w-4 h-4 text-zinc-500 animate-spin flex-shrink-0" />
+              <Loader2 className="w-4 h-4 text-term-fg/40 animate-spin flex-shrink-0" />
             ) : isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+              <ChevronDown className="w-4 h-4 text-term-fg/40 flex-shrink-0" />
             ) : (
-              <ChevronRight className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+              <ChevronRight className="w-4 h-4 text-term-fg/40 flex-shrink-0" />
             )}
             {isExpanded ? (
-              <FolderOpen className="w-4 h-4 text-blue-400 flex-shrink-0" />
+              <FolderOpen className="w-4 h-4 text-term-blue flex-shrink-0" />
             ) : (
-              <Folder className="w-4 h-4 text-blue-400 flex-shrink-0" />
+              <Folder className="w-4 h-4 text-term-blue flex-shrink-0" />
             )}
           </>
         ) : (
           <>
             <span className="w-4 flex-shrink-0" />
-            <File className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+            <File className="w-4 h-4 text-term-fg/60 flex-shrink-0" />
           </>
         )}
-        <span className="text-sm text-zinc-300 truncate">{entry.filename}</span>
+        <span className="text-sm text-term-fg truncate">{entry.filename}</span>
         {entry.is_file && entry.size > 0 && (
-          <span className="text-xs text-zinc-500 ml-auto">
+          <span className="text-xs text-term-fg/40 ml-auto">
             {formatSize(entry.size)}
           </span>
         )}
@@ -105,18 +106,12 @@ function formatSize(bytes: number): string {
 }
 
 export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<SftpEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState('/');
-  const [pathInput, setPathInput] = useState('/');
-
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [acOpen, setAcOpen] = useState(false);
-  const [acLoading, setAcLoading] = useState(false);
-  const [acItems, setAcItems] = useState<SftpEntry[]>([]);
-  const [acActiveIndex, setAcActiveIndex] = useState(0);
-  const acRequestSeq = useRef(0);
+  const [pathInput, setPathInput] = useState('');
 
   const normalizePath = useCallback((p: string) => {
     let s = p.trim();
@@ -127,18 +122,6 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     return s;
   }, []);
 
-  const getParentAndPrefix = useCallback((raw: string) => {
-    const s = normalizePath(raw);
-    if (s === '/') return { parent: '/', prefix: '', normalized: s, endsWithSlash: true };
-    const endsWithSlash = s.endsWith('/');
-    const withoutTrailing = endsWithSlash ? s.slice(0, -1) : s;
-    const lastSlash = withoutTrailing.lastIndexOf('/');
-    // 如果以 / 结尾，表示用户已经明确进入该目录：应列出该目录下的内容
-    const parent = endsWithSlash ? withoutTrailing : (lastSlash <= 0 ? '/' : withoutTrailing.slice(0, lastSlash));
-    const prefix = endsWithSlash ? '' : withoutTrailing.slice(lastSlash + 1);
-    return { parent, prefix, normalized: s, endsWithSlash };
-  }, [normalizePath]);
-
   const loadDir = useCallback(async (dirPath: string) => {
     setIsLoading(true);
     setError(null);
@@ -147,23 +130,96 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       setEntries(result);
       const normalized = normalizePath(dirPath);
       setCurrentPath(normalized);
-      setPathInput(normalized);
+      setPathInput('');
     } catch (err) {
-      setError(`加载目录失败: ${err}`);
+      setError(t('file_tree.load_error', { error: `${err}` }));
     } finally {
       setIsLoading(false);
     }
-  }, [tabId, normalizePath]);
+  }, [tabId, normalizePath, t]);
 
-  // 连接后自动加载根目录
+  // 自动加载用户主目录
   useEffect(() => {
-    if (tabId) {
-      loadDir('/');
-    }
+    const init = async () => {
+      try {
+        const home = await invoke<string>('sftp_get_home_dir', { tabId });
+        loadDir(home || '/');
+      } catch (error) {
+        console.warn('Failed to get home dir, falling back to root:', error);
+        loadDir('/');
+      }
+    };
+    init();
   }, [tabId, loadDir]);
 
-  // 路径输入框回车跳转
-  const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Autocomplete state
+  const [acOpen, setAcOpen] = useState(false);
+  const [acLoading, setAcLoading] = useState(false);
+  const [acItems, setAcItems] = useState<SftpEntry[]>([]);
+  const [acActiveIndex, setAcActiveIndex] = useState(0);
+  const acRequestSeq = useRef(0);
+
+  const getParentAndPrefix = useCallback((raw: string) => {
+    const s = normalizePath(raw);
+    if (s === '/') return { parent: '/', prefix: '', normalized: s, endsWithSlash: true };
+    const endsWithSlash = s.endsWith('/');
+    const withoutTrailing = endsWithSlash ? s.slice(0, -1) : s;
+    const lastSlash = withoutTrailing.lastIndexOf('/');
+    const parent = endsWithSlash ? withoutTrailing : (lastSlash <= 0 ? '/' : withoutTrailing.slice(0, lastSlash));
+    const prefix = endsWithSlash ? '' : withoutTrailing.slice(lastSlash + 1);
+    return { parent, prefix, normalized: s, endsWithSlash };
+  }, [normalizePath]);
+
+  const fetchSuggestions = useCallback(async (raw: string) => {
+    const { parent, prefix } = getParentAndPrefix(raw);
+    const seq = ++acRequestSeq.current;
+    setAcLoading(true);
+    try {
+      const list = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: parent });
+      if (seq !== acRequestSeq.current) return;
+      const filtered = list
+        .filter((e) => (prefix ? e.filename.toLowerCase().startsWith(prefix.toLowerCase()) : true))
+        .sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.filename.localeCompare(b.filename));
+      setAcItems(filtered.slice(0, 50));
+      setAcActiveIndex(0);
+      setAcOpen(true);
+    } catch {
+      if (seq !== acRequestSeq.current) return;
+      setAcItems([]);
+      setAcOpen(false);
+    } finally {
+      if (seq === acRequestSeq.current) setAcLoading(false);
+    }
+  }, [getParentAndPrefix, tabId]);
+
+  useEffect(() => {
+    if (!tabId) return;
+    const raw = pathInput;
+    if (!raw.trim()) {
+      setAcOpen(false);
+      setAcItems([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      fetchSuggestions(raw);
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [fetchSuggestions, pathInput, tabId]);
+
+  const applySuggestion = useCallback((index: number, opts: { loadOnAccept: boolean }) => {
+    const item = acItems[index];
+    if (!item) return;
+    const { parent } = getParentAndPrefix(pathInput);
+    const full = parent === '/' ? `/${item.filename}` : `${parent}/${item.filename}`;
+    const next = item.is_dir ? `${full}/` : full;
+    setPathInput(next);
+    setAcOpen(false);
+    if (opts.loadOnAccept && item.is_dir) {
+      loadDir(full);
+    }
+  }, [acItems, getParentAndPrefix, loadDir, pathInput]);
+
+  const handlePathKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' && acOpen && acItems.length > 0) {
       e.preventDefault();
       setAcActiveIndex((i) => Math.min(i + 1, acItems.length - 1));
@@ -194,132 +250,83 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       const target = pathInput.trim();
       if (target) loadDir(target);
     }
-  };
-
-  const fetchSuggestions = useCallback(async (raw: string) => {
-    const { parent, prefix } = getParentAndPrefix(raw);
-    const seq = ++acRequestSeq.current;
-    setAcLoading(true);
-    try {
-      const list = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: parent });
-      if (seq !== acRequestSeq.current) return;
-      const filtered = list
-        .filter((e) => (prefix ? e.filename.toLowerCase().startsWith(prefix.toLowerCase()) : true))
-        .sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.filename.localeCompare(b.filename));
-      setAcItems(filtered.slice(0, 50));
-      setAcActiveIndex(0);
-      setAcOpen(true);
-    } catch {
-      if (seq !== acRequestSeq.current) return;
-      setAcItems([]);
-      setAcOpen(false);
-    } finally {
-      if (seq === acRequestSeq.current) setAcLoading(false);
-    }
-  }, [getParentAndPrefix, tabId]);
-
-  const applySuggestion = useCallback((index: number, opts: { loadOnAccept: boolean }) => {
-    const item = acItems[index];
-    if (!item) return;
-    const { parent } = getParentAndPrefix(pathInput);
-    const full = parent === '/' ? `/${item.filename}` : `${parent}/${item.filename}`;
-    const next = item.is_dir ? `${full}/` : full;
-    setPathInput(next);
-    setAcOpen(false);
-    if (opts.loadOnAccept && item.is_dir) {
-      loadDir(full);
-    }
-    // 文件：这里只做补全，不自动打开（避免误触）
-  }, [acItems, getParentAndPrefix, loadDir, pathInput]);
-
-  const acHint = useMemo(() => {
-    const { parent, prefix } = getParentAndPrefix(pathInput);
-    return { parent, prefix };
-  }, [getParentAndPrefix, pathInput]);
-
-  // 输入变化时，debounce 请求补全
-  useEffect(() => {
-    if (!tabId) return;
-    const raw = pathInput;
-    if (!raw.trim()) {
-      setAcOpen(false);
-      setAcItems([]);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      fetchSuggestions(raw);
-    }, 150);
-    return () => window.clearTimeout(t);
-  }, [fetchSuggestions, pathInput, tabId]);
+  }, [acOpen, acItems, acActiveIndex, applySuggestion, loadDir, pathInput]);
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">
       {/* 路径导航输入框 */}
-      <div className="px-2 py-1.5 border-b border-zinc-800 flex-shrink-0 relative">
+      <div className="px-2 py-1.5 border-b border-term-selection flex-shrink-0 relative">
         <input
           type="text"
           value={pathInput}
-          ref={inputRef}
-          onChange={(e) => {
-            setPathInput(e.target.value);
-          }}
+          onChange={(e) => setPathInput(e.target.value)}
           onKeyDown={handlePathKeyDown}
-          onFocus={() => {
-            if (acItems.length > 0) setAcOpen(true);
-          }}
-          onBlur={() => {
-            // 给点击补全项留时间
-            window.setTimeout(() => setAcOpen(false), 120);
-          }}
-          placeholder="输入路径，如 /var/log"
-          className="w-full bg-zinc-800 text-zinc-200 text-xs px-2 py-1 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none placeholder-zinc-500"
+          onFocus={() => acItems.length > 0 && setAcOpen(true)}
+          onBlur={() => window.setTimeout(() => setAcOpen(false), 120)}
+          placeholder={t('file_tree.path_placeholder')}
+          className="w-full bg-term-selection/50 text-term-fg text-xs px-2 py-1 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg/40"
         />
         {acOpen && (acLoading || acItems.length > 0) && (
-          <div className="absolute left-2 right-2 top-[calc(100%+4px)] z-20 rounded-md border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden">
-            <div className="px-2 py-1 text-[10px] text-zinc-500 border-b border-zinc-800 flex items-center justify-between">
-              <span className="truncate">
-                {acHint.parent} {acHint.prefix ? `· 前缀: ${acHint.prefix}` : ''}
-              </span>
-              <span className="flex-shrink-0">{acLoading ? '加载中…' : 'Tab 补全 / Enter 跳转'}</span>
-            </div>
-            <div className="max-h-56 overflow-auto no-scrollbar">
-              {acItems.length === 0 ? (
-                <div className="px-2 py-2 text-xs text-zinc-500">无匹配项</div>
-              ) : (
-                acItems.slice(0, 12).map((item, idx) => (
-                  <button
-                    key={`${item.filename}-${idx}`}
-                    type="button"
-                    className={cn(
-                      'w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs',
-                      'hover:bg-zinc-800',
-                      idx === acActiveIndex && 'bg-blue-900/30'
-                    )}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => applySuggestion(idx, { loadOnAccept: true })}
-                  >
-                    {item.is_dir ? (
-                      <Folder className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                    ) : (
-                      <File className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                    )}
-                    <span className="text-zinc-200 truncate">{item.filename}{item.is_dir ? '/' : ''}</span>
-                  </button>
-                ))
-              )}
-            </div>
+          <div className="absolute top-full left-0 right-0 mt-1 bg-term-bg border border-term-selection rounded shadow-xl max-h-60 overflow-auto z-10">
+            {acItems.map((item, index) => (
+              <div
+                key={`${item.filename}-${index}`}
+                className={`px-2 py-1 text-sm cursor-pointer flex items-center gap-2 ${
+                  index === acActiveIndex ? 'bg-term-blue text-term-bg' : 'text-term-fg/80 hover:bg-term-selection'
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applySuggestion(index, { loadOnAccept: true });
+                }}
+              >
+                {item.is_dir ? (
+                  <FolderOpen className={cn("w-4 h-4", index === acActiveIndex ? "text-term-bg" : "text-term-blue")} />
+                ) : (
+                  <File className={cn("w-4 h-4", index === acActiveIndex ? "text-term-bg/60" : "text-term-fg/40")} />
+                )}
+                <span className="truncate flex-1">{item.filename}</span>
+                {item.is_file && item.size > 0 && (
+                  <span className="text-xs opacity-70">{formatSize(item.size)}</span>
+                )}
+              </div>
+            ))}
           </div>
         )}
+      </div>
+
+      {/* 面包屑导航 */}
+      <div className="px-2 py-1 border-b border-term-selection flex items-center text-xs text-term-fg/60 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <button
+          onClick={() => loadDir('/')}
+          className="hover:text-term-blue hover:bg-term-selection px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+          title={t('file_tree.root')}
+        >
+          /
+        </button>
+        {currentPath.split('/').filter(Boolean).map((part, index, arr) => {
+          const path = '/' + arr.slice(0, index + 1).join('/');
+          return (
+            <div key={path} className="flex items-center flex-shrink-0">
+              {index > 0 && <span className="text-term-fg/40 mx-0.5">/</span>}
+              <button
+                onClick={() => loadDir(path)}
+                className="hover:text-term-blue hover:bg-term-selection px-1.5 py-0.5 rounded transition-colors"
+              >
+                {part}
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {/* 文件列表区域 */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
         {error ? (
-          <div className="p-4 text-red-400 text-sm">{error}</div>
+          <div className="p-4 text-term-red text-sm">{error}</div>
         ) : isLoading && !entries ? (
-          <div className="p-4 text-zinc-500 text-sm">加载中...</div>
+          <div className="p-4 text-term-fg/40 text-sm">{t('file_tree.loading')}</div>
         ) : !entries ? (
-          <div className="p-4 text-zinc-500 text-sm">正在连接...</div>
+          <div className="p-4 text-term-fg/40 text-sm">{t('file_tree.connecting')}</div>
         ) : (
           <div className="py-1">
             {entries.map((entry, index) => (

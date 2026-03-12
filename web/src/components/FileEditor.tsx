@@ -1,17 +1,25 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useRef, useCallback } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
+import React, { useRef, useCallback, useEffect } from 'react';
+import Editor, { OnMount, Monaco } from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/Toast';
+import { ITheme } from 'xterm';
+import { X } from 'lucide-react';
 
 interface FileEditorProps {
   tabId: string;
   filePath: string | null;
+  theme?: ITheme;
+  onClose?: () => void;
 }
 
-export function FileEditor({ tabId, filePath }: FileEditorProps) {
+export function FileEditor({ tabId, filePath, theme }: FileEditorProps) {
+  const { t } = useTranslation();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const monacoRef = useRef<any>(null);
   const [content, setContent] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -32,7 +40,7 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
       setContent(fileContent);
       setHasChanges(false);
     } catch (err) {
-      const msg = `Failed to load file: ${err}`;
+      const msg = t('file.load_failed', { error: `${err}` });
       setError(msg);
       showToast(msg, 'error');
     } finally {
@@ -47,9 +55,9 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
     try {
       await invoke('sftp_write_file', { tabId, path: filePath, content });
       setHasChanges(false);
-      showToast('File saved successfully', 'success');
+      showToast(t('file.save_success'), 'success');
     } catch (err) {
-      const msg = `Failed to save file: ${err}`;
+      const msg = t('file.save_failed', { error: `${err}` });
       setError(msg);
       showToast(msg, 'error');
     }
@@ -57,6 +65,7 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
 
     editor.updateOptions({
       minimap: { enabled: false },
@@ -72,6 +81,10 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
         indentation: true,
       },
     });
+
+    if (theme) {
+      applyMonacoTheme(monaco, theme);
+    }
 
     if (filePath) {
       const ext = filePath.split('.').pop()?.toLowerCase();
@@ -95,7 +108,37 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
         monaco.editor.setModelLanguage(model, language);
       }
     }
-  }, [filePath]);
+  }, [filePath, theme]);
+
+  const applyMonacoTheme = (monaco: Monaco, theme: ITheme) => {
+    monaco.editor.defineTheme('dynamic-theme', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: '', foreground: theme.foreground.replace('#', '') },
+        { token: 'variable', foreground: theme.cyan.replace('#', '') },
+        { token: 'keyword', foreground: theme.magenta.replace('#', '') },
+        { token: 'string', foreground: theme.green.replace('#', '') },
+        { token: 'comment', foreground: theme.brightBlack.replace('#', '') },
+        { token: 'number', foreground: theme.yellow.replace('#', '') },
+        { token: 'type', foreground: theme.blue.replace('#', '') },
+      ],
+      colors: {
+        'editor.background': theme.background,
+        'editor.foreground': theme.foreground,
+        'editorCursor.foreground': theme.cursor,
+        'editor.selectionBackground': theme.selectionBackground || theme.cursor,
+        'editor.lineHighlightBackground': theme.background, // or slightly lighter
+      }
+    });
+    monaco.editor.setTheme('dynamic-theme');
+  };
+
+  useEffect(() => {
+    if (monacoRef.current && theme) {
+      applyMonacoTheme(monacoRef.current, theme);
+    }
+  }, [theme]);
 
   const handleChange = useCallback((value: string | undefined) => {
     setContent(value || '');
@@ -118,29 +161,46 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
 
   if (!filePath) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <div className="text-center text-zinc-500">
-          <p className="text-lg mb-2">No file selected</p>
-          <p className="text-sm">Select a file from the tree to edit</p>
+      <div className="flex-1 flex items-center justify-center bg-term-bg">
+        <div className="text-center text-term-fg opacity-50">
+          <p className="text-lg mb-2">{t('file.no_file_selected')}</p>
+          <p className="text-sm">{t('file.select_tip')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-zinc-950 overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-term-bg overflow-hidden">
+      {filePath && (
+        <div className="h-9 flex items-center justify-between px-4 border-b border-term-selection bg-term-bg shrink-0">
+          <span className="text-sm text-term-fg truncate opacity-80">{filePath}</span>
+          <div className="flex items-center gap-2">
+            {hasChanges && <span className="text-xs text-term-yellow">{t('common.saving')}...</span>}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 hover:bg-term-selection rounded transition-colors"
+                title={t('common.close')}
+              >
+                <X className="w-4 h-4 text-term-fg" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         {isLoading ? (
-          <div className="h-full flex items-center justify-center text-zinc-400">
+          <div className="h-full flex items-center justify-center text-term-fg opacity-60">
             <div className="text-center">
-              <div className="w-8 h-8 border-4 border-zinc-600 border-t-zinc-300 rounded-full animate-spin mx-auto mb-4" />
-              <p>Loading file...</p>
+              <div className="w-8 h-8 border-4 border-term-selection border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
+              <p>{t('file.loading')}</p>
             </div>
           </div>
         ) : error ? (
-          <div className="h-full flex items-center justify-center text-red-400">
+          <div className="h-full flex items-center justify-center text-term-red">
             <div className="text-center">
-              <p className="text-lg mb-2">Error</p>
+              <p className="text-lg mb-2">{t('common.error')}</p>
               <p className="text-sm">{error}</p>
             </div>
           </div>
@@ -151,10 +211,10 @@ export function FileEditor({ tabId, filePath }: FileEditorProps) {
             value={content}
             onChange={handleChange}
             onMount={handleEditorMount}
-            theme="vs-dark"
+            theme={theme ? "dynamic-theme" : "vs-dark"}
             loading={
-              <div className="h-full flex items-center justify-center text-zinc-400">
-                Loading editor...
+              <div className="h-full flex items-center justify-center text-term-fg opacity-60">
+                {t('file.loading_editor')}
               </div>
             }
           />

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { Copy, Play, FolderOpen, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ interface CommandSnippetsProps {
 }
 
 export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
+  const { t } = useTranslation();
   const [snippets, setSnippets] = useState<CommandSnippet[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -37,11 +39,11 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
       setCategories(cats);
     } catch (error) {
       console.error('Failed to load snippets:', error);
-      showToast(`加载 Snippets 失败: ${error}`, 'error');
+      showToast(t('snippets.load_failed') + `: ${error}`, 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => {
     loadSnippets();
@@ -112,69 +114,69 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
       category: editing.category?.trim() || undefined,
     };
     if (!payload.name || !payload.command) {
-      showToast('名称和命令不能为空', 'error');
+      showToast(t('snippets.validation_error'), 'error');
       return;
     }
     setIsSaving(true);
     try {
       await invoke<number>('save_snippet', { snippet: payload });
-      showToast('已保存', 'success');
+      showToast(t('snippets.saved'), 'success');
       closeEditor();
       await loadSnippets();
     } catch (error) {
       console.error('Failed to save snippet:', error);
-      showToast(`保存失败: ${error}`, 'error');
+      showToast(t('snippets.save_failed', { error }), 'error');
       setIsSaving(false);
     }
   };
 
   const deleteSnippet = async (snippet: CommandSnippet) => {
     if (!snippet.id) return;
-    const ok = window.confirm(`确认删除 Snippet「${snippet.name}」？`);
+    const ok = window.confirm(t('snippets.delete_confirm', { name: snippet.name }));
     if (!ok) return;
     try {
       await invoke('delete_snippet', { id: snippet.id });
-      showToast('已删除', 'success');
+      showToast(t('snippets.deleted'), 'success');
       await loadSnippets();
     } catch (error) {
       console.error('Failed to delete snippet:', error);
-      showToast(`删除失败: ${error}`, 'error');
+      showToast(t('snippets.delete_failed', { error }), 'error');
     }
   };
 
   return (
-    <div className="h-full flex flex-col bg-zinc-900">
-      <div className="p-3 border-b border-zinc-800 flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-zinc-200 flex-shrink-0">Snippets</h2>
+    <div className="h-full flex flex-col bg-term-bg">
+      <div className="p-3 border-b border-term-selection flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-term-fg flex-shrink-0">{t('snippets.title')}</h2>
         <div className="relative flex-1 min-w-0">
-          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-term-fg opacity-50 absolute left-2 top-1/2 -translate-y-1/2" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索名称/命令/描述…"
-            className="w-full bg-zinc-800 text-zinc-200 text-xs pl-7 pr-2 py-1.5 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none placeholder-zinc-500"
+            placeholder={t('snippets.search_placeholder')}
+            className="w-full bg-term-selection text-term-fg text-xs pl-7 pr-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg placeholder-opacity-40"
           />
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-blue-600/90 hover:bg-blue-600 text-white text-xs transition-colors flex-shrink-0"
-          title="新增 Snippet"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-term-blue hover:opacity-90 text-white text-xs transition-colors flex-shrink-0"
+          title={t('snippets.add')}
         >
           <Plus className="w-3.5 h-3.5" />
-          新增
+          {t('common.add')}
         </button>
       </div>
 
-      <div className="p-2 border-b border-zinc-800 flex items-center gap-2 overflow-x-auto">
+      <div className="p-2 border-b border-term-selection flex items-center gap-2 overflow-x-auto">
         <button
           onClick={() => setSelectedCategory('all')}
           className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
             selectedCategory === 'all'
-              ? 'bg-blue-600 text-white'
-              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+              ? 'bg-term-blue text-white'
+              : 'bg-term-selection text-term-fg opacity-60 hover:opacity-100 hover:text-term-fg'
           }`}
         >
-          All
+          {t('common.all')}
         </button>
         {categories.map(cat => (
           <button
@@ -182,8 +184,8 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
             onClick={() => setSelectedCategory(cat)}
             className={`px-3 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
               selectedCategory === cat
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                ? 'bg-term-blue text-white'
+                : 'bg-term-selection text-term-fg opacity-60 hover:opacity-100 hover:text-term-fg'
             }`}
           >
             {cat}
@@ -193,14 +195,14 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="text-center text-zinc-500 text-sm py-8">Loading...</div>
+          <div className="text-center text-term-fg opacity-50 text-sm py-8">{t('common.loading')}</div>
         ) : filteredSnippets.length === 0 ? (
-          <div className="text-center text-zinc-500 text-sm py-8">无匹配 Snippet</div>
+          <div className="text-center text-term-fg opacity-50 text-sm py-8">{t('snippets.no_match')}</div>
         ) : (
           <div className="p-2 space-y-4">
             {Object.entries(groupedSnippets).map(([category, snippets]) => (
               <div key={category}>
-                <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">
+                <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-term-fg opacity-50 uppercase tracking-wider px-1">
                   <FolderOpen className="w-3 h-3" />
                   {category}
                 </div>
@@ -208,17 +210,17 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                   {snippets.map(snippet => (
                     <div
                       key={snippet.id}
-                      className="group bg-zinc-800/30 rounded-md px-2 py-1.5 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                      className="group bg-term-selection/20 rounded-md px-2 py-1.5 border border-term-selection hover:border-term-blue/30 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-medium text-zinc-200 truncate">{snippet.name}</span>
+                            <span className="text-xs font-medium text-term-fg truncate">{snippet.name}</span>
                             {snippet.description && (
-                              <span className="text-[11px] text-zinc-500 truncate">— {snippet.description}</span>
+                              <span className="text-[11px] text-term-fg opacity-50 truncate">— {snippet.description}</span>
                             )}
                           </div>
-                          <div className="text-[11px] text-green-400 font-mono truncate">
+                          <div className="text-[11px] text-term-green font-mono truncate">
                             {snippet.command}
                           </div>
                         </div>
@@ -226,37 +228,37 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => handleCopy(snippet)}
-                            className="p-1 hover:bg-zinc-700 rounded transition-colors"
-                            title="复制"
+                            className="p-1 hover:bg-term-selection rounded transition-colors"
+                            title={t('snippets.copy')}
                           >
                             {copiedId === snippet.id ? (
-                              <span className="text-xs text-green-400">✓</span>
+                              <span className="text-xs text-term-green">✓</span>
                             ) : (
-                              <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                              <Copy className="w-3.5 h-3.5 text-term-fg opacity-60" />
                             )}
                           </button>
                           {onExecute && (
                             <button
                               onClick={() => handleExecute(snippet)}
-                              className="p-1 hover:bg-blue-900/50 rounded transition-colors"
-                              title="执行"
+                              className="p-1 hover:bg-term-blue/20 rounded transition-colors"
+                              title={t('snippets.execute')}
                             >
-                              <Play className="w-3.5 h-3.5 text-blue-400" />
+                              <Play className="w-3.5 h-3.5 text-term-blue" />
                             </button>
                           )}
                           <button
                             onClick={() => openEdit(snippet)}
-                            className="p-1 hover:bg-zinc-700 rounded transition-colors"
-                            title="编辑"
+                            className="p-1 hover:bg-term-selection rounded transition-colors"
+                            title={t('snippets.edit')}
                           >
-                            <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                            <Pencil className="w-3.5 h-3.5 text-term-fg opacity-60" />
                           </button>
                           <button
                             onClick={() => deleteSnippet(snippet)}
-                            className="p-1 hover:bg-red-900/30 rounded transition-colors"
-                            title="删除"
+                            className="p-1 hover:bg-term-red/20 rounded transition-colors"
+                            title={t('snippets.delete')}
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                            <Trash2 className="w-3.5 h-3.5 text-term-red" />
                           </button>
                         </div>
                       </div>
@@ -276,80 +278,80 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
             className="absolute inset-0 bg-black/60"
             onClick={closeEditor}
           />
-          <div className="relative w-[560px] max-w-[92vw] rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-              <div className="text-sm font-semibold text-zinc-200">
-                {editing.id ? '编辑 Snippet' : '新增 Snippet'}
+          <div className="relative w-[560px] max-w-[92vw] rounded-lg border border-term-selection bg-term-bg shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-term-selection">
+              <div className="text-sm font-semibold text-term-fg">
+                {editing.id ? t('snippets.edit') : t('snippets.add')}
               </div>
               <button
                 onClick={closeEditor}
-                className="p-1 rounded hover:bg-zinc-800 transition-colors"
-                title="关闭"
+                className="p-1 rounded hover:bg-term-selection transition-colors"
+                title={t('snippets.close')}
               >
-                <X className="w-4 h-4 text-zinc-400" />
+                <X className="w-4 h-4 text-term-fg opacity-60" />
               </button>
             </div>
 
             <div className="px-4 py-3 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1">
-                  <div className="text-xs text-zinc-500">名称</div>
+                  <div className="text-xs text-term-fg opacity-50">{t('snippets.name')}</div>
                   <input
                     value={editing.name}
                     onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                    className="w-full bg-zinc-800 text-zinc-200 text-xs px-2 py-1.5 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
-                    placeholder="如：Disk Usage"
+                    className="w-full bg-term-selection text-term-fg text-xs px-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none"
+                    placeholder={t('snippets.name_placeholder')}
                   />
                 </label>
                 <label className="space-y-1">
-                  <div className="text-xs text-zinc-500">分类</div>
+                  <div className="text-xs text-term-fg opacity-50">{t('snippets.category')}</div>
                   <input
                     value={editing.category || ''}
                     onChange={(e) => setEditing({ ...editing, category: e.target.value })}
-                    className="w-full bg-zinc-800 text-zinc-200 text-xs px-2 py-1.5 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
-                    placeholder="如：System（可选）"
+                    className="w-full bg-term-selection text-term-fg text-xs px-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none"
+                    placeholder={t('snippets.category_placeholder')}
                   />
                 </label>
               </div>
 
               <label className="space-y-1 block">
-                <div className="text-xs text-zinc-500">命令</div>
+                <div className="text-xs text-term-fg opacity-50">{t('snippets.command')}</div>
                 <textarea
                   value={editing.command}
                   onChange={(e) => setEditing({ ...editing, command: e.target.value })}
-                  className="w-full bg-zinc-800 text-zinc-200 text-xs px-2 py-2 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none font-mono min-h-[92px]"
-                  placeholder="如：df -h"
+                  className="w-full bg-term-selection text-term-fg text-xs px-2 py-2 rounded border border-term-selection focus:border-term-blue focus:outline-none font-mono min-h-[92px]"
+                  placeholder={t('snippets.command_placeholder')}
                 />
               </label>
 
               <label className="space-y-1 block">
-                <div className="text-xs text-zinc-500">描述</div>
+                <div className="text-xs text-term-fg opacity-50">{t('snippets.description')}</div>
                 <input
                   value={editing.description || ''}
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  className="w-full bg-zinc-800 text-zinc-200 text-xs px-2 py-1.5 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none"
-                  placeholder="（可选）"
+                  className="w-full bg-term-selection text-term-fg text-xs px-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none"
+                  placeholder={t('snippets.optional')}
                 />
               </label>
             </div>
 
-            <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">
+            <div className="px-4 py-3 border-t border-term-selection flex items-center justify-end gap-2">
               <button
                 onClick={closeEditor}
-                className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs transition-colors"
+                className="px-3 py-1.5 rounded bg-term-selection hover:opacity-90 text-term-fg text-xs transition-colors"
                 disabled={isSaving}
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={saveSnippet}
                 className={cn(
                   'px-3 py-1.5 rounded text-xs transition-colors',
-                  isSaving ? 'bg-blue-600/40 text-white cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'
+                  isSaving ? 'bg-term-blue/40 text-white cursor-not-allowed' : 'bg-term-blue hover:opacity-90 text-white'
                 )}
                 disabled={isSaving}
               >
-                {isSaving ? '保存中…' : '保存'}
+                {isSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>

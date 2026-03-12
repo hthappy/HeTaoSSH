@@ -1,12 +1,14 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Terminal as XTerm } from 'xterm';
+import { Terminal as XTerm, ITheme } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+import { useTranslation } from 'react-i18next';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
   focus: () => void;
+  resize: () => void;
 };
 
 interface TerminalProps {
@@ -15,17 +17,21 @@ interface TerminalProps {
   onResize?: (cols: number, rows: number) => void;
   disconnected?: boolean;
   incomingData?: string;
+  theme?: ITheme;
+  fontSize?: number;
+  lineHeight?: number;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { className, onData, onResize, disconnected = false, incomingData },
+  { className, onData, onResize, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2 },
   ref
 ) {
+  const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
-  // Expose write method to parent
+  // Expose methods to parent
   useImperativeHandle(ref, () => ({
     write: (data: string | Uint8Array) => {
       if (xtermRef.current) {
@@ -36,6 +42,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       if (xtermRef.current) {
         xtermRef.current.focus();
       }
+    },
+    resize: () => {
+      fitAddonRef.current?.fit();
     }
   }));
 
@@ -46,9 +55,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const term = new XTerm({
       cursorBlink: true,
       cursorStyle: 'block',
-      fontSize: 14,
+      fontSize,
+      lineHeight,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
+      theme: theme || {
         background: '#09090b',
         foreground: '#e4e4e7',
         cursor: '#e4e4e7',
@@ -132,7 +142,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     // Resize observer
     const resizeObserver = new ResizeObserver(handleResize);
-    resizeObserver.observe(terminalRef.current);
+    if (terminalRef.current) {
+      resizeObserver.observe(terminalRef.current);
+    }
 
     // Initial focus
     term.focus();
@@ -153,6 +165,23 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Handle theme changes
+  useEffect(() => {
+    if (xtermRef.current && theme) {
+      xtermRef.current.options.theme = theme;
+      // Force background update if needed (usually handled by theme option)
+    }
+  }, [theme]);
+
+  // Handle font changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      if (fontSize) xtermRef.current.options.fontSize = fontSize;
+      if (lineHeight) xtermRef.current.options.lineHeight = lineHeight;
+      fitAddonRef.current?.fit();
+    }
+  }, [fontSize, lineHeight]);
+
   // Handle incoming data from SSH
   useEffect(() => {
     if (incomingData && xtermRef.current) {
@@ -164,18 +193,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   useEffect(() => {
     if (xtermRef.current) {
       if (disconnected) {
-        xtermRef.current.write('\r\n\x1b[31m[Disconnected]\x1b[0m\r\n');
+        xtermRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')}]\x1b[0m\r\n`);
       }
     }
-  }, [disconnected]);
+  }, [disconnected, t]);
 
   return (
     <div
       className={cn(
-        'flex-1 overflow-hidden bg-[#09090b]',
+        'flex-1 overflow-hidden', // Removed hardcoded bg color here to let theme control it
         disconnected && 'opacity-50 pointer-events-none',
         className
       )}
+      style={{ backgroundColor: theme?.background }} // Ensure container matches theme bg
     >
       <div ref={terminalRef} className="w-full h-full" />
     </div>

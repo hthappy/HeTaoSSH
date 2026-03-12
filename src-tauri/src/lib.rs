@@ -8,8 +8,11 @@ pub mod config;
 pub mod crypto;
 pub mod monitor;
 pub mod snippets;
+pub mod security;
+pub mod theme;
 
 pub use config::ConfigManager;
 pub use error::{Result, SshError};
 pub use monitor::SystemUsage;
 pub use snippets::{CommandSnippet, SnippetManager};
+pub use security::{validate_and_normalize_path, contains_traversal_pattern};

@@ -7,6 +7,8 @@ pub mod config;
 pub mod crypto;
 pub mod monitor;
 pub mod snippets;
+pub mod security;
+pub mod theme;
 
 use config::ConfigManager;
 use error::Result;
@@ -42,6 +44,7 @@ async fn main() -> Result<()> {
             commands::sftp_write_file,
             commands::sftp_remove_file,
             commands::sftp_create_dir,
+            commands::sftp_get_home_dir,
             commands::get_system_usage,
             commands::list_snippets,
             commands::list_snippet_categories,
@@ -53,9 +56,8 @@ async fn main() -> Result<()> {
             commands::ssh_send,
             commands::ssh_recv,
             commands::ssh_resize,
-            commands::list_snippet_categories,
-            commands::save_snippet,
-            commands::delete_snippet,
+            commands::parse_theme,
+            commands::fetch_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

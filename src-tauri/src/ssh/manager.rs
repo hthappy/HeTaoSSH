@@ -42,6 +42,10 @@ enum ConnCommand {
         content: Vec<u8>,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// SFTP: 获取用户主目录
+    SftpGetHomeDir {
+        reply: oneshot::Sender<Result<String>>,
+    },
     /// 远程系统监控
     GetSystemUsage {
         reply: oneshot::Sender<Result<crate::monitor::SystemUsage>>,
@@ -224,6 +228,19 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 获取用户主目录
+    pub async fn sftp_get_home_dir(&self, id: &str) -> Result<String> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpGetHomeDir { reply: reply_tx })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 远程系统监控
     pub async fn get_remote_system_usage(&self, id: &str) -> Result<crate::monitor::SystemUsage> {
         let tx = self.get_tx(id).await?;
@@ -301,6 +318,10 @@ async fn connection_actor(
                         reply,
                     } => {
                         let result = handle_sftp_write_file(&conn, &path, &content).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpGetHomeDir { reply } => {
+                        let result = handle_sftp_get_home_dir(&conn).await;
                         let _ = reply.send(result);
                     }
                     ConnCommand::GetSystemUsage { reply } => {
@@ -393,6 +414,22 @@ async fn handle_sftp_write_file(conn: &SshConnection, path: &str, content: &[u8]
     sftp.write(path, content)
         .await
         .map_err(|e| SshError::ConnectionFailed(format!("write file failed: {}", e)))
+}
+
+async fn handle_sftp_get_home_dir(conn: &SshConnection) -> Result<String> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    // 获取 "." 的绝对路径，即为当前用户目录
+    let path = sftp
+        .canonicalize(".")
+        .await
+        .map_err(|e| SshError::ConnectionFailed(format!("Failed to get home dir: {}", e)))?;
+    
+    // canonicalize 返回的是 String
+    Ok(path)
 }
 
 async fn handle_get_system_usage(conn: &SshConnection) -> Result<crate::monitor::SystemUsage> {
