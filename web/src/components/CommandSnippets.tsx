@@ -132,8 +132,6 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
 
   const deleteSnippet = async (snippet: CommandSnippet) => {
     if (!snippet.id) return;
-    const ok = window.confirm(t('snippets.delete_confirm', { name: snippet.name }));
-    if (!ok) return;
     try {
       await invoke('delete_snippet', { id: snippet.id });
       showToast(t('snippets.deleted'), 'success');
@@ -145,9 +143,8 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-term-bg">
-      <div className="p-3 border-b border-term-selection flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-term-fg flex-shrink-0">{t('snippets.title')}</h2>
+    <div className="h-full flex flex-col">
+      <div className="p-3 flex items-center gap-2">
         <div className="relative flex-1 min-w-0">
           <Search className="w-3.5 h-3.5 text-term-fg opacity-50 absolute left-2 top-1/2 -translate-y-1/2" />
           <input

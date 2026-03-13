@@ -1,4 +1,4 @@
-# HetaoSSH
+# HeTaoSSH
 
 <div align="center">
 
@@ -8,7 +8,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-24C8CE.svg)](https://tauri.app)
 
-![HetaoSSH Preview](docs/preview.png)
+![HeTaoSSH Preview](docs/preview.png)
 
 </div>
 
@@ -58,8 +58,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/hetaossh.git
-cd hetaossh
+git clone https://github.com/your-org/HeTaoSSH.git
+cd HeTaoSSH
 
 # Install dependencies
 pnpm install
@@ -73,14 +73,14 @@ pnpm tauri build
 
 ## 📖 Documentation
 
-- [User Guide](docs/USER_GUIDE.md) - How to use HetaoSSH
+- [User Guide](docs/USER_GUIDE.md) - How to use HeTaoSSH
 - [API Documentation](docs/API.md) - Tauri commands and data structures
 - [Development Guidelines](AGENTS.md) - Code style and build commands
 
 ## 🎯 Project Structure
 
 ```
-HetaoSSH/
+HeTaoSSH/
 ├── src-tauri/              # Rust backend
 │   ├── src/
 │   │   ├── ssh/           # SSH connection (russh)
@@ -213,8 +213,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📬 Contact
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/your-org/hetaossh/issues)
-- **Discussions**: [Ask questions and share ideas](https://github.com/your-org/hetaossh/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/your-org/HeTaoSSH/issues)
+- **Discussions**: [Ask questions and share ideas](https://github.com/your-org/HeTaoSSH/discussions)
 - **Email**: support@example.com
 
 ---

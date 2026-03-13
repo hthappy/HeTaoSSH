@@ -9,21 +9,24 @@ pub mod monitor;
 pub mod snippets;
 pub mod security;
 pub mod theme;
+pub mod local_term;
 
 use config::ConfigManager;
 use error::Result;
 use log::info;
 use ssh::ConnectionManager;
+use local_term::LocalTerminalManager;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-    info!("Starting HetaoSSH...");
+    info!("Starting HeTaoSSH...");
 
     let config_manager = Arc::new(ConfigManager::new().await?);
     let snippet_manager = Arc::new(snippets::SnippetManager::new().await?);
     let ssh_manager = Arc::new(ConnectionManager::new());
+    let local_term_manager = Arc::new(LocalTerminalManager::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -32,6 +35,7 @@ async fn main() -> Result<()> {
         .manage(config_manager)
         .manage(snippet_manager)
         .manage(ssh_manager)
+        .manage(local_term_manager)
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::get_version,
@@ -58,6 +62,10 @@ async fn main() -> Result<()> {
             commands::ssh_resize,
             commands::parse_theme,
             commands::fetch_url,
+            commands::open_local_terminal,
+            commands::local_term_write,
+            commands::local_term_resize,
+            commands::local_term_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

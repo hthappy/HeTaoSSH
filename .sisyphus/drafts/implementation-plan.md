@@ -1,7 +1,7 @@
-# HetaoSSH 安全与性能改进实施计划
+# HeTaoSSH 安全与性能改进实施计划
 
 **创建日期**: 2026-03-11  
-**项目**: HetaoSSH v0.1.0  
+**项目**: HeTaoSSH v0.1.0  
 **预计总工时**: 8-10 小时  
 **优先级**: 安全修复 > 性能优化 > 代码质量
 
@@ -436,9 +436,9 @@ pub fn run() {
 
 ```bash
 #!/bin/bash
-# HetaoSSH 性能基准测试
+# HeTaoSSH 性能基准测试
 
-echo "=== HetaoSSH Performance Benchmark ==="
+echo "=== HeTaoSSH Performance Benchmark ==="
 echo ""
 
 # 1. 冷启动测试
@@ -469,9 +469,9 @@ echo "=== Benchmark Complete ==="
 **文件**: `scripts/benchmark.ps1` (新建 - Windows PowerShell)
 
 ```powershell
-# HetaoSSH 性能基准测试
+# HeTaoSSH 性能基准测试
 
-Write-Host "=== HetaoSSH Performance Benchmark ===" -ForegroundColor Cyan
+Write-Host "=== HeTaoSSH Performance Benchmark ===" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. 冷启动测试

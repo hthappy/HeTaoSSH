@@ -23,7 +23,7 @@ export function TabBar() {
           onClick={() => setActiveTab(tab.id)}
         >
           <Terminal className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="text-sm truncate flex-1">{tab.serverName}</span>
+          <span className="text-sm truncate flex-1">{tab.title}</span>
           <button
             onClick={(e) => {
               e.stopPropagation();

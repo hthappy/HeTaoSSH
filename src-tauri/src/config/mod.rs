@@ -61,14 +61,14 @@ impl ConfigManager {
 
     fn get_db_path() -> Result<PathBuf> {
         let db_path = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            PathBuf::from(local_app_data).join("HetaoSSH").join("hetaossh.db")
+            PathBuf::from(local_app_data).join("HeTaoSSH").join("HeTaoSSH.db")
         } else if let Some(data_dir) = dirs::data_local_dir() {
-            data_dir.join("HetaoSSH").join("hetaossh.db")
+            data_dir.join("HeTaoSSH").join("HeTaoSSH.db")
         } else {
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
-                .join("HetaoSSH")
-                .join("hetaossh.db")
+                .join("HeTaoSSH")
+                .join("HeTaoSSH.db")
         };
         
         Ok(db_path)

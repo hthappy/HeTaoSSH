@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { FileTree } from './FileTree';
 import { FileEditor } from './FileEditor';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useSshStore } from '@/stores/ssh-store';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -31,18 +30,6 @@ export function FileExplorer() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute top-2 left-2 z-10 p-1.5 bg-term-selection hover:opacity-80 rounded-md transition-colors"
-        title={sidebarOpen ? t('file.sidebar_close') : t('file.sidebar_open')}
-      >
-        {sidebarOpen ? (
-          <PanelLeftClose className="w-4 h-4 text-term-fg" />
-        ) : (
-          <PanelLeftOpen className="w-4 h-4 text-term-fg" />
-        )}
-      </button>
-
       <div
         className={cn(
           'w-64 border-r border-term-selection bg-term-bg transition-all duration-300',

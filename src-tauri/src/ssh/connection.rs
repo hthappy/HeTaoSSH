@@ -30,7 +30,7 @@ impl Handler for ClientHandler {
         let mut known_hosts_path = std::env::var("LOCALAPPDATA")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")));
-        known_hosts_path.push("HetaoSSH");
+        known_hosts_path.push("HeTaoSSH");
         
         // Ensure directory exists
         if !known_hosts_path.exists() {

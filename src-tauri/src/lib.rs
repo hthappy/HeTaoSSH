@@ -10,6 +10,7 @@ pub mod monitor;
 pub mod snippets;
 pub mod security;
 pub mod theme;
+pub mod local_term;
 
 pub use config::ConfigManager;
 pub use error::{Result, SshError};

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Type, Monitor, Globe, Palette, Upload } from 'lucide-react';
+import { Settings, Type, Monitor, Globe, Palette, Upload, Trash2, MousePointerClick } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -16,6 +16,7 @@ export interface AppSettings {
   terminalLineHeight: number;
   editorMinimap: boolean;
   editorWordWrap: boolean;
+  rightClickBehavior: 'menu' | 'paste';
 }
 
 interface SettingsDialogProps {
@@ -23,9 +24,10 @@ interface SettingsDialogProps {
   onClose: () => void;
   settings: AppSettings;
   onSave: (settings: AppSettings) => void;
+  onPreviewTheme?: (theme: ThemeSchema | null) => void;
 }
 
-export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewTheme }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [importError, setImportError] = useState<string | null>(null);
@@ -38,6 +40,17 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings, isOpen]);
+
+  // Preview theme when selection changes
+  useEffect(() => {
+    if (isOpen && onPreviewTheme) {
+      const allThemes = [...presets, ...localSettings.customThemes];
+      const selectedTheme = allThemes.find(t => t.name === localSettings.themeName);
+      if (selectedTheme) {
+        onPreviewTheme(selectedTheme);
+      }
+    }
+  }, [localSettings.themeName, localSettings.customThemes, isOpen, onPreviewTheme]);
 
   // Clear messages when dialog closes
   useEffect(() => {
@@ -69,8 +82,10 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
         const rawTheme = JSON.parse(content);
         
         // Check if it's a Gogh theme (flat structure)
-        if (rawTheme.name && rawTheme.background && rawTheme.black) {
+        if (rawTheme.name && rawTheme.background && (rawTheme.black || rawTheme.color_01)) {
           // Convert Gogh format to our ThemeSchema
+          const isIndexed = !!rawTheme.color_01;
+          
           theme = {
             name: rawTheme.name,
             type: 'dark', // Default to dark for Gogh themes
@@ -79,25 +94,25 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
               foreground: rawTheme.foreground,
               cursor: rawTheme.cursor,
               cursorAccent: rawTheme.cursorAccent || rawTheme.background,
-              selection: rawTheme.selection,
+              selection: rawTheme.selection || 'rgba(255, 255, 255, 0.3)',
               
-              black: rawTheme.black,
-              red: rawTheme.red,
-              green: rawTheme.green,
-              yellow: rawTheme.yellow,
-              blue: rawTheme.blue,
-              magenta: rawTheme.magenta,
-              cyan: rawTheme.cyan,
-              white: rawTheme.white,
+              black: isIndexed ? rawTheme.color_01 : rawTheme.black,
+              red: isIndexed ? rawTheme.color_02 : rawTheme.red,
+              green: isIndexed ? rawTheme.color_03 : rawTheme.green,
+              yellow: isIndexed ? rawTheme.color_04 : rawTheme.yellow,
+              blue: isIndexed ? rawTheme.color_05 : rawTheme.blue,
+              magenta: isIndexed ? rawTheme.color_06 : rawTheme.magenta,
+              cyan: isIndexed ? rawTheme.color_07 : rawTheme.cyan,
+              white: isIndexed ? rawTheme.color_08 : rawTheme.white,
               
-              brightBlack: rawTheme.brightBlack,
-              brightRed: rawTheme.brightRed,
-              brightGreen: rawTheme.brightGreen,
-              brightYellow: rawTheme.brightYellow,
-              brightBlue: rawTheme.brightBlue,
-              brightMagenta: rawTheme.brightMagenta,
-              brightCyan: rawTheme.brightCyan,
-              brightWhite: rawTheme.brightWhite,
+              brightBlack: isIndexed ? rawTheme.color_09 : rawTheme.brightBlack,
+              brightRed: isIndexed ? rawTheme.color_10 : rawTheme.brightRed,
+              brightGreen: isIndexed ? rawTheme.color_11 : rawTheme.brightGreen,
+              brightYellow: isIndexed ? rawTheme.color_12 : rawTheme.brightYellow,
+              brightBlue: isIndexed ? rawTheme.color_13 : rawTheme.brightBlue,
+              brightMagenta: isIndexed ? rawTheme.color_14 : rawTheme.brightMagenta,
+              brightCyan: isIndexed ? rawTheme.color_15 : rawTheme.brightCyan,
+              brightWhite: isIndexed ? rawTheme.color_16 : rawTheme.brightWhite,
             }
           };
         } else if (rawTheme.colors && rawTheme.name) {
@@ -147,6 +162,12 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
   };
 
   const convertGithubUrl = (url: string): string => {
+    // Handle refs/heads in raw URLs (common mistake)
+    // e.g. https://raw.githubusercontent.com/user/repo/refs/heads/branch/path -> https://raw.githubusercontent.com/user/repo/branch/path
+    if (url.startsWith('https://raw.githubusercontent.com/') && url.includes('/refs/heads/')) {
+      return url.replace('/refs/heads/', '/');
+    }
+
     // Convert github.com/user/repo/blob/... to raw.githubusercontent.com/user/repo/...
     const githubRegex = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
     const match = url.match(githubRegex);
@@ -201,15 +222,43 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
     }
   };
 
+  const handleDeleteTheme = (themeName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(t('settings.delete_theme_confirm', { name: themeName }))) {
+      return;
+    }
+
+    const newCustomThemes = localSettings.customThemes.filter(t => t.name !== themeName);
+    
+    // If deleting currently selected theme, switch to default
+    let newThemeName = localSettings.themeName;
+    let newThemeType = localSettings.theme;
+    
+    if (localSettings.themeName === themeName) {
+      newThemeName = presets[0].name; // Usually Nord
+      newThemeType = presets[0].type;
+    }
+
+    setLocalSettings({
+      ...localSettings,
+      customThemes: newCustomThemes,
+      themeName: newThemeName,
+      theme: newThemeType
+    });
+  };
+
 
   const allThemes = [...presets, ...localSettings.customThemes];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-lg p-6 flex flex-col max-h-[90vh]">
-        <div className="flex items-center gap-2 mb-6 flex-shrink-0">
-          <Settings className="w-5 h-5 text-term-fg/60" />
-          <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
+        <div className="flex items-center gap-2 mb-6 flex-shrink-0 justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="w-5 h-5 text-term-fg/60" />
+            <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
+          </div>
+          <span className="text-xs text-term-fg/40">v0.1.0</span>
         </div>
 
         <div className="space-y-6 overflow-y-auto pr-2 flex-1">
@@ -253,31 +302,45 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              {allThemes.map((theme) => (
-                <button
-                  key={theme.name}
-                  onClick={() => setLocalSettings({ 
-                    ...localSettings, 
-                    themeName: theme.name,
-                    theme: theme.type 
-                  })}
-                  className={`
-                    relative p-3 rounded-lg border text-left transition-all
-                    ${localSettings.themeName === theme.name 
-                      ? 'border-term-selection bg-term-selection/20 ring-1 ring-term-selection' 
-                      : 'border-term-selection/50 hover:border-term-selection hover:bg-term-selection/10'}
-                  `}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-sm text-term-fg">{theme.name}</span>
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.background }} />
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.foreground }} />
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.blue }} />
+              {allThemes.map((theme) => {
+                const isCustom = localSettings.customThemes.some(t => t.name === theme.name);
+                return (
+                  <button
+                    key={theme.name}
+                    onClick={() => setLocalSettings({ 
+                      ...localSettings, 
+                      themeName: theme.name,
+                      theme: theme.type 
+                    })}
+                    className={`
+                      relative p-3 rounded-lg border text-left transition-all group
+                      ${localSettings.themeName === theme.name 
+                        ? 'border-term-selection bg-term-selection/20 ring-1 ring-term-selection' 
+                        : 'border-term-selection/50 hover:border-term-selection hover:bg-term-selection/10'}
+                    `}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm text-term-fg">{theme.name}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.background }} />
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.foreground }} />
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.blue }} />
+                        </div>
+                        {isCustom && (
+                          <div
+                            onClick={(e) => handleDeleteTheme(theme.name, e)}
+                            className="p-1 rounded hover:bg-term-red/20 text-term-fg/40 hover:text-term-red transition-colors opacity-0 group-hover:opacity-100"
+                            title={t('common.delete')}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
             
             <div className="mt-4 pt-4 border-t border-term-selection/50">
@@ -318,6 +381,36 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDi
             {importError && (
               <p className="mt-2 text-xs text-term-red">{importError}</p>
             )}
+          </div>
+
+          {/* Right Click Behavior */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <MousePointerClick className="w-4 h-4 text-term-fg/60" />
+              <label className="text-sm font-medium text-term-fg">{t('settings.right_click')}</label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
+                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
+                  localSettings.rightClickBehavior === 'menu'
+                    ? 'bg-term-blue text-term-bg font-medium'
+                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
+                }`}
+              >
+                {t('settings.behavior_menu')}
+              </button>
+              <button
+                onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
+                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
+                  localSettings.rightClickBehavior === 'paste'
+                    ? 'bg-term-blue text-term-bg font-medium'
+                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
+                }`}
+              >
+                {t('settings.behavior_paste')}
+              </button>
+            </div>
           </div>
 
           {/* Terminal Font Size */}

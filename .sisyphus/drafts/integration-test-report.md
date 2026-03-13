@@ -66,7 +66,7 @@ cargo check
 **结果**: ✅ 编译成功，无错误，无警告
 
 ```
-Checking hetaossh v0.1.0 (D:\project\HetaoSSH\src-tauri)
+Checking HeTaoSSH v0.1.0 (D:\project\HeTaoSSH\src-tauri)
 Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.03s
 ```
 

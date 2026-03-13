@@ -24,6 +24,7 @@ export default {
     close: '关闭',
     all: '全部',
     optional: '（可选）',
+    new_local_terminal: '新建本地终端',
   },
   server: {
     add: '添加服务器',
@@ -45,7 +46,7 @@ export default {
     password_placeholder: '留空以使用密钥认证',
   },
   terminal: {
-    welcome: '欢迎使用 HetaoSSH',
+    welcome: '欢迎使用 HeTaoSSH',
     start_tip: '从左侧边栏连接服务器以开始。',
     disconnected: '已断开连接',
     connecting: '连接服务器中...',
@@ -109,11 +110,15 @@ export default {
     theme_import_failed: '导入主题失败: {{error}}',
     url_import_failed: '下载主题失败: {{error}}',
     theme_exists: '主题 "{{name}}" 已存在',
+    delete_theme_confirm: '确认删除主题 "{{name}}" 吗？',
     html_content_error: '检测到 HTML 内容。请确保使用文件的 "Raw" 链接（GitHub 链接已自动转换，如果失败请手动检查）。',
     paste_json: '粘贴 JSON',
     paste_placeholder: '在此粘贴主题 JSON 内容...',
     import: '导入',
     invalid_json: '无效的 JSON 格式',
+    right_click: '鼠标右键',
+    behavior_menu: '右键菜单',
+    behavior_paste: '直接粘贴',
   },
   status: {
     not_connected: '未连接',

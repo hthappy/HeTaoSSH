@@ -14,7 +14,7 @@ interface FileEditorProps {
   onClose?: () => void;
 }
 
-export function FileEditor({ tabId, filePath, theme }: FileEditorProps) {
+export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps) {
   const { t } = useTranslation();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
@@ -115,20 +115,20 @@ export function FileEditor({ tabId, filePath, theme }: FileEditorProps) {
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: '', foreground: theme.foreground.replace('#', '') },
-        { token: 'variable', foreground: theme.cyan.replace('#', '') },
-        { token: 'keyword', foreground: theme.magenta.replace('#', '') },
-        { token: 'string', foreground: theme.green.replace('#', '') },
-        { token: 'comment', foreground: theme.brightBlack.replace('#', '') },
-        { token: 'number', foreground: theme.yellow.replace('#', '') },
-        { token: 'type', foreground: theme.blue.replace('#', '') },
+        { token: '', foreground: (theme.foreground || '#ffffff').replace('#', '') },
+        { token: 'variable', foreground: (theme.cyan || '#00ffff').replace('#', '') },
+        { token: 'keyword', foreground: (theme.magenta || '#ff00ff').replace('#', '') },
+        { token: 'string', foreground: (theme.green || '#00ff00').replace('#', '') },
+        { token: 'comment', foreground: (theme.brightBlack || '#808080').replace('#', '') },
+        { token: 'number', foreground: (theme.yellow || '#ffff00').replace('#', '') },
+        { token: 'type', foreground: (theme.blue || '#0000ff').replace('#', '') },
       ],
       colors: {
-        'editor.background': theme.background,
-        'editor.foreground': theme.foreground,
-        'editorCursor.foreground': theme.cursor,
-        'editor.selectionBackground': theme.selectionBackground || theme.cursor,
-        'editor.lineHighlightBackground': theme.background, // or slightly lighter
+        'editor.background': theme.background || '#1e1e1e',
+        'editor.foreground': theme.foreground || '#d4d4d4',
+        'editorCursor.foreground': theme.cursor || '#ffffff',
+        'editor.selectionBackground': theme.selectionBackground || theme.cursor || '#264f78',
+        'editor.lineHighlightBackground': theme.background || '#1e1e1e', // or slightly lighter
       }
     });
     monaco.editor.setTheme('dynamic-theme');

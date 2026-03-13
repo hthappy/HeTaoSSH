@@ -31,6 +31,15 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+const ProgressBar = ({ value, colorClass }: { value: number, colorClass: string }) => (
+  <div className="h-1.5 w-full bg-term-selection/30 rounded-full overflow-hidden">
+    <div 
+      className={`h-full ${colorClass} transition-all duration-500`} 
+      style={{ width: `${Math.min(100, Math.max(0, value))}%` }} 
+    />
+  </div>
+);
+
 export function StatusBar({
   latency = 45,
   encoding = 'UTF-8',
@@ -85,9 +94,20 @@ export function StatusBar({
 
   const diskTooltipRows = useMemo(() => {
     if (!usage?.disk_usage?.length) return { rows: [], more: 0 };
-    const MAX = 12;
-    const rows = usage.disk_usage.slice(0, MAX);
-    return { rows, more: Math.max(0, usage.disk_usage.length - rows.length) };
+    
+    // Filter out noisy mounts (docker overlays, tmpfs, etc.)
+    const filtered = usage.disk_usage.filter(d => {
+      const mp = d.mount_point;
+      return !mp.startsWith('/var/lib/docker/overlay') && 
+             !mp.startsWith('/run') && 
+             !mp.startsWith('/sys') && 
+             !mp.startsWith('/proc') && 
+             !mp.startsWith('/dev');
+    });
+
+    const MAX = 8;
+    const rows = filtered.slice(0, MAX);
+    return { rows, more: Math.max(0, filtered.length - rows.length) };
   }, [usage]);
 
   return (
@@ -133,10 +153,10 @@ export function StatusBar({
         </div>
       </div>
 
-      {/* Center: Mini Monitor (compact), 真正居中（左右各 flex-1 占位） */}
+      {/* Monitor (moved to right) */}
       {isConnected && tabId && (
         <div
-          className="hidden md:flex items-center gap-3 text-[11px] text-term-fg opacity-80 relative mx-auto"
+          className="flex items-center gap-3 text-[11px] text-term-fg opacity-80 relative ml-4"
           onMouseEnter={() => setMonitorHover(true)}
           onMouseLeave={() => setMonitorHover(false)}
         >
@@ -173,72 +193,99 @@ export function StatusBar({
 
           {/* Themed tooltip */}
           {monitorHover && (
-            <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 pointer-events-none">
-              <div className="rounded-md border border-term-selection bg-term-bg/95 backdrop-blur-sm shadow-xl w-[520px] max-w-[80vw]">
-                <div className="px-3 py-2 border-b border-term-selection flex items-center justify-between">
-                  <span className="text-[11px] text-term-fg font-medium">{t('status.monitor')}</span>
-                  <span className="text-[10px] text-term-brightBlack">{t('status.refresh_rate')}</span>
+            <div className="absolute bottom-[calc(100%+8px)] right-0 z-50 pointer-events-none">
+              <div className="rounded-lg border border-term-selection bg-term-bg/95 backdrop-blur-sm shadow-xl w-[320px] p-3">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-term-selection/50">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-term-blue" />
+                    <span className="text-xs font-semibold text-term-fg">{t('status.monitor')}</span>
+                  </div>
+                  <span className="text-[10px] text-term-brightBlack bg-term-selection/20 px-1.5 py-0.5 rounded">{t('status.refresh_rate')}</span>
                 </div>
-                <div className="px-3 py-2 text-[11px] leading-5 text-term-fg">
-                  {!usage ? (
-                    <div className="text-term-brightBlack">{usageError ? t('status.fetch_failed', { error: usageError }) : t('status.loading')}</div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-term-brightBlack">{t('status.cpu')}</span>
-                          <span className="font-mono">{usage.cpu_usage.toFixed(1)}%</span>
+
+                {!usage ? (
+                  <div className="text-term-brightBlack text-xs py-2">{usageError ? t('status.fetch_failed', { error: usageError }) : t('status.loading')}</div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* CPU & Memory Cards */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
+                        <div className="flex items-center gap-1.5 text-term-brightBlack mb-1">
+                          <Cpu className="w-3 h-3" />
+                          <span className="text-[10px]">{t('status.cpu')}</span>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-term-brightBlack">{t('status.memory')}</span>
-                          <span className="font-mono">{usage.memory_usage.toFixed(1)}%</span>
+                        <div className="flex items-end justify-between mb-1.5">
+                          <span className="text-lg font-mono font-medium text-term-fg leading-none">{usage.cpu_usage.toFixed(0)}<span className="text-xs text-term-fg/50">%</span></span>
                         </div>
-                        <div className="flex items-center justify-between gap-2 col-span-2">
-                          <span className="text-term-brightBlack">{t('status.network')}</span>
-                          <span className="font-mono">↓{formatBytes(usage.network_rx)} ↑{formatBytes(usage.network_tx)}</span>
-                        </div>
+                        <ProgressBar value={usage.cpu_usage} colorClass="bg-term-blue" />
                       </div>
 
-                      <div className="pt-1">
-                        <div className="text-term-brightBlack mb-1">{t('status.disk')}</div>
-                        {diskTooltipRows.rows.length === 0 ? (
-                          <div className="text-term-brightBlack">{t('status.no_data')}</div>
-                        ) : (
-                          <div className="max-h-64 overflow-auto pr-1 no-scrollbar">
-                            <div className="space-y-1">
-                              {diskTooltipRows.rows.map((d) => (
-                                <div key={d.mount_point} className="flex items-center gap-2">
-                                  <span className="flex-1 min-w-0 truncate text-term-fg" title={d.mount_point}>
-                                    {d.mount_point}
-                                  </span>
-                                  <span className="w-10 text-right font-mono text-term-fg opacity-80">
-                                    {d.usage_percent.toFixed(0)}%
-                                  </span>
-                                </div>
-                              ))}
-                              {diskTooltipRows.more > 0 && (
-                                <div className="text-term-brightBlack pt-1">
-                                  {t('status.disk_more', { count: diskTooltipRows.more })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                      <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
+                        <div className="flex items-center gap-1.5 text-term-brightBlack mb-1">
+                          <MemoryStick className="w-3 h-3" />
+                          <span className="text-[10px]">{t('status.memory')}</span>
+                        </div>
+                        <div className="flex items-end justify-between mb-1.5">
+                          <span className="text-lg font-mono font-medium text-term-fg leading-none">{usage.memory_usage.toFixed(0)}<span className="text-xs text-term-fg/50">%</span></span>
+                        </div>
+                        <ProgressBar value={usage.memory_usage} colorClass="bg-term-green" />
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Network */}
+                    <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
+                      <div className="flex items-center gap-1.5 text-term-brightBlack mb-2">
+                        <Network className="w-3 h-3" />
+                        <span className="text-[10px]">{t('status.network')}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] text-term-fg/50">Download</span>
+                          <span className="font-mono text-xs text-term-fg">↓ {formatBytes(usage.network_rx)}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] text-term-fg/50">Upload</span>
+                          <span className="font-mono text-xs text-term-fg">↑ {formatBytes(usage.network_tx)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Disk Usage */}
+                    <div>
+                      <div className="flex items-center gap-1.5 text-term-brightBlack mb-2 px-1">
+                        <HardDrive className="w-3 h-3" />
+                        <span className="text-[10px]">{t('status.disk')}</span>
+                      </div>
+                      {diskTooltipRows.rows.length === 0 ? (
+                        <div className="text-term-brightBlack text-xs px-1">{t('status.no_data')}</div>
+                      ) : (
+                        <div className="space-y-2.5 px-1">
+                          {diskTooltipRows.rows.map((d) => (
+                            <div key={d.mount_point}>
+                              <div className="flex items-center justify-between mb-1 text-xs">
+                                <span className="text-term-fg/80 truncate max-w-[150px]" title={d.mount_point}>
+                                  {d.mount_point}
+                                </span>
+                                <span className="font-mono text-term-fg">{d.usage_percent.toFixed(0)}%</span>
+                              </div>
+                              <ProgressBar value={d.usage_percent} colorClass="bg-term-yellow" />
+                            </div>
+                          ))}
+                          {diskTooltipRows.more > 0 && (
+                            <div className="text-[10px] text-term-brightBlack text-center pt-1">
+                              {t('status.disk_more', { count: diskTooltipRows.more })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="w-2 h-2 bg-term-bg/95 border-r border-b border-term-selection rotate-45 ml-3 -mt-1" />
             </div>
           )}
         </div>
       )}
-
-      {/* Right: version info */}
-      <div className="flex items-center gap-4 flex-1 justify-end min-w-0">
-        <span className="text-term-brightBlack">HetaoSSH v0.1.0</span>
-      </div>
     </div>
   );
 }

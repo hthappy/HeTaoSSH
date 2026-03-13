@@ -1,6 +1,23 @@
 import { useEffect, useMemo } from 'react';
 import { ThemeSchema } from '../types/theme';
-import { ITheme } from '@xterm/xterm';
+import { ITheme } from 'xterm';
+
+function hexToChannels(hex: string): string {
+  // Remove # if present
+  hex = hex.replace('#', '');
+  
+  // Handle 3-char hex
+  if (hex.length === 3) {
+    hex = hex.split('').map(c => c + c).join('');
+  }
+  
+  // Parse r, g, b
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  return `${r} ${g} ${b}`;
+}
 
 export function useTheme(theme: ThemeSchema) {
   // 1. Inject CSS variables
@@ -10,7 +27,17 @@ export function useTheme(theme: ThemeSchema) {
     
     // Helper to set CSS variable
     const setVar = (name: string, value: string) => {
+      // 1. Set original variable (hex) for backward compatibility and non-Tailwind usage
       root.style.setProperty(`--term-${name}`, value);
+
+      // 2. Set -rgb variable for Tailwind opacity support
+      try {
+        if (value.startsWith('#')) {
+          root.style.setProperty(`--term-${name}-rgb`, hexToChannels(value));
+        }
+      } catch (e) {
+        console.warn(`Failed to parse color ${value} for --term-${name}-rgb`, e);
+      }
     };
 
     setVar('bg', colors.background);

@@ -24,6 +24,7 @@ export default {
     close: 'Close',
     all: 'All',
     optional: '(Optional)',
+    new_local_terminal: 'New Local Terminal',
   },
   server: {
     add: 'Add Server',
@@ -45,7 +46,7 @@ export default {
     password_placeholder: 'Leave empty for key auth',
   },
   terminal: {
-    welcome: 'Welcome to HetaoSSH',
+    welcome: 'Welcome to HeTaoSSH',
     start_tip: 'Connect to a server from the left sidebar to start.',
     disconnected: 'Disconnected',
     connecting: 'Connecting to server...',
@@ -109,11 +110,15 @@ export default {
     theme_import_failed: 'Failed to import theme: {{error}}',
     url_import_failed: 'Failed to download theme: {{error}}',
     theme_exists: 'Theme "{{name}}" already exists',
+    delete_theme_confirm: 'Are you sure you want to delete theme "{{name}}"?',
     html_content_error: 'HTML content detected. Please ensure you use the "Raw" file URL (GitHub links are auto-converted).',
     paste_json: 'Paste JSON',
     paste_placeholder: 'Paste theme JSON content here...',
     import: 'Import',
     invalid_json: 'Invalid JSON format',
+    right_click: 'Right Click',
+    behavior_menu: 'Context Menu',
+    behavior_paste: 'Paste',
   },
   status: {
     not_connected: 'Not connected',

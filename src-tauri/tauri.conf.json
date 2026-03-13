@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "HetaoSSH",
+  "productName": "HeTaoSSH",
   "version": "0.1.0",
-  "identifier": "com.hetaossh.app",
+  "identifier": "com.HeTaoSSH.app",
   "build": {
     "frontendDist": "../web/dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "HetaoSSH",
+        "title": "HeTaoSSH",
+        "decorations": false,
+        "transparent": true,
         "width": 1200,
         "height": 800,
         "minWidth": 800,

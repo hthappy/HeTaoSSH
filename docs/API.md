@@ -1,8 +1,8 @@
-# HetaoSSH API 文档
+# HeTaoSSH API 文档
 
 ## 概述
 
-HetaoSSH 使用 Tauri 的 IPC 机制进行前后端通信。本文档列出所有可用的 Tauri 命令和数据结构。
+HeTaoSSH 使用 Tauri 的 IPC 机制进行前后端通信。本文档列出所有可用的 Tauri 命令和数据结构。
 
 ## 调用方式
 
@@ -407,4 +407,4 @@ pub fn command_name(arg: Type) -> Result<ReturnType> {
 
 - **API 版本**: 1.0
 - **最后更新**: 2026-03-10
-- **兼容版本**: HetaoSSH v0.1.0+
+- **兼容版本**: HeTaoSSH v0.1.0+

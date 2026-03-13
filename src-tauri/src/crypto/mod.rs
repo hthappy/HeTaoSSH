@@ -15,7 +15,7 @@ pub struct CryptoManager {
 
 impl CryptoManager {
     pub fn new() -> Result<Self> {
-        let entry = keyring::Entry::new("HetaoSSH", "master-key")
+        let entry = keyring::Entry::new("HeTaoSSH", "master-key")
             .map_err(|e| SshError::Encryption(format!("Failed to init keyring: {}", e)))?;
 
         let mut key = [0u8; KEY_SIZE];

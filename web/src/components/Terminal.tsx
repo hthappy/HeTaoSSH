@@ -1,7 +1,8 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
 import { Terminal as XTerm, ITheme } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { useTranslation } from 'react-i18next';
+import { Clipboard, Copy } from 'lucide-react';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
 
@@ -20,16 +21,18 @@ interface TerminalProps {
   theme?: ITheme;
   fontSize?: number;
   lineHeight?: number;
+  rightClickBehavior?: 'menu' | 'paste';
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { className, onData, onResize, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2 },
+  { className, onData, onResize, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu' },
   ref
 ) {
   const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -97,19 +100,26 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.open(terminalRef.current);
     xtermRef.current = term;
 
+    // Safe fit helper
+    const fitTerminal = () => {
+      if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
+      try {
+        const element = xtermRef.current.element;
+        if (element && element.clientWidth > 0 && element.clientHeight > 0) {
+          fitAddonRef.current.fit();
+        }
+      } catch (e) {
+        console.warn('Fit failed', e);
+      }
+    };
+
     // Fit terminal after a tiny delay to ensure DOM dimensions are computed
     const initialFitTimeout = setTimeout(() => {
       if (isUnmounted) return;
-      try {
-        if (term.element && term.element.clientWidth > 0) {
-          fitAddon.fit();
-          // Ensure remote PTY size matches the initial fitted size
-          if (onResize && term.cols && term.rows) {
-            onResize(term.cols, term.rows);
-          }
-        }
-      } catch (e) {
-        console.warn('Initial fit failed', e);
+      fitTerminal();
+      // Ensure remote PTY size matches the initial fitted size
+      if (xtermRef.current && onResize && xtermRef.current.cols && xtermRef.current.rows) {
+        onResize(xtermRef.current.cols, xtermRef.current.rows);
       }
     }, 10);
 
@@ -127,15 +137,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
         if (isUnmounted) return;
-        try {
-          if (term.element && term.element.clientWidth > 0) {
-            fitAddon.fit();
-            if (onResize && term.cols && term.rows) {
-              onResize(term.cols, term.rows);
-            }
-          }
-        } catch (e) {
-          console.warn('Resize fit failed', e);
+        fitTerminal();
+        if (xtermRef.current && onResize && xtermRef.current.cols && xtermRef.current.rows) {
+          onResize(xtermRef.current.cols, xtermRef.current.rows);
         }
       }, 50);
     };
@@ -198,16 +202,89 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     }
   }, [disconnected, t]);
 
+  // Handle right click
+  useEffect(() => {
+    const el = terminalRef.current;
+    if (!el) return;
+
+    const handleContextMenu = async (e: MouseEvent) => {
+        e.preventDefault();
+        
+        if (rightClickBehavior === 'paste') {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text && xtermRef.current) {
+                    xtermRef.current.paste(text);
+                }
+            } catch (err) {
+                console.error('Failed to read clipboard:', err);
+            }
+        } else {
+            setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
+        }
+    };
+    
+    el.addEventListener('contextmenu', handleContextMenu);
+    
+    const handleGlobalClick = () => {
+        setContextMenu(prev => prev.visible ? { ...prev, visible: false } : prev);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    
+    return () => {
+        el.removeEventListener('contextmenu', handleContextMenu);
+        window.removeEventListener('click', handleGlobalClick);
+    };
+  }, [rightClickBehavior]);
+
   return (
-    <div
-      className={cn(
-        'flex-1 overflow-hidden', // Removed hardcoded bg color here to let theme control it
-        disconnected && 'opacity-50 pointer-events-none',
-        className
+    <>
+      <div 
+        ref={terminalRef} 
+        className={cn('flex-1 w-full h-full overflow-hidden', className)}
+        style={{ backgroundColor: theme?.background }}
+      />
+      {contextMenu.visible && (
+        <div 
+            className="fixed z-50 min-w-[120px] bg-term-bg border border-term-selection rounded-md shadow-lg py-1 select-none"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <button
+                className="w-full text-left px-3 py-1.5 text-xs text-term-fg hover:bg-term-selection flex items-center gap-2"
+                onClick={() => {
+                    if (xtermRef.current) {
+                        const selection = xtermRef.current.getSelection();
+                        if (selection) {
+                            navigator.clipboard.writeText(selection);
+                            xtermRef.current.clearSelection();
+                        }
+                    }
+                    setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+            >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{t('common.copy')}</span>
+            </button>
+            <button
+                className="w-full text-left px-3 py-1.5 text-xs text-term-fg hover:bg-term-selection flex items-center gap-2"
+                onClick={async () => {
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        if (text && xtermRef.current) {
+                            xtermRef.current.paste(text);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                    setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+            >
+                <Clipboard className="w-3.5 h-3.5" />
+                <span>{t('settings.behavior_paste')}</span>
+            </button>
+        </div>
       )}
-      style={{ backgroundColor: theme?.background }} // Ensure container matches theme bg
-    >
-      <div ref={terminalRef} className="w-full h-full" />
-    </div>
+    </>
   );
 });

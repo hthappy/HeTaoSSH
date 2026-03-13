@@ -1,8 +1,8 @@
-# AGENTS.md - HetaoSSH Development Guidelines
+# AGENTS.md - HeTaoSSH Development Guidelines
 
 ## Project Overview
 
-**HetaoSSH** - Modern SSH client built with Tauri 2.0
+**HeTaoSSH** - Modern SSH client built with Tauri 2.0
 - **Backend**: Rust (`russh` for SSH, `sqlx` + `SQLite` for storage)
 - **Frontend**: React/Vue 3 + Tailwind CSS + Shadcn/UI
 - **Terminal**: xterm.js with WebGL acceleration
@@ -88,7 +88,7 @@ import type { ServerConfig } from '@/types/config';
 ## Project Structure
 
 ```
-HetaoSSH/
+HeTaoSSH/
 ├── src/                    # Rust backend
 │   ├── ssh/               # SSH handling (russh)
 │   ├── config/            # Configuration + SQLite storage

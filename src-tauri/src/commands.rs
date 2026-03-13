@@ -3,14 +3,54 @@ use crate::error::{Result, SshError};
 use crate::monitor;
 use crate::snippets;
 use crate::ssh::ConnectionManager;
+use crate::local_term::LocalTerminalManager;
 use crate::security::contains_traversal_pattern;
 use crate::theme::{self, ThemeSchema};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn parse_theme(content: String) -> Result<ThemeSchema> {
     theme::parse_iterm2_theme(&content)
+}
+
+#[tauri::command]
+pub async fn open_local_terminal(
+    id: String,
+    rows: u16,
+    cols: u16,
+    app_handle: AppHandle,
+    state: State<'_, Arc<LocalTerminalManager>>
+) -> Result<()> {
+    state.create_terminal(id, rows, cols, app_handle)
+}
+
+#[tauri::command]
+pub async fn local_term_write(
+    id: String,
+    data: Vec<u8>,
+    state: State<'_, Arc<LocalTerminalManager>>
+) -> Result<()> {
+    state.write(&id, &data)
+}
+
+#[tauri::command]
+pub async fn local_term_resize(
+    id: String,
+    rows: u16,
+    cols: u16,
+    state: State<'_, Arc<LocalTerminalManager>>
+) -> Result<()> {
+    state.resize(&id, rows, cols)
+}
+
+#[tauri::command]
+pub async fn local_term_close(
+    id: String,
+    state: State<'_, Arc<LocalTerminalManager>>
+) -> Result<()> {
+    state.close(&id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -210,15 +250,24 @@ pub async fn ssh_resize(
 #[tauri::command]
 pub async fn fetch_url(url: String) -> Result<String> {
     let client = reqwest::Client::builder()
-        .user_agent("HetaoSSH/0.1.0")
+        .user_agent("HeTaoSSH/0.1.0")
         .build()
         .map_err(|e| crate::error::SshError::ConnectionFailed(e.to_string()))?;
 
-    let content = client
+    let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| crate::error::SshError::ConnectionFailed(e.to_string()))?
+        .map_err(|e| crate::error::SshError::ConnectionFailed(e.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(crate::error::SshError::ConnectionFailed(format!(
+            "HTTP request failed with status: {}",
+            response.status()
+        )));
+    }
+
+    let content = response
         .text()
         .await
         .map_err(|e| crate::error::SshError::ConnectionFailed(e.to_string()))?;

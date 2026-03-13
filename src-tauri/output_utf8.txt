@@ -1,5 +1,5 @@
-﻿cargo :     Checking hetaossh v0.1.0 (D:\pr
-oject\HetaoSSH\src-tauri)
+﻿cargo :     Checking HeTaoSSH v0.1.0 (D:\pr
+oject\HeTaoSSH\src-tauri)
 所在位置 行:1 字符: 1
 + cargo check 2> output.txt; cat output.txt
 + ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -114,7 +114,7 @@ pSession`
 
 For more information about this error, try 
 `rustc --explain E0599`.
-warning: `hetaossh` (lib) generated 6 warni
+warning: `HeTaoSSH` (lib) generated 6 warni
 ngs
-error: could not compile `hetaossh` (lib) d
+error: could not compile `HeTaoSSH` (lib) d
 ue to 4 previous errors; 6 warnings emitted

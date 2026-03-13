@@ -5,6 +5,29 @@ import { useTranslation } from 'react-i18next';
 import type { SftpEntry } from '@/types/sftp';
 import { cn } from '@/lib/utils';
 
+// Helper to get file icon color based on extension
+const getFileIconColor = (filename: string) => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  if (!ext || ext === filename) return 'text-term-fg/60';
+  
+  switch (ext) {
+    case 'rs': return 'text-orange-500';
+    case 'js': case 'jsx': return 'text-yellow-400';
+    case 'ts': case 'tsx': return 'text-blue-400';
+    case 'css': case 'scss': case 'less': return 'text-blue-300';
+    case 'html': return 'text-orange-600';
+    case 'json': case 'yaml': case 'yml': return 'text-green-500';
+    case 'md': case 'txt': return 'text-purple-400';
+    case 'py': return 'text-yellow-500';
+    case 'go': return 'text-cyan-500';
+    case 'java': case 'jar': return 'text-red-500';
+    case 'c': case 'cpp': case 'h': return 'text-blue-600';
+    case 'sh': case 'bash': return 'text-green-400';
+    case 'lock': return 'text-gray-500';
+    default: return 'text-term-fg/60';
+  }
+};
+
 interface FileTreeProps {
   tabId: string;
   onFileSelect?: (path: string) => void;
@@ -29,7 +52,7 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
         setIsLoading(true);
         try {
           const entries = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path });
-          setChildren(entries);
+          setChildren(entries.filter(e => !e.filename.startsWith('.')));
         } catch (error) {
           console.error('Failed to list directory:', error);
         } finally {
@@ -70,7 +93,7 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
         ) : (
           <>
             <span className="w-4 flex-shrink-0" />
-            <File className="w-4 h-4 text-term-fg/60 flex-shrink-0" />
+            <File className={cn("w-4 h-4 flex-shrink-0", getFileIconColor(entry.filename))} />
           </>
         )}
         <span className="text-sm text-term-fg truncate">{entry.filename}</span>
@@ -127,7 +150,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     setError(null);
     try {
       const result = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: normalizePath(dirPath) });
-      setEntries(result);
+      setEntries(result.filter(e => !e.filename.startsWith('.')));
       const normalized = normalizePath(dirPath);
       setCurrentPath(normalized);
       setPathInput('');

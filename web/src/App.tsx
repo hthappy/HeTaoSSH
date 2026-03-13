@@ -1,18 +1,25 @@
-import { ServerList } from '@/components/ServerList';
+import { ServerList, type ServerListHandle } from '@/components/ServerList';
 import { TerminalArea } from '@/components/TerminalArea';
 import { RemoteFiles } from '@/components/RemoteFiles';
 import { FileTree } from '@/components/FileTree';
 import { ResizeHandle } from '@/components/ResizeHandle';
 import { StatusBar } from '@/components/StatusBar';
 import { SettingsDialog, type AppSettings } from '@/components/SettingsDialog';
+import { ActivityBar, type Activity } from '@/components/ActivityBar';
+import { CommandSnippets } from '@/components/CommandSnippets';
 import { useSshStore } from '@/stores/ssh-store';
-import { Terminal, Settings, X, FileCode2 } from 'lucide-react';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { Terminal, X, FileCode2, Plus } from 'lucide-react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { cn } from '@/lib/utils';
 import { ToastProvider } from '@/components/Toast';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
+import { TitleBar } from '@/components/TitleBar';
+import logo from '@/assets/logo.png';
+
+import { ThemeSchema } from '@/types/theme';
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -23,17 +30,46 @@ function App() {
     setActiveTab, 
     closeTab,
     connections,
-    openFileTab
+    openFileTab,
+    sendToTerminal,
+    createLocalTerminal
   } = useSshStore();
-  const [showSettings, setShowSettings] = useState(false);
-  const [sidebarSplitY, setSidebarSplitY] = useState(200); // 左侧边栏上下分隔位置 (px)
-  const [sidebarWidth, setSidebarWidth] = useState(240); // 左侧边栏宽度 (px)
   
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<Activity>('hosts');
+  const [sidebarWidth, setSidebarWidth] = useState(240); // Sidebar width (px)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [previewTheme, setPreviewTheme] = useState<ThemeSchema | null>(null);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const serverListRef = useRef<ServerListHandle>(null);
+  
+  // Check window maximized state for border removal
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const checkMaximized = async () => {
+      try {
+        setIsMaximized(await win.isMaximized());
+      } catch (e) {
+        console.error('Failed to check window state', e);
+      }
+    };
+    
+    checkMaximized();
+    // Poll for state changes as resize event might not be reliable for maximize toggle
+    const interval = setInterval(checkMaximized, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('hetaossh_settings');
+    const saved = localStorage.getItem('HeTaoSSH_settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          rightClickBehavior: parsed.rightClickBehavior || 'menu',
+        };
       } catch (e) {
         console.error('Failed to parse settings:', e);
       }
@@ -47,12 +83,13 @@ function App() {
       terminalLineHeight: 1.2,
       editorMinimap: false,
       editorWordWrap: true,
+      rightClickBehavior: 'menu',
     };
   });
 
   // Persist settings
   useEffect(() => {
-    localStorage.setItem('hetaossh_settings', JSON.stringify(settings));
+    localStorage.setItem('HeTaoSSH_settings', JSON.stringify(settings));
   }, [settings]);
 
   // Sync language on mount/change
@@ -62,20 +99,39 @@ function App() {
     }
   }, [settings.language, i18n]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+N: New Connection
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        setActiveActivity('hosts');
+        setIsSidebarOpen(true);
+        // Small delay to ensure component is mounted
+        setTimeout(() => serverListRef.current?.openAddDialog(), 50);
+      }
+      // Ctrl+,: Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Resolve current theme object
   const currentTheme = useMemo(() => {
+    if (previewTheme) return previewTheme;
     return [...presets, ...settings.customThemes].find(t => t.name === settings.themeName) || nordTheme;
-  }, [settings.themeName, settings.customThemes]);
+  }, [settings.themeName, settings.customThemes, previewTheme]);
 
   // Apply theme (inject CSS variables and get xterm theme)
   const xtermTheme = useTheme(currentTheme);
 
-  const handleSidebarResize = useCallback((delta: number) => {
-    setSidebarSplitY(prev => Math.max(80, Math.min(prev + delta, 600)));
-  }, []);
-
   const handleSidebarWidthResize = useCallback((delta: number) => {
-    setSidebarWidth(prev => Math.max(150, Math.min(prev + delta, 500)));
+    setSidebarWidth(prev => Math.max(180, Math.min(prev + delta, 500)));
   }, []);
 
   const handleServerClick = (serverId: number) => {
@@ -87,152 +143,178 @@ function App() {
 
   const handleFileSelect = (path: string) => {
     if (activeTab?.serverId) {
-       // extract filename from path for title
        const fileName = path.split('/').pop() || path;
        openFileTab(activeTab.serverId, path, fileName);
     }
   };
 
+  const handleActivityChange = (activity: Activity) => {
+    if (activeActivity === activity) {
+      setIsSidebarOpen(!isSidebarOpen);
+    } else {
+      setActiveActivity(activity);
+      setIsSidebarOpen(true);
+    }
+  };
+
   return (
     <ToastProvider>
-      <div className="flex flex-col h-screen bg-term-bg overflow-hidden transition-colors duration-300">
-        {/* Global Top Bar */}
-        <div className="h-12 flex-shrink-0 border-b border-term-selection flex items-center px-4 bg-term-bg">
-          <h1 className="text-lg font-semibold text-term-fg">HetaoSSH</h1>
+      <div className={cn(
+        "flex flex-col h-screen bg-term-bg overflow-hidden transition-colors duration-300",
+        !isMaximized && "border border-term-selection rounded-lg"
+      )}>
+        <div className="flex-1 flex overflow-hidden relative">
+          {/* Activity Bar */}
+          <ActivityBar 
+            activeActivity={activeActivity} 
+            onActivityChange={handleActivityChange} 
+            onSettingsClick={() => setShowSettings(true)}
+          />
 
-          {/* Workspace Tabs */}
-          <div className="ml-8 flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {workspaceTabs.map(tab => (
-              <div
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer border',
-                  activeTabId === tab.id
-                    ? 'bg-term-selection text-term-fg border-term-selection'
-                    : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
-                )}
-              >
-                {tab.type === 'terminal' ? (
-                  <Terminal className="w-4 h-4 text-term-blue" />
+          {/* Sidebar Area */}
+          <div 
+            className={cn(
+              "flex flex-col border-r border-term-selection flex-shrink-0 bg-term-bg transition-[width] duration-300 ease-in-out relative",
+              !isSidebarOpen && "w-0 border-r-0 overflow-hidden"
+            )}
+            style={{ width: isSidebarOpen ? sidebarWidth : 0 }}
+          >
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {activeActivity === 'hosts' && (
+                <ServerList 
+                  ref={serverListRef} 
+                  onServerClick={handleServerClick}
+                  // Removed collapsed/onToggle props to keep it full view
+                />
+              )}
+              {activeActivity === 'sftp' && (
+                activeConnection ? (
+                  <div className="flex flex-col h-full">
+                    <div className="h-10 flex items-center px-3 text-sm font-semibold text-term-fg bg-term-bg flex-shrink-0">
+                      {t('file.explorer')} - {activeConnection.serverId}
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                      <FileTree
+                        tabId={`conn-${activeConnection.serverId}`}
+                        onFileSelect={handleFileSelect}
+                      />
+                    </div>
+                  </div>
                 ) : (
-                  <FileCode2 className="w-4 h-4 text-term-yellow" />
-                )}
-                <span>{tab.title}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                  className="ml-1 p-0.5 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-term-selection/80 transition-all"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {activeConnection && (
-            <div className="ml-auto flex items-center gap-2 px-4 border-l border-term-selection h-full">
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                activeConnection.status === 'connected' ? "bg-term-green" :
-                activeConnection.status === 'connecting' ? "bg-term-yellow animate-pulse" : "bg-term-red"
-              )} />
-              <span className="text-sm text-term-fg/60 capitalize">{t(`status.${activeConnection.status}`)}</span>
+                  <div className="flex flex-col items-center justify-center h-full text-term-fg/40 p-4 text-center">
+                    <p className="mb-2 text-lg">🔌</p>
+                    <p>{t('common.no_active_connection', 'No active connection')}</p>
+                    <p className="text-xs mt-2 opacity-60">{t('common.select_server_first', 'Select a server to connect first')}</p>
+                  </div>
+                )
+              )}
+              {activeActivity === 'snippets' && (
+                 <CommandSnippets onExecute={(cmd) => {
+                    if (activeConnection) {
+                        sendToTerminal(activeConnection.serverId, cmd);
+                        // Maybe focus terminal?
+                    } else {
+                        // Show toast?
+                        console.warn('No active connection to execute snippet');
+                    }
+                 }} />
+              )}
             </div>
+          </div>
+            
+          {/* Sidebar Resizer */}
+          {isSidebarOpen && (
+            <ResizeHandle direction="horizontal" onResize={handleSidebarWidthResize} />
           )}
 
-          {/* Settings Button */}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="ml-auto md:ml-4 p-1.5 hover:bg-term-selection rounded-md transition-colors"
-            title={t('common.settings')}
-          >
-            <Settings className="w-4 h-4 text-term-fg/60" />
-          </button>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Sidebar - Server List & File Explorer context */}
-          <div 
-            className="flex flex-col border-r border-term-selection flex-shrink-0 bg-term-bg"
-            style={{ width: sidebarWidth }}
-          >
-            {/* Servers Panel - resizable height */}
-            <div style={{ height: activeConnection ? sidebarSplitY : '100%' }} className="overflow-hidden flex flex-col flex-shrink-0">
-              <ServerList onServerClick={handleServerClick} />
-            </div>
-            {activeConnection && (
-              <>
-                <ResizeHandle direction="vertical" onResize={handleSidebarResize} />
-                <div className="flex-1 flex flex-col overflow-hidden bg-term-bg">
-                  <div className="px-4 py-2 text-xs font-semibold text-term-fg/40 uppercase tracking-wider bg-term-bg border-b border-term-selection flex-shrink-0">
-                    {t('file.explorer')}
-                  </div>
-                  <div className="flex-1 overflow-auto">
-                    <FileTree
-                      tabId={`conn-${activeConnection.serverId}`}
-                      onFileSelect={handleFileSelect}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Sidebar Resizer */}
-          <ResizeHandle direction="horizontal" onResize={handleSidebarWidthResize} />
-
-          {/* Middle Content Area */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-term-bg transition-colors duration-300">
-            {!activeTabId ? (
-              <div className="flex-1 flex items-center justify-center text-term-fg opacity-50">
-                <div className="text-center">
-                  <Terminal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg">{t('terminal.welcome')}</p>
-                  <p className="text-sm mt-2">{t('terminal.start_tip')}</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Persistent Terminal Panes - One per connected server */}
-                {connections.map(conn => (
-                  <div 
-                    key={`term-pane-${conn.serverId}`}
-                    // visually hide unselected terminals to keep Xterm mounted
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col min-w-0 bg-term-bg relative">
+            {/* Custom Title Bar with Tabs & Actions */}
+            <TitleBar>
+              {/* Workspace Tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-2">
+                {workspaceTabs.map(tab => (
+                  <div
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "flex-1 flex flex-col h-full overflow-hidden",
-                      (activeTab?.type !== 'terminal' || activeTab.serverId !== conn.serverId) && "hidden"
+                      'group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer border select-none',
+                      activeTabId === tab.id
+                        ? 'bg-term-selection text-term-fg border-term-selection'
+                        : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
                     )}
                   >
-                    <TerminalArea 
-                      serverId={conn.serverId} 
-                      theme={xtermTheme}
-                      fontSize={settings.terminalFontSize}
-                      lineHeight={settings.terminalLineHeight}
-                    />
+                    {tab.type === 'terminal' ? (
+                      <Terminal className="w-4 h-4 text-term-blue" />
+                    ) : (
+                      <FileCode2 className="w-4 h-4 text-term-yellow" />
+                    )}
+                    <span className="max-w-[150px] truncate">{tab.title}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                      className="ml-1 p-0.5 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-term-selection/80 transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 ))}
+                
+                <button
+                  onClick={() => createLocalTerminal().catch(console.error)}
+                  className="p-1.5 ml-1 rounded-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors flex-shrink-0"
+                  title={t('common.new_local_terminal', 'Open Local Terminal')}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </TitleBar>
 
-                {/* File Editor Pane - Rendered strictly when activetab is file */}
-                {activeTab?.type === 'file' && activeTab.filePath && (
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                    <RemoteFiles 
-                       isActive={true} 
-                       tabId={`conn-${activeTab.serverId}`}
-                       filePath={activeTab.filePath}
-                       theme={xtermTheme}
-                    />
+            {/* Tab Content */}
+            <div className="flex-1 relative bg-term-bg">
+              {workspaceTabs.map(tab => {
+                const isActive = tab.id === activeTabId;
+                return (
+                  <div
+                    key={tab.id}
+                    className={cn("absolute inset-0", !isActive && "hidden")}
+                  >
+                    {tab.type === 'terminal' || tab.type === 'local' ? (
+                      <TerminalArea
+                        serverId={tab.serverId!}
+                        theme={xtermTheme}
+                        fontSize={settings.terminalFontSize}
+                        lineHeight={settings.terminalLineHeight}
+                        rightClickBehavior={settings.rightClickBehavior}
+                      />
+                    ) : (
+                      <RemoteFiles
+                        isActive={isActive}
+                        tabId={tab.id}
+                        filePath={tab.filePath!}
+                        theme={xtermTheme}
+                      />
+                    )}
                   </div>
-                )}
-              </>
-            )}
+                );
+              })}
+              
+              {workspaceTabs.length === 0 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-term-fg/20 select-none">
+                  <div className="w-16 h-16 mb-4 rounded-xl bg-term-selection/20 flex items-center justify-center">
+                    <img src={logo} alt="Logo" className="w-10 h-10 opacity-20 grayscale" />
+                  </div>
+                  <p className="text-sm font-bold">HeTaoSSH</p>
+                  <p className="text-xs mt-2">Press Ctrl+N to connect</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Status Bar */}
+        {/* Status Bar - Moved to bottom full width */}
         <StatusBar
           isConnected={!!activeConnection && activeConnection.status === 'connected'}
           serverName={activeTab ? activeTab.title : t('terminal.disconnected')}
@@ -242,13 +324,13 @@ function App() {
           permissions="rw-r--r--"
         />
 
-        {/* Settings Dialog */}
         <SettingsDialog
-          isOpen={showSettings}
-          onClose={() => setShowSettings(false)}
-          settings={settings}
-          onSave={setSettings}
-        />
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            settings={settings}
+            onSave={setSettings}
+            onPreviewTheme={setPreviewTheme}
+          />
       </div>
     </ToastProvider>
   );
