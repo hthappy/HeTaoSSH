@@ -12,6 +12,8 @@ pub struct SystemUsage {
     pub memory_available: u64,
     pub network_rx: u64,
     pub network_tx: u64,
+    pub uptime: u64,
+    pub load_average: Vec<f64>,
     pub disk_usage: Vec<DiskUsage>,
 }
 
@@ -65,7 +67,7 @@ pub async fn get_remote_system_usage(
 ) -> Result<SystemUsage> {
     // 使用一条组合命令，减少 SSH channel 开销
     // 分隔符 "---SECTION---" 用来拆分不同部分的输出
-    let combined_cmd = r#"echo "---CPU---" && grep 'cpu ' /proc/stat && echo "---MEM---" && cat /proc/meminfo && echo "---DISK---" && df -B1 2>/dev/null && echo "---NET---" && cat /proc/net/dev"#;
+    let combined_cmd = r#"echo "---CPU---" && grep 'cpu ' /proc/stat && echo "---MEM---" && cat /proc/meminfo && echo "---DISK---" && df -B1 2>/dev/null && echo "---NET---" && cat /proc/net/dev && echo "---UPTIME---" && cat /proc/uptime && echo "---LOAD---" && cat /proc/loadavg"#;
 
     let raw = exec_remote_command(session, combined_cmd).await?;
 
@@ -73,10 +75,12 @@ pub async fn get_remote_system_usage(
     let (memory_total, memory_used, memory_available, memory_usage) = parse_memory_info(&raw);
     let disk_usage = parse_disk_usage(&raw);
     let (network_rx, network_tx) = parse_network_info(&raw);
+    let uptime = parse_uptime(&raw);
+    let load_average = parse_load_average(&raw);
 
     info!(
-        "Remote system: CPU {:.1}%, Memory {:.1}%",
-        cpu_usage, memory_usage
+        "Remote system: CPU {:.1}%, Memory {:.1}%, Uptime {}s, Load {:?}",
+        cpu_usage, memory_usage, uptime, load_average
     );
 
     Ok(SystemUsage {
@@ -87,6 +91,8 @@ pub async fn get_remote_system_usage(
         memory_available,
         network_rx,
         network_tx,
+        uptime,
+        load_average,
         disk_usage,
     })
 }
@@ -216,7 +222,7 @@ fn parse_disk_usage(raw: &str) -> Vec<DiskUsage> {
 
 /// 解析 /proc/net/dev 获取网络流量（字节）
 fn parse_network_info(raw: &str) -> (u64, u64) {
-    let section = extract_section(raw, "---NET---", "");
+    let section = extract_section(raw, "---NET---", "---UPTIME---");
     let mut rx: u64 = 0;
     let mut tx: u64 = 0;
 
@@ -241,6 +247,27 @@ fn parse_network_info(raw: &str) -> (u64, u64) {
     }
 
     (rx, tx)
+}
+
+/// 解析 /proc/uptime 获取运行时间（秒）
+fn parse_uptime(raw: &str) -> u64 {
+    let section = extract_section(raw, "---UPTIME---", "---LOAD---");
+    let line = section.lines().next().unwrap_or("").trim();
+    line.split_whitespace()
+        .next()
+        .and_then(|v| v.parse::<f64>().ok())
+        .map(|v| v as u64)
+        .unwrap_or(0)
+}
+
+/// 解析 /proc/loadavg 获取系统负载
+fn parse_load_average(raw: &str) -> Vec<f64> {
+    let section = extract_section(raw, "---LOAD---", "");
+    let line = section.lines().next().unwrap_or("").trim();
+    line.split_whitespace()
+        .take(3)
+        .filter_map(|v| v.parse::<f64>().ok())
+        .collect()
 }
 
 /// 从组合命令输出中提取指定段落

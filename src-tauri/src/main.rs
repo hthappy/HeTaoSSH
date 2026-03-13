@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -50,6 +51,9 @@ async fn main() -> Result<()> {
             commands::sftp_write_file,
             commands::sftp_remove_file,
             commands::sftp_create_dir,
+            commands::sftp_download_file,
+            commands::sftp_download_dir,
+            commands::sftp_upload_file,
             commands::sftp_get_home_dir,
             commands::get_system_usage,
             commands::list_snippets,

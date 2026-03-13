@@ -46,6 +46,34 @@ enum ConnCommand {
     SftpGetHomeDir {
         reply: oneshot::Sender<Result<String>>,
     },
+    /// SFTP: 删除文件
+    SftpRemoveFile {
+        path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 创建目录
+    SftpCreateDir {
+        path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 下载文件
+    SftpDownloadFile {
+        remote_path: String,
+        local_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 下载文件夹 (Recursive)
+    SftpDownloadDir {
+        remote_path: String,
+        local_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 上传文件
+    SftpUploadFile {
+        local_path: String,
+        remote_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
     /// 远程系统监控
     GetSystemUsage {
         reply: oneshot::Sender<Result<crate::monitor::SystemUsage>>,
@@ -241,6 +269,89 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 删除远程文件
+    pub async fn sftp_remove_file(&self, id: &str, path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpRemoveFile {
+            path: path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 创建远程目录
+    pub async fn sftp_create_dir(&self, id: &str, path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpCreateDir {
+            path: path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 下载文件
+    pub async fn sftp_download_file(&self, id: &str, remote_path: &str, local_path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpDownloadFile {
+            remote_path: remote_path.to_string(),
+            local_path: local_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 下载文件夹
+    pub async fn sftp_download_dir(&self, id: &str, remote_path: &str, local_path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpDownloadDir {
+            remote_path: remote_path.to_string(),
+            local_path: local_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 上传文件
+    pub async fn sftp_upload_file(&self, id: &str, local_path: &str, remote_path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpUploadFile {
+            local_path: local_path.to_string(),
+            remote_path: remote_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 远程系统监控
     pub async fn get_remote_system_usage(&self, id: &str) -> Result<crate::monitor::SystemUsage> {
         let tx = self.get_tx(id).await?;
@@ -322,6 +433,26 @@ async fn connection_actor(
                     }
                     ConnCommand::SftpGetHomeDir { reply } => {
                         let result = handle_sftp_get_home_dir(&conn).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpRemoveFile { path, reply } => {
+                        let result = handle_sftp_remove_file(&conn, &path).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpCreateDir { path, reply } => {
+                        let result = handle_sftp_create_dir(&conn, &path).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpDownloadFile { remote_path, local_path, reply } => {
+                        let result = handle_sftp_download_file(&conn, &remote_path, &local_path).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpDownloadDir { remote_path, local_path, reply } => {
+                        let result = handle_sftp_download_dir(&conn, &remote_path, &local_path).await;
+                        let _ = reply.send(result);
+                    }
+                    ConnCommand::SftpUploadFile { local_path, remote_path, reply } => {
+                        let result = handle_sftp_upload_file(&conn, &local_path, &remote_path).await;
                         let _ = reply.send(result);
                     }
                     ConnCommand::GetSystemUsage { reply } => {
@@ -414,6 +545,149 @@ async fn handle_sftp_write_file(conn: &SshConnection, path: &str, content: &[u8]
     sftp.write(path, content)
         .await
         .map_err(|e| SshError::ConnectionFailed(format!("write file failed: {}", e)))
+}
+
+async fn handle_sftp_remove_file(conn: &SshConnection, path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    // Try removing as file first
+    match sftp.remove_file(path).await {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            // If failed, try removing as directory
+            sftp.remove_dir(path)
+                .await
+                .map_err(|e| SshError::ConnectionFailed(format!("remove failed: {}", e)))
+        }
+    }
+}
+
+async fn handle_sftp_create_dir(conn: &SshConnection, path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    sftp.create_dir(path)
+        .await
+        .map_err(|e| SshError::ConnectionFailed(format!("create_dir failed: {}", e)))
+}
+
+async fn handle_sftp_download_file(conn: &SshConnection, remote_path: &str, local_path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    // Check if remote path is a directory
+    let metadata = sftp.metadata(remote_path).await
+        .map_err(|e| SshError::ConnectionFailed(format!("stat failed: {}", e)))?;
+    
+    if metadata.file_type().is_dir() {
+        return Err(SshError::ConnectionFailed("Cannot download a directory".to_string()));
+    }
+
+    // Open remote file for reading
+    let mut remote_file = sftp.open(remote_path).await
+        .map_err(|e| SshError::ConnectionFailed(format!("open remote file failed: {}", e)))?;
+
+    // Create local file for writing
+    let mut local_file = tokio::fs::File::create(local_path).await
+        .map_err(|e| SshError::Io(e))?;
+
+    // Stream copy
+    tokio::io::copy(&mut remote_file, &mut local_file).await
+        .map_err(|e| SshError::Io(e))?;
+
+    Ok(())
+}
+
+async fn handle_sftp_download_dir(conn: &SshConnection, remote_path: &str, local_path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    // Check if remote path is a directory
+    let metadata = sftp.metadata(remote_path).await
+        .map_err(|e| SshError::ConnectionFailed(format!("stat failed: {}", e)))?;
+    
+    if !metadata.file_type().is_dir() {
+        return Err(SshError::ConnectionFailed("Not a directory".to_string()));
+    }
+
+    // Stack for iterative traversal: (remote_current_path, local_current_path)
+    let mut stack = vec![(remote_path.to_string(), local_path.to_string())];
+
+    while let Some((curr_remote, curr_local)) = stack.pop() {
+        // Create local directory
+        tokio::fs::create_dir_all(&curr_local).await.map_err(|e| SshError::Io(e))?;
+
+        // Read remote directory
+        let entries = sftp.read_dir(&curr_remote).await
+            .map_err(|e| SshError::ConnectionFailed(format!("read_dir failed: {}", e)))?;
+
+        for entry in entries {
+            let filename = entry.file_name();
+            if filename == "." || filename == ".." {
+                continue;
+            }
+
+            // Construct paths
+            // Note: remote is usually unix-like ('/'), but we should be careful. 
+            // Russh-sftp treats paths as strings. 
+            // We assume standard '/' separator for remote.
+            let next_remote = if curr_remote.ends_with('/') {
+                format!("{}{}", curr_remote, filename)
+            } else {
+                format!("{}/{}", curr_remote, filename)
+            };
+
+            let next_local = std::path::Path::new(&curr_local).join(&filename);
+            let next_local_str = next_local.to_string_lossy().to_string();
+
+            if entry.file_type().is_dir() {
+                // Push to stack for later processing
+                stack.push((next_remote, next_local_str));
+            } else {
+                // Download file directly
+                let mut remote_file = sftp.open(&next_remote).await
+                    .map_err(|e| SshError::ConnectionFailed(format!("open remote file failed: {}", e)))?;
+
+                let mut local_file = tokio::fs::File::create(&next_local).await
+                    .map_err(|e| SshError::Io(e))?;
+
+                tokio::io::copy(&mut remote_file, &mut local_file).await
+                    .map_err(|e| SshError::Io(e))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_sftp_upload_file(conn: &SshConnection, local_path: &str, remote_path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
+
+    // Open local file for reading
+    let mut local_file = tokio::fs::File::open(local_path).await
+        .map_err(|e| SshError::Io(e))?;
+
+    // Open remote file for writing (create or truncate)
+    let mut remote_file = sftp.create(remote_path).await
+        .map_err(|e| SshError::ConnectionFailed(format!("create remote file failed: {}", e)))?;
+
+    // Stream copy
+    tokio::io::copy(&mut local_file, &mut remote_file).await
+        .map_err(|e| SshError::Io(e))?;
+
+    Ok(())
 }
 
 async fn handle_sftp_get_home_dir(conn: &SshConnection) -> Result<String> {

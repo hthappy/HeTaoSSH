@@ -44,9 +44,22 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [previewTheme, setPreviewTheme] = useState<ThemeSchema | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const serverListRef = useRef<ServerListHandle>(null);
   
   // Check for updates on startup
+  useEffect(() => {
+    // Disable global context menu
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('contextmenu', handleGlobalContextMenu);
+    
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalContextMenu);
+    };
+  }, []);
+
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
@@ -162,7 +175,19 @@ function App() {
   const xtermTheme = useTheme(currentTheme);
 
   const handleSidebarWidthResize = useCallback((delta: number) => {
-    setSidebarWidth(prev => Math.max(180, Math.min(prev + delta, 500)));
+    setSidebarWidth(prev => {
+      const next = prev + delta;
+      // If dragged too small (< 100px), close sidebar
+      if (next < 50) {
+        // Use setTimeout to avoid state update during render phase
+        setTimeout(() => {
+          setIsSidebarOpen(false);
+          setSidebarWidth(240); // Reset to default width
+        }, 0);
+        return 240;
+      }
+      return Math.min(next, 500);
+    });
   }, []);
 
   const handleServerClick = (serverId: number) => {
@@ -205,7 +230,8 @@ function App() {
           {/* Sidebar Area */}
           <div 
             className={cn(
-              "flex flex-col border-r border-term-selection flex-shrink-0 bg-term-bg transition-[width] duration-300 ease-in-out relative",
+              "flex flex-col border-r border-term-selection flex-shrink-0 bg-term-bg relative",
+              !isResizingSidebar && "transition-[width] duration-300 ease-in-out",
               !isSidebarOpen && "w-0 border-r-0 overflow-hidden"
             )}
             style={{ width: isSidebarOpen ? sidebarWidth : 0 }}
@@ -222,7 +248,7 @@ function App() {
                 activeConnection ? (
                   <div className="flex flex-col h-full">
                     <div className="h-10 flex items-center px-3 text-sm font-semibold text-term-fg bg-term-bg flex-shrink-0">
-                      {t('file.explorer')} - {activeConnection.serverId}
+                      {t('file.explorer')}
                     </div>
                     <div className="flex-1 overflow-auto">
                       <FileTree
@@ -255,7 +281,16 @@ function App() {
             
           {/* Sidebar Resizer */}
           {isSidebarOpen && (
-            <ResizeHandle direction="horizontal" onResize={handleSidebarWidthResize} />
+            <ResizeHandle 
+              direction="horizontal" 
+              onResize={handleSidebarWidthResize} 
+              onResizeStart={() => setIsResizingSidebar(true)}
+              onResizeEnd={() => {
+                setIsResizingSidebar(false);
+                // Snap back to min width if not closed
+                setSidebarWidth(w => Math.max(180, w));
+              }}
+            />
           )}
 
           {/* Main Content Area */}

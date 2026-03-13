@@ -3,8 +3,12 @@ import { Terminal as XTerm, ITheme } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { useTranslation } from 'react-i18next';
 import { Clipboard, Copy } from 'lucide-react';
+import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
+import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
+
+import { useToast } from '@/components/Toast';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
@@ -16,6 +20,7 @@ interface TerminalProps {
   className?: string;
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
+  onEnter?: () => void;
   disconnected?: boolean;
   incomingData?: string;
   theme?: ITheme;
@@ -25,14 +30,21 @@ interface TerminalProps {
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { className, onData, onResize, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu' },
+  { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu' },
   ref
 ) {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const onEnterRef = useRef(onEnter);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+
+  // Update onEnter ref
+  useEffect(() => {
+    onEnterRef.current = onEnter;
+  }, [onEnter]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -47,7 +59,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       }
     },
     resize: () => {
-      fitAddonRef.current?.fit();
+      // Use RAF to ensure DOM update is complete before fitting
+      requestAnimationFrame(() => {
+        try {
+          const element = xtermRef.current?.element;
+          if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0) {
+            fitAddonRef.current.fit();
+          }
+        } catch (e) {
+          console.warn('Resize fit failed', e);
+        }
+      });
     }
   }));
 
@@ -103,14 +125,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Safe fit helper
     const fitTerminal = () => {
       if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
-      try {
-        const element = xtermRef.current.element;
-        if (element && element.clientWidth > 0 && element.clientHeight > 0) {
-          fitAddonRef.current.fit();
+      // Use requestAnimationFrame to avoid layout thrashing and ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
+        try {
+          const element = xtermRef.current.element;
+          // Check if element is visible and has dimensions
+          if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
+            fitAddonRef.current.fit();
+          }
+        } catch (e) {
+          console.warn('Fit failed', e);
         }
-      } catch (e) {
-        console.warn('Fit failed', e);
-      }
+      });
     };
 
     // Fit terminal after a tiny delay to ensure DOM dimensions are computed
@@ -127,6 +154,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const onDataDisposable = term.onData((data) => {
       if (!disconnected && onData) {
         onData(data);
+      }
+    });
+
+    // Handle key press (specifically Enter for file tree sync)
+    const onKeyDisposable = term.onKey(({ domEvent }) => {
+      if (domEvent.keyCode === 13 && onEnterRef.current) {
+        onEnterRef.current();
       }
     });
 
@@ -159,6 +193,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
       onDataDisposable.dispose();
+      onKeyDisposable.dispose();
       try {
         term.dispose();
       } catch (e) {
@@ -167,7 +202,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [theme, fontSize, lineHeight, disconnected, onData, onResize]);
 
   // Handle theme changes
   useEffect(() => {
@@ -182,7 +217,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     if (xtermRef.current) {
       if (fontSize) xtermRef.current.options.fontSize = fontSize;
       if (lineHeight) xtermRef.current.options.lineHeight = lineHeight;
-      fitAddonRef.current?.fit();
+      
+      // Safe fit with RAF
+      requestAnimationFrame(() => {
+        try {
+          const element = xtermRef.current?.element;
+          if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
+             fitAddonRef.current.fit();
+          }
+        } catch (e) {
+          console.warn('Font resize fit failed', e);
+        }
+      });
     }
   }, [fontSize, lineHeight]);
 
@@ -202,40 +248,113 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     }
   }, [disconnected, t]);
 
-  // Handle right click
+  // Handle right click and middle click
   useEffect(() => {
     const el = terminalRef.current;
     if (!el) return;
 
+    const CHUNK_SIZE = 4096; // 4KB chunks for IPC safety
+
+    const sendLargeText = async (text: string) => {
+        const term = xtermRef.current;
+        if (!term) return;
+        
+        // Split text into chunks to avoid IPC overload
+        for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+            const chunk = text.substring(i, i + CHUNK_SIZE);
+            term.paste(chunk);
+            // Small delay between chunks to let the backend/SSH process it
+            if (i + CHUNK_SIZE < text.length) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        }
+    };
+
     const handleContextMenu = async (e: MouseEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         
         if (rightClickBehavior === 'paste') {
-            try {
-                const text = await navigator.clipboard.readText();
-                if (text && xtermRef.current) {
-                    xtermRef.current.paste(text);
+            const term = xtermRef.current;
+            if (!term) return;
+
+            const selection = term.getSelection();
+            if (selection) {
+                // Smart copy: if there's a selection, copy it and clear
+                try {
+                    await writeText(selection);
+                    term.clearSelection();
+                    showToast(t('common.copied_to_clipboard'), 'success');
+                } catch (err) {
+                    console.error('Failed to copy selection:', err);
+                    showToast(t('common.copy_failed', 'Copy failed'), 'error');
                 }
-            } catch (err) {
-                console.error('Failed to read clipboard:', err);
+            } else {
+                // Smart paste: if no selection, paste from clipboard
+                try {
+                    const text = await readText();
+                    if (text) {
+                        await sendLargeText(text);
+                    }
+                } catch (err) {
+                    console.error('Failed to read clipboard:', err);
+                    showToast(t('common.paste_failed', 'Paste failed'), 'error');
+                }
             }
         } else {
             setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
         }
     };
-    
-    el.addEventListener('contextmenu', handleContextMenu);
-    
-    const handleGlobalClick = () => {
-        setContextMenu(prev => prev.visible ? { ...prev, visible: false } : prev);
+
+    const handleMouseDown = async (e: MouseEvent) => {
+        // Right click (button 2)
+        if (e.button === 2) {
+            // Prevent xterm.js from handling right click (which might clear selection)
+            e.stopPropagation();
+            return;
+        }
+
+        // Middle click (button 1)
+        if (e.button === 1) {
+            e.preventDefault();
+            try {
+                const text = await readText();
+                if (text) {
+                    await sendLargeText(text);
+                }
+            } catch (err) {
+                console.error('Failed to read clipboard for middle click:', err);
+            }
+        }
     };
-    window.addEventListener('click', handleGlobalClick);
+    
+    const handleMouseUp = (e: MouseEvent) => {
+        // Prevent right click (button 2) from clearing selection
+        if (e.button === 2) {
+            e.stopPropagation();
+        }
+    };
+    
+    // Add click handler to prevent selection clearing on right click
+    const handleClick = (e: MouseEvent) => {
+        if (e.button === 2) {
+            e.stopPropagation();
+        }
+    };
+
+    el.addEventListener('contextmenu', handleContextMenu);
+    el.addEventListener('mousedown', handleMouseDown, true);
+    el.addEventListener('mouseup', handleMouseUp, true);
+    el.addEventListener('click', handleClick, true);
     
     return () => {
         el.removeEventListener('contextmenu', handleContextMenu);
-        window.removeEventListener('click', handleGlobalClick);
+        el.removeEventListener('mousedown', handleMouseDown, true);
+        el.removeEventListener('mouseup', handleMouseUp, true);
+        el.removeEventListener('click', handleClick, true);
     };
-  }, [rightClickBehavior]);
+
+  }, [rightClickBehavior, onData, t, showToast]);
 
   return (
     <>
@@ -245,45 +364,62 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         style={{ backgroundColor: theme?.background }}
       />
       {contextMenu.visible && (
-        <div 
-            className="fixed z-50 min-w-[120px] bg-term-bg border border-term-selection rounded-md shadow-lg py-1 select-none"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(prev => ({ ...prev, visible: false }))}
         >
-            <button
-                className="w-full text-left px-3 py-1.5 text-xs text-term-fg hover:bg-term-selection flex items-center gap-2"
-                onClick={() => {
-                    if (xtermRef.current) {
-                        const selection = xtermRef.current.getSelection();
-                        if (selection) {
-                            navigator.clipboard.writeText(selection);
-                            xtermRef.current.clearSelection();
-                        }
-                    }
-                    setContextMenu(prev => ({ ...prev, visible: false }));
-                }}
-            >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{t('common.copy')}</span>
-            </button>
-            <button
-                className="w-full text-left px-3 py-1.5 text-xs text-term-fg hover:bg-term-selection flex items-center gap-2"
-                onClick={async () => {
+          <div className="flex flex-col gap-0.5 p-1 min-w-[140px]">
+            <ContextMenuItem 
+              label={t('common.copy', 'Copy')} 
+              icon={<Copy className="w-4 h-4" />}
+              onClick={async () => {
+                if (xtermRef.current) {
+                  const selection = xtermRef.current.getSelection();
+                  if (selection) {
                     try {
-                        const text = await navigator.clipboard.readText();
-                        if (text && xtermRef.current) {
-                            xtermRef.current.paste(text);
-                        }
-                    } catch (e) {
-                        console.error(e);
+                      await writeText(selection);
+                      xtermRef.current.clearSelection();
+                      showToast(t('common.copied_to_clipboard'), 'success');
+                    } catch (err) {
+                      console.error('Failed to copy to clipboard:', err);
+                      showToast(t('common.copy_failed', 'Copy failed'), 'error');
                     }
-                    setContextMenu(prev => ({ ...prev, visible: false }));
-                }}
-            >
-                <Clipboard className="w-3.5 h-3.5" />
-                <span>{t('settings.behavior_paste')}</span>
-            </button>
-        </div>
+                  }
+                }
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+            <ContextMenuItem 
+              label={t('common.paste', 'Paste')} 
+              icon={<Clipboard className="w-4 h-4" />}
+              onClick={async () => {
+                try {
+                  const text = await readText();
+                  if (text && xtermRef.current) {
+                    // Use sendLargeText logic or simple paste?
+                    // Reusing logic from useEffect is hard due to closure.
+                    // But we can duplicate the simple logic or extract it.
+                    // For now simple paste is fine, or better yet trigger the logic.
+                    // Let's implement chunking here too.
+                    const CHUNK_SIZE = 4096;
+                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+                        const chunk = text.substring(i, i + CHUNK_SIZE);
+                        xtermRef.current.paste(chunk);
+                        if (i + CHUNK_SIZE < text.length) {
+                            await new Promise(r => setTimeout(r, 10));
+                        }
+                    }
+                  }
+                } catch (e) {
+                  console.error(e);
+                  showToast(t('common.paste_failed', 'Paste failed'), 'error');
+                }
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+          </div>
+        </ContextMenu>
       )}
     </>
   );

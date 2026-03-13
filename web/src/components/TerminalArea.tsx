@@ -39,13 +39,15 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
     invoke(cmd, payload).catch(err => {
       console.error('Failed to resize terminal:', err);
     });
-    
-    // If local, we might need to ensure it's created.
-    if (isLocal) {
-        // We use a small hack: try to create if not exists, or we rely on useEffect to create.
-        // Actually, let's do creation in useEffect.
-    }
   }, [tabId, isLocal, serverId]);
+
+  const handleTerminalEnter = useCallback(() => {
+    // Dispatch event for FileTree to pick up
+    // We use window dispatch for simplicity across components
+    window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 
+        detail: { tabId } 
+    }));
+  }, [tabId]);
 
   useEffect(() => {
     if (!activeConnection || activeConnection.status !== 'connected') return;
@@ -133,6 +135,7 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
             ref={terminalRef}
             onData={handleTerminalData}
             onResize={handleTerminalResize}
+            onEnter={handleTerminalEnter}
             disconnected={false}
             theme={theme}
             fontSize={fontSize}

@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
 
 interface CommandSnippet {
   id?: number;
@@ -23,12 +24,18 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editing, setEditing] = useState<CommandSnippet | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { showToast } = useToast();
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    snippet?: CommandSnippet;
+  } | null>(null);
 
   const loadSnippets = useCallback(async () => {
     setIsLoading(true);
@@ -51,8 +58,6 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
 
   const handleCopy = async (snippet: CommandSnippet) => {
     await navigator.clipboard.writeText(snippet.command);
-    setCopiedId(snippet.id || 0);
-    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleExecute = (snippet: CommandSnippet) => {
@@ -142,26 +147,122 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent, snippet: CommandSnippet) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      snippet
+    });
+  };
+
+  const handleDelete = async (snippet: CommandSnippet) => {
+      if (confirm(t('snippets.delete_confirm', { name: snippet.name }))) {
+        try {
+          await invoke('delete_snippet', { id: snippet.id });
+          showToast(t('snippets.delete_success'), 'success');
+          loadSnippets();
+        } catch (error) {
+          console.error('Failed to delete snippet:', error);
+          showToast(t('snippets.delete_failed', { error: `${error}` }), 'error');
+        }
+      }
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-3 flex items-center gap-2">
-        <div className="relative flex-1 min-w-0">
-          <Search className="w-3.5 h-3.5 text-term-fg opacity-50 absolute left-2 top-1/2 -translate-y-1/2" />
+    <div 
+      className="h-full flex flex-col bg-term-bg w-full flex-shrink-0"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY
+        });
+      }}
+    >
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        >
+          {contextMenu.snippet ? (
+            <div className="flex flex-col gap-0.5 p-1">
+              <ContextMenuItem 
+                label={t('common.execute', 'Execute')} 
+                icon={<Play className="w-4 h-4" />}
+                onClick={() => {
+                  handleExecute(contextMenu.snippet!);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem 
+                label={t('common.copy', 'Copy')} 
+                icon={<Copy className="w-4 h-4" />}
+                onClick={() => {
+                  handleCopy(contextMenu.snippet!);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuSeparator />
+              <ContextMenuItem 
+                label={t('common.edit', 'Edit')} 
+                icon={<Pencil className="w-4 h-4" />}
+                onClick={() => {
+                  openEdit(contextMenu.snippet!);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem 
+                label={t('common.delete', 'Delete')} 
+                icon={<Trash2 className="w-4 h-4" />}
+                danger
+                onClick={() => {
+                  handleDelete(contextMenu.snippet!);
+                  setContextMenu(null);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5 p-1">
+              <ContextMenuItem 
+                label={t('snippets.add', 'Add Snippet')} 
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => {
+                  openCreate();
+                  setContextMenu(null);
+                }}
+              />
+            </div>
+          )}
+        </ContextMenu>
+      )}
+
+      {/* Header */}
+      <div className="h-10 flex items-center justify-between px-3 flex-shrink-0 bg-term-bg border-b border-term-selection/50">
+        <h2 className="text-sm font-semibold text-term-fg">{t('snippets.title')}</h2>
+        <button
+          onClick={openCreate}
+          className="p-1.5 hover:bg-term-selection rounded-md transition-colors"
+          title={t('snippets.add')}
+        >
+          <Plus className="w-4 h-4 text-term-fg/60" />
+        </button>
+      </div>
+
+      {/* Search Input */}
+      <div className="p-2 border-b border-term-selection flex-shrink-0 bg-term-bg">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-term-fg/40" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('snippets.search_placeholder')}
-            className="w-full bg-term-selection text-term-fg text-xs pl-7 pr-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg placeholder-opacity-40"
+            className="w-full bg-term-selection/30 text-term-fg text-xs pl-8 pr-2 py-1.5 rounded border border-transparent focus:border-term-blue focus:bg-term-selection/50 focus:outline-none transition-all placeholder-term-fg/40"
           />
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-term-blue hover:opacity-90 text-white text-xs transition-colors flex-shrink-0"
-          title={t('snippets.add')}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          {t('common.add')}
-        </button>
       </div>
 
       <div className="p-2 border-b border-term-selection flex items-center gap-2 overflow-x-auto">
@@ -207,6 +308,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                   {snippets.map(snippet => (
                     <div
                       key={snippet.id}
+                      onContextMenu={(e) => handleContextMenu(e, snippet)}
                       className="group bg-term-selection/20 rounded-md px-2 py-1.5 border border-term-selection hover:border-term-blue/30 transition-colors"
                     >
                       <div className="flex items-center gap-2">
@@ -223,17 +325,6 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                         </div>
 
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleCopy(snippet)}
-                            className="p-1 hover:bg-term-selection rounded transition-colors"
-                            title={t('snippets.copy')}
-                          >
-                            {copiedId === snippet.id ? (
-                              <span className="text-xs text-term-green">✓</span>
-                            ) : (
-                              <Copy className="w-3.5 h-3.5 text-term-fg opacity-60" />
-                            )}
-                          </button>
                           {onExecute && (
                             <button
                               onClick={() => handleExecute(snippet)}

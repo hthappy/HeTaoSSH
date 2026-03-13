@@ -6,6 +6,10 @@ interface ResizeHandleProps {
   direction: 'horizontal' | 'vertical';
   /** 当拖拽时回调，delta 为像素偏移量 */
   onResize: (delta: number) => void;
+  /** 开始拖拽回调 */
+  onResizeStart?: () => void;
+  /** 结束拖拽回调 */
+  onResizeEnd?: () => void;
   className?: string;
 }
 
@@ -13,15 +17,16 @@ interface ResizeHandleProps {
  * 通用可拖拽分隔条组件
  * 支持水平（左右拖宽度）和垂直（上下拖高度）两种方向
  */
-export function ResizeHandle({ direction, onResize, className }: ResizeHandleProps) {
+export function ResizeHandle({ direction, onResize, onResizeStart, onResizeEnd, className }: ResizeHandleProps) {
   const [isDragging, setIsDragging] = useState(false);
   const startPos = useRef(0);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsDragging(true);
+    onResizeStart?.();
     startPos.current = direction === 'horizontal' ? e.clientX : e.clientY;
-  }, [direction]);
+  }, [direction, onResizeStart]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -35,6 +40,7 @@ export function ResizeHandle({ direction, onResize, className }: ResizeHandlePro
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      onResizeEnd?.();
     };
 
     // 全局监听确保拖拽出组件范围仍然有效

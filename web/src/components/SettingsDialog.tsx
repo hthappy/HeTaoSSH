@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Settings, Type, Monitor, Globe, Palette, Upload, Trash2, MousePointerClick } from 'lucide-react';
+import { Settings, Globe, Palette, Upload, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { presets } from '../themes/presets';
@@ -35,6 +36,11 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
 
   const [importUrl, setImportUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(console.error);
+  }, []);
 
   // Sync local settings when settings prop changes or dialog opens
   useEffect(() => {
@@ -258,7 +264,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
             <Settings className="w-5 h-5 text-term-fg/60" />
             <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
           </div>
-          <span className="text-xs text-term-fg/40">v0.1.0</span>
+          <span className="text-xs text-term-fg/40">v{appVersion}</span>
         </div>
 
         <div className="space-y-6 overflow-y-auto pr-2 flex-1">
@@ -383,83 +389,72 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
             )}
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            {/* Font Size */}
+            <div>
+              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.font_size')}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="10"
+                  max="24"
+                  step="1"
+                  value={localSettings.terminalFontSize}
+                  onChange={(e) => setLocalSettings({ ...localSettings, terminalFontSize: Number(e.target.value) })}
+                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalFontSize}px</span>
+              </div>
+            </div>
+
+            {/* Line Height */}
+            <div>
+              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.line_height')}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="1"
+                  max="2"
+                  step="0.1"
+                  value={localSettings.terminalLineHeight}
+                  onChange={(e) => setLocalSettings({ ...localSettings, terminalLineHeight: Number(e.target.value) })}
+                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalLineHeight}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Right Click Behavior */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <MousePointerClick className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">{t('settings.right_click')}</label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
-                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
-                  localSettings.rightClickBehavior === 'menu'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
-              >
-                {t('settings.behavior_menu')}
-              </button>
-              <button
-                onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
-                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
-                  localSettings.rightClickBehavior === 'paste'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
-              >
-                {t('settings.behavior_paste')}
-              </button>
-            </div>
-          </div>
-
-          {/* Terminal Font Size */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Type className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">
-                {t('settings.font_size')}: {localSettings.terminalFontSize}px
-              </label>
-            </div>
-            <input
-              type="range"
-              min="10"
-              max="24"
-              value={localSettings.terminalFontSize}
-              onChange={(e) =>
-                setLocalSettings({ ...localSettings, terminalFontSize: parseInt(e.target.value) })
-              }
-              className="w-full accent-term-blue"
-            />
-            <div className="flex justify-between text-xs text-term-fg/40 mt-1">
-              <span>10px</span>
-              <span>24px</span>
-            </div>
-          </div>
-
-          {/* Terminal Line Height */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Monitor className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">
-                {t('settings.line_height')}: {localSettings.terminalLineHeight}
-              </label>
-            </div>
-            <input
-              type="range"
-              min="1.0"
-              max="2.0"
-              step="0.1"
-              value={localSettings.terminalLineHeight}
-              onChange={(e) =>
-                setLocalSettings({ ...localSettings, terminalLineHeight: parseFloat(e.target.value) })
-              }
-              className="w-full accent-term-blue"
-            />
-            <div className="flex justify-between text-xs text-term-fg/40 mt-1">
-              <span>1.0</span>
-              <span>2.0</span>
-            </div>
+          <div className="pt-2">
+             <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.right_click')}</label>
+             <div className="flex gap-2 bg-term-bg border border-term-selection p-1 rounded-lg">
+                <button
+                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
+                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
+                    localSettings.rightClickBehavior === 'menu'
+                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
+                      : 'text-term-fg/40 hover:text-term-fg/70'
+                  }`}
+                >
+                  {t('settings.behavior_menu')}
+                </button>
+                <button
+                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
+                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
+                    localSettings.rightClickBehavior === 'paste'
+                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
+                      : 'text-term-fg/40 hover:text-term-fg/70'
+                  }`}
+                >
+                  {t('settings.behavior_paste')}
+                </button>
+             </div>
+             <p className="text-[10px] text-term-fg/40 mt-1.5 px-1">
+                {localSettings.rightClickBehavior === 'paste' 
+                  ? t('settings.smart_behavior') 
+                  : t('settings.standard_behavior')}
+              </p>
           </div>
 
           {/* Editor Options */}

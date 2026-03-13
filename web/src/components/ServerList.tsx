@@ -5,6 +5,7 @@ import type { ServerConfig } from '@/types/config';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import { useTranslation } from 'react-i18next';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
 
 export interface ServerListHandle {
   openAddDialog: () => void;
@@ -34,6 +35,13 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
   const [testingServerId, setTestingServerId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
+  
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    server?: ServerConfig;
+  } | null>(null);
 
   useImperativeHandle(ref, () => ({
     openAddDialog: () => {
@@ -78,8 +86,36 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
     setTestingServerId(null);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, server: ServerConfig) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      server
+    });
+  };
+
+  const handleBackgroundContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  const handleConnect = (server: ServerConfig) => {
+    onServerClick(server.id!);
+    setContextMenu(null);
+  };
+
   return (
-    <div className="w-full flex-shrink-0 h-full bg-term-bg flex flex-col border-r border-term-selection">
+    <div 
+      className="w-full flex-shrink-0 h-full bg-term-bg flex flex-col border-r border-term-selection"
+      onContextMenu={handleBackgroundContextMenu}
+    >
+      {/* Context Menu - Duplicate removed */}
+
       {/* Header with Title (Aligned with TitleBar) */}
       <div className="h-10 flex items-center justify-between px-3 flex-shrink-0 bg-term-bg">
         <h2 className="text-sm font-semibold text-term-fg">{t('server.list')}</h2>
@@ -133,6 +169,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
               return (
                 <div
                   key={server.id}
+                  onContextMenu={(e) => handleContextMenu(e, server)}
                   className={cn(
                     'group flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all duration-200',
                     isConnected
@@ -213,6 +250,54 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
             setShowAddDialog(false);
           }}
         />
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        >
+          {contextMenu.server ? (
+            <div className="flex flex-col gap-0.5 p-1 min-w-[160px]">
+              <ContextMenuItem 
+                label={t('common.connect', 'Connect')} 
+                icon={<CheckCircle2 className="w-4 h-4" />}
+                onClick={() => handleConnect(contextMenu.server!)}
+              />
+              <ContextMenuSeparator />
+              <ContextMenuItem 
+                label={t('common.edit', 'Edit')} 
+                icon={<Edit2 className="w-4 h-4" />}
+                onClick={() => {
+                  handleEditServer(contextMenu.server!);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem 
+                label={t('common.delete', 'Delete')} 
+                icon={<Trash2 className="w-4 h-4" />}
+                danger
+                onClick={() => {
+                  handleDeleteServer(contextMenu.server!.id!);
+                  setContextMenu(null);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5 p-1 min-w-[160px]">
+              <ContextMenuItem 
+                label={t('server.add', 'Add Server')} 
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => {
+                  handleAddServer();
+                  setContextMenu(null);
+                }}
+              />
+            </div>
+          )}
+        </ContextMenu>
       )}
     </div>
   );

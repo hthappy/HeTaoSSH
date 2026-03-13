@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, FileType, Lock, Clock, Server } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -15,10 +15,18 @@ interface StatusBarProps {
 interface SystemUsage {
   cpu_usage: number;
   memory_usage: number;
+  memory_total: number;
+  memory_used: number;
+  memory_available: number;
   network_rx: number;
   network_tx: number;
+  uptime: number;
+  load_average: number[];
   disk_usage: Array<{
     mount_point: string;
+    total: number;
+    used: number;
+    available: number;
     usage_percent: number;
   }>;
 }
@@ -29,6 +37,19 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  return `${formatBytes(bytesPerSec)}/s`;
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 const ProgressBar = ({ value, colorClass }: { value: number, colorClass: string }) => (
@@ -62,13 +83,31 @@ export function StatusBar({
   };
 
   const [usage, setUsage] = useState<SystemUsage | null>(null);
+  const [networkSpeed, setNetworkSpeed] = useState<{ rx: number; tx: number }>({ rx: 0, tx: 0 });
   const [usageError, setUsageError] = useState<string | null>(null);
   const [monitorHover, setMonitorHover] = useState(false);
+  const lastUsageRef = useRef<{ usage: SystemUsage; time: number } | null>(null);
 
   const fetchUsage = useCallback(async () => {
     if (!tabId || !isConnected) return;
     try {
       const data = await invoke<SystemUsage>('get_system_usage', { tabId });
+      const now = Date.now();
+
+      if (lastUsageRef.current) {
+        // Calculate speed based on diff from last fetch
+        const timeDiff = (now - lastUsageRef.current.time) / 1000;
+        if (timeDiff > 0) {
+          const rxDiff = Math.max(0, data.network_rx - lastUsageRef.current.usage.network_rx);
+          const txDiff = Math.max(0, data.network_tx - lastUsageRef.current.usage.network_tx);
+          setNetworkSpeed({
+            rx: rxDiff / timeDiff,
+            tx: txDiff / timeDiff
+          });
+        }
+      }
+
+      lastUsageRef.current = { usage: data, time: now };
       setUsage(data);
       setUsageError(null);
     } catch (e) {
@@ -80,10 +119,12 @@ export function StatusBar({
     if (!tabId || !isConnected) {
       setUsage(null);
       setUsageError(null);
+      lastUsageRef.current = null;
+      setNetworkSpeed({ rx: 0, tx: 0 });
       return;
     }
     fetchUsage();
-    const interval = window.setInterval(fetchUsage, 5000);
+    const interval = window.setInterval(fetchUsage, 2000);
     return () => window.clearInterval(interval);
   }, [fetchUsage, isConnected, tabId]);
 
@@ -207,6 +248,24 @@ export function StatusBar({
                   <div className="text-term-brightBlack text-xs py-2">{usageError ? t('status.fetch_failed', { error: usageError }) : t('status.loading')}</div>
                 ) : (
                   <div className="space-y-4">
+                    {/* System Info */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
+                        <div className="flex items-center gap-1.5 text-term-brightBlack mb-1">
+                          <Clock className="w-3 h-3" />
+                          <span className="text-[10px]">{t('status.uptime')}</span>
+                        </div>
+                        <div className="font-mono text-xs text-term-fg">{formatUptime(usage.uptime)}</div>
+                      </div>
+                      <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
+                        <div className="flex items-center gap-1.5 text-term-brightBlack mb-1">
+                          <Activity className="w-3 h-3" />
+                          <span className="text-[10px]">{t('status.load_average')}</span>
+                        </div>
+                        <div className="font-mono text-xs text-term-fg">{usage.load_average.map(l => l.toFixed(2)).join(' ')}</div>
+                      </div>
+                    </div>
+
                     {/* CPU & Memory Cards */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-term-selection/10 rounded-md p-2.5 border border-term-selection/20">
@@ -228,6 +287,9 @@ export function StatusBar({
                         <div className="flex items-end justify-between mb-1.5">
                           <span className="text-lg font-mono font-medium text-term-fg leading-none">{usage.memory_usage.toFixed(0)}<span className="text-xs text-term-fg/50">%</span></span>
                         </div>
+                        <div className="text-[10px] text-term-fg/50 mb-1 flex justify-between">
+                          <span>{formatBytes(usage.memory_used)} / {formatBytes(usage.memory_total)}</span>
+                        </div>
                         <ProgressBar value={usage.memory_usage} colorClass="bg-term-green" />
                       </div>
                     </div>
@@ -240,12 +302,18 @@ export function StatusBar({
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-term-fg/50">Download</span>
-                          <span className="font-mono text-xs text-term-fg">↓ {formatBytes(usage.network_rx)}</span>
+                          <span className="text-[10px] text-term-fg/50">{t('status.download')}</span>
+                          <div className="flex flex-col">
+                            <span className="font-mono text-xs text-term-fg font-medium">{formatSpeed(networkSpeed.rx)}</span>
+                            <span className="font-mono text-[10px] text-term-fg/60 opacity-70">Total: {formatBytes(usage.network_rx)}</span>
+                          </div>
                         </div>
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[10px] text-term-fg/50">Upload</span>
-                          <span className="font-mono text-xs text-term-fg">↑ {formatBytes(usage.network_tx)}</span>
+                          <span className="text-[10px] text-term-fg/50">{t('status.upload')}</span>
+                          <div className="flex flex-col">
+                            <span className="font-mono text-xs text-term-fg font-medium">{formatSpeed(networkSpeed.tx)}</span>
+                            <span className="font-mono text-[10px] text-term-fg/60 opacity-70">Total: {formatBytes(usage.network_tx)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>

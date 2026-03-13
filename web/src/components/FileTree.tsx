@@ -1,9 +1,13 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2, Download, Trash2, Copy, RefreshCcw, Eye, EyeOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { save, open } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from 'react-i18next';
 import type { SftpEntry } from '@/types/sftp';
 import { cn } from '@/lib/utils';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
+import { useToast } from '@/components/Toast';
 
 // Helper to get file icon color based on extension
 const getFileIconColor = (filename: string) => {
@@ -38,13 +42,35 @@ interface FileTreeNodeProps {
   path: string;
   depth: number;
   tabId: string;
+  showHidden: boolean;
   onFileSelect?: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, entry: SftpEntry, path: string) => void;
 }
 
-function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeProps) {
+function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onContextMenu }: FileTreeNodeProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [children, setChildren] = useState<SftpEntry[] | null>(null);
+
+  // Listen for terminal enter key events to refresh children if expanded
+  useEffect(() => {
+    if (!isExpanded || !entry.is_dir) return;
+
+    const handleTerminalEnter = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tabId: string }>;
+      if (customEvent.detail?.tabId === tabId) {
+        // Refresh children silently (no loading state to avoid flicker)
+        invoke<SftpEntry[]>('sftp_list_dir', { tabId, path })
+          .then(setChildren)
+          .catch(console.error);
+      }
+    };
+
+    window.addEventListener('ssh-terminal-enter', handleTerminalEnter);
+    return () => {
+      window.removeEventListener('ssh-terminal-enter', handleTerminalEnter);
+    };
+  }, [tabId, path, isExpanded, entry.is_dir]);
 
   const handleToggle = async () => {
     if (entry.is_dir) {
@@ -52,7 +78,7 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
         setIsLoading(true);
         try {
           const entries = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path });
-          setChildren(entries.filter(e => !e.filename.startsWith('.')));
+          setChildren(entries);
         } catch (error) {
           console.error('Failed to list directory:', error);
         } finally {
@@ -74,6 +100,7 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
         )}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleToggle}
+        onContextMenu={(e) => onContextMenu(e, entry, path)}
       >
         {entry.is_dir ? (
           <>
@@ -105,14 +132,18 @@ function FileTreeNode({ entry, path, depth, tabId, onFileSelect }: FileTreeNodeP
       </div>
       {isExpanded && children && (
         <div>
-          {children.map((child, index) => (
+          {children
+            .filter(child => showHidden || !child.filename.startsWith('.'))
+            .map((child, index) => (
             <FileTreeNode
               key={`${path}/${child.filename}-${index}`}
               entry={child}
               path={`${path}/${child.filename}`}
               depth={depth + 1}
               tabId={tabId}
+              showHidden={showHidden}
               onFileSelect={onFileSelect}
+              onContextMenu={onContextMenu}
             />
           ))}
         </div>
@@ -130,11 +161,14 @@ function formatSize(bytes: number): string {
 
 export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const [entries, setEntries] = useState<SftpEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState('/');
   const [pathInput, setPathInput] = useState('');
+  const [showHidden, setShowHidden] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const normalizePath = useCallback((p: string) => {
     let s = p.trim();
@@ -150,7 +184,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     setError(null);
     try {
       const result = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: normalizePath(dirPath) });
-      setEntries(result.filter(e => !e.filename.startsWith('.')));
+      setEntries(result);
       const normalized = normalizePath(dirPath);
       setCurrentPath(normalized);
       setPathInput('');
@@ -175,12 +209,151 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     init();
   }, [tabId, loadDir]);
 
+  // Listen for terminal enter key events to refresh file list
+  useEffect(() => {
+    const handleTerminalEnter = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tabId: string }>;
+      if (customEvent.detail?.tabId === tabId) {
+        // Refresh current directory to reflect potential changes (rm, touch, mkdir, etc.)
+        loadDir(currentPath);
+      }
+    };
+
+    window.addEventListener('ssh-terminal-enter', handleTerminalEnter);
+    return () => {
+      window.removeEventListener('ssh-terminal-enter', handleTerminalEnter);
+    };
+  }, [tabId, currentPath, loadDir]);
+
   // Autocomplete state
   const [acOpen, setAcOpen] = useState(false);
   const [acLoading, setAcLoading] = useState(false);
   const [acItems, setAcItems] = useState<SftpEntry[]>([]);
   const [acActiveIndex, setAcActiveIndex] = useState(0);
   const acRequestSeq = useRef(0);
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    path?: string;
+    entry?: SftpEntry;
+  } | null>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, entry: SftpEntry, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      path,
+      entry
+    });
+  }, []);
+
+  const handleCopyPath = async () => {
+    if (!contextMenu?.path) return;
+    try {
+      await navigator.clipboard.writeText(contextMenu.path);
+      showToast(t('common.copied_to_clipboard', 'Copied to clipboard'), 'success');
+    } catch (err) {
+      console.error('Failed to copy path:', err);
+    }
+    setContextMenu(null);
+  };
+
+  const handleDownload = async () => {
+    if (!contextMenu || !contextMenu.entry || !contextMenu.path) return;
+
+    if (contextMenu.entry.is_dir) {
+      try {
+        const dirName = contextMenu.entry.filename;
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: t('file.select_download_folder', 'Select download destination'),
+        });
+
+        if (selected) {
+          const destDir = Array.isArray(selected) ? selected[0] : selected;
+          if (!destDir) return;
+
+          // Simple path join (backend handles normalization usually, but we need to append dir name)
+          // We try to detect separator from destDir
+          const separator = destDir.includes('\\') ? '\\' : '/';
+          // Avoid double separator
+          const cleanDest = destDir.endsWith(separator) ? destDir.slice(0, -1) : destDir;
+          const localPath = `${cleanDest}${separator}${dirName}`;
+
+          showToast(t('file.download_started', 'Download started...'), 'info');
+          setContextMenu(null);
+
+          await invoke('sftp_download_dir', {
+            tabId,
+            remotePath: contextMenu.path,
+            localPath,
+          });
+          showToast(t('file.download_success', 'Directory downloaded successfully'), 'success');
+        }
+      } catch (error) {
+        console.error('Failed to download directory:', error);
+        showToast(t('file.download_failed', 'Failed to download directory'), 'error');
+      }
+      return;
+    }
+    
+    try {
+      const fileName = contextMenu.entry.filename;
+      
+      // Use save dialog to let user choose filename and location
+      const localPath = await save({
+        defaultPath: fileName,
+        title: t('file.download_save_as', 'Save file as'),
+      });
+      
+      if (localPath) {
+        showToast(t('file.download_started', 'Download started...'), 'info');
+        setContextMenu(null);
+        await invoke('sftp_download_file', {
+          tabId,
+          remotePath: contextMenu.path,
+          localPath
+        });
+        showToast(t('file.download_success', 'File downloaded successfully'), 'success');
+      }
+    } catch (error: any) {
+      const errorMsg = error.toString();
+      if (errorMsg.includes('Cannot download a directory')) {
+        showToast(t('file.download_dir_error', 'Cannot download a directory (or symlink to one)'), 'error');
+        // Expected error for directories, log as info
+        console.info('Skipped directory download:', contextMenu.path);
+      } else {
+        console.error('Failed to download file:', error);
+        showToast(t('file.download_failed', 'Failed to download file'), 'error');
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handleDelete = async () => {
+    if (!contextMenu) return;
+    
+    try {
+      await invoke('sftp_remove_file', { tabId, path: contextMenu.path });
+      showToast(t('file.delete_success', 'File deleted successfully'), 'success');
+      // Refresh parent directory
+      // We need to know parent path.
+      // contextMenu.path is full path.
+      if (contextMenu.path) {
+        const parentPath = contextMenu.path.substring(0, contextMenu.path.lastIndexOf('/')) || '/';
+        loadDir(parentPath);
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      showToast(t('file.delete_failed', 'Failed to delete file'), 'error');
+    }
+    setContextMenu(null);
+  };
 
   const getParentAndPrefix = useCallback((raw: string) => {
     const s = normalizePath(raw);
@@ -275,10 +448,174 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     }
   }, [acOpen, acItems, acActiveIndex, applySuggestion, loadDir, pathInput]);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!tabId) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      // @ts-ignore
+      const localPath = file.path;
+      
+      if (!localPath) {
+        showToast(t('file.upload_failed_no_path'), 'error');
+        continue;
+      }
+
+      const remotePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      
+      try {
+        showToast(t('file.uploading', { name: file.name }), 'info');
+        await invoke('sftp_upload_file', {
+          tabId,
+          localPath,
+          remotePath
+        });
+        showToast(t('file.upload_success', { name: file.name }), 'success');
+      } catch (error) {
+        console.error('Upload failed:', error);
+        showToast(t('file.upload_failed', { name: file.name, error: `${error}` }), 'error');
+      }
+    }
+    
+    loadDir(currentPath);
+  }, [tabId, currentPath, t, showToast, loadDir]);
+
+  // Listen for Tauri global drag-drop event (fallback for missing file paths)
+  useEffect(() => {
+    if (!tabId) return;
+
+    const unlisten = listen('tauri://drag-drop', (event) => {
+      const payload = event.payload as { paths: string[]; position: { x: number; y: number } };
+      
+      if (!containerRef.current) return;
+      
+      const rect = containerRef.current.getBoundingClientRect();
+      // Adjust for device pixel ratio (OS scaling)
+      const scale = window.devicePixelRatio || 1;
+      const x = payload.position.x / scale;
+      const y = payload.position.y / scale;
+      
+      // Check if drop is within this component
+      if (
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      ) {
+        // Handle files
+        const files = payload.paths;
+        if (!files || files.length === 0) return;
+
+        files.forEach(async (localPath) => {
+          // Normalize path separators to forward slash for consistency if needed, 
+          // but backend handles local path as is usually.
+          // Extract filename safely
+          const fileName = localPath.split(/[\\/]/).pop() || 'unknown';
+          const remotePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
+          
+          try {
+            showToast(t('file.uploading', { name: fileName }), 'info');
+            await invoke('sftp_upload_file', {
+              tabId,
+              localPath,
+              remotePath
+            });
+            showToast(t('file.upload_success', { name: fileName }), 'success');
+          } catch (error) {
+            console.error('Upload failed:', error);
+            showToast(t('file.upload_failed', { name: fileName, error: `${error}` }), 'error');
+          }
+        });
+        
+        // Refresh directory after short delay
+        setTimeout(() => loadDir(currentPath), 1000);
+      }
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
+  }, [tabId, currentPath, t, showToast, loadDir]);
+
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden">
+    <div 
+      ref={containerRef}
+      className="h-full w-full flex flex-col overflow-hidden"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY
+        });
+      }}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        >
+          {contextMenu.entry && contextMenu.path ? (
+            <div className="flex flex-col gap-0.5 p-1">
+              <ContextMenuItem 
+                label={t('file.copy_path', 'Copy Path')} 
+                icon={<Copy className="w-4 h-4" />}
+                onClick={handleCopyPath}
+              />
+              <ContextMenuSeparator />
+              <ContextMenuItem 
+                label={t('file.download', 'Download')} 
+                icon={<Download className="w-4 h-4" />}
+                onClick={() => {
+                  handleDownload();
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem 
+                label={t('file.delete', 'Delete')} 
+                icon={<Trash2 className="w-4 h-4" />}
+                danger
+                onClick={handleDelete}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5 p-1">
+              <ContextMenuItem 
+                label={t('file.refresh')} 
+                icon={<RefreshCcw className="w-4 h-4" />}
+                onClick={() => {
+                  loadDir(currentPath);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem 
+                label={showHidden ? t('file.hide_hidden') : t('file.show_hidden')} 
+                icon={showHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                onClick={() => {
+                  setShowHidden(!showHidden);
+                  setContextMenu(null);
+                }}
+              />
+            </div>
+          )}
+        </ContextMenu>
+      )}
+
       {/* 路径导航输入框 */}
-      <div className="px-2 py-1.5 border-b border-term-selection flex-shrink-0 relative">
+      <div className="px-2 py-1.5 border-b border-term-selection flex-shrink-0 relative flex items-center gap-2">
         <input
           type="text"
           value={pathInput}
@@ -287,8 +624,15 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           onFocus={() => acItems.length > 0 && setAcOpen(true)}
           onBlur={() => window.setTimeout(() => setAcOpen(false), 120)}
           placeholder={t('file_tree.path_placeholder')}
-          className="w-full bg-term-selection/50 text-term-fg text-xs px-2 py-1 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg/40"
+          className="flex-1 bg-term-selection/50 text-term-fg text-xs px-2 py-1 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg/40"
         />
+        <button
+          onClick={() => loadDir(currentPath)}
+          className="p-1 hover:bg-term-selection rounded text-term-fg/60 hover:text-term-fg transition-colors flex-shrink-0"
+          title={t('file.refresh', 'Refresh')}
+        >
+          <RefreshCcw className="w-3.5 h-3.5" />
+        </button>
         {acOpen && (acLoading || acItems.length > 0) && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-term-bg border border-term-selection rounded shadow-xl max-h-60 overflow-auto z-10">
             {acItems.map((item, index) => (
@@ -352,14 +696,18 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           <div className="p-4 text-term-fg/40 text-sm">{t('file_tree.connecting')}</div>
         ) : (
           <div className="py-1">
-            {entries.map((entry, index) => (
+            {entries
+              .filter(entry => showHidden || !entry.filename.startsWith('.'))
+              .map((entry, index) => (
               <FileTreeNode
                 key={`${entry.filename}-${index}`}
                 entry={entry}
                 path={currentPath === '/' ? `/${entry.filename}` : `${currentPath}/${entry.filename}`}
                 depth={0}
                 tabId={tabId}
+                showHidden={showHidden}
                 onFileSelect={onFileSelect}
+                onContextMenu={handleContextMenu}
               />
             ))}
           </div>

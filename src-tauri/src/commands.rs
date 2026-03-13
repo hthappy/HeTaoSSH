@@ -146,8 +146,17 @@ pub async fn sftp_write_file(
 }
 
 #[tauri::command]
-pub async fn sftp_remove_file(_tab_id: String, _path: String) -> Result<()> {
-    Err(crate::error::SshError::Channel("Not implemented".to_string()))
+pub async fn sftp_remove_file(
+    tab_id: String,
+    path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<()> {
+    if contains_traversal_pattern(&path) {
+        return Err(SshError::Config(
+            "Path traversal detected: suspicious pattern in path".into()
+        ));
+    }
+    state.sftp_remove_file(&tab_id, &path).await
 }
 
 #[tauri::command]
@@ -159,8 +168,59 @@ pub async fn sftp_get_home_dir(
 }
 
 #[tauri::command]
-pub async fn sftp_create_dir(_tab_id: String, _path: String) -> Result<()> {
-    Err(crate::error::SshError::Channel("Not implemented".to_string()))
+pub async fn sftp_create_dir(
+    tab_id: String,
+    path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<()> {
+    if contains_traversal_pattern(&path) {
+        return Err(SshError::Config(
+            "Path traversal detected: suspicious pattern in path".into()
+        ));
+    }
+    state.sftp_create_dir(&tab_id, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_download_file(
+    tab_id: String,
+    remote_path: String,
+    local_path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<()> {
+    if contains_traversal_pattern(&remote_path) {
+        return Err(SshError::Config(
+            "Path traversal detected: suspicious pattern in path".into()
+        ));
+    }
+    state.sftp_download_file(&tab_id, &remote_path, &local_path).await
+}
+
+#[tauri::command]
+pub async fn sftp_download_dir(
+    tab_id: String,
+    remote_path: String,
+    local_path: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    state
+        .sftp_download_dir(&tab_id, &remote_path, &local_path)
+        .await
+}
+
+#[tauri::command]
+pub async fn sftp_upload_file(
+    tab_id: String,
+    local_path: String,
+    remote_path: String,
+    state: State<'_, Arc<ConnectionManager>>
+) -> Result<()> {
+    if contains_traversal_pattern(&remote_path) {
+        return Err(SshError::Config(
+            "Path traversal detected: suspicious pattern in path".into()
+        ));
+    }
+    state.sftp_upload_file(&tab_id, &local_path, &remote_path).await
 }
 
 // 远程系统监控
