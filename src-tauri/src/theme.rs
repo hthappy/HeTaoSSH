@@ -56,6 +56,7 @@ struct ITermColor {
     #[serde(rename = "Blue Component")]
     blue: f64,
     #[serde(rename = "Alpha Component")]
+    #[allow(dead_code)]
     alpha: Option<f64>,
 }
 

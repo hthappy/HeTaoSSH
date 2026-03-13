@@ -29,6 +29,8 @@ async fn main() -> Result<()> {
     let local_term_manager = Arc::new(LocalTerminalManager::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

@@ -26,6 +26,15 @@ export default {
     optional: '(Optional)',
     new_local_terminal: 'New Local Terminal',
   },
+  update: {
+    title: 'Update Available',
+    available_msg: 'A new version {{version}} is available!\n\nRelease notes:\n{{body}}',
+    update_now: 'Update Now',
+    cancel: 'Later',
+    checking: 'Checking for updates...',
+    uptodate: 'You are using the latest version.',
+    error: 'Failed to check for updates: {{error}}'
+  },
   server: {
     add: 'Add Server',
     edit: 'Edit Server',

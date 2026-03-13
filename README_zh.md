@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Modern SSH Client built with Tauri 2.0**
+**基于 Tauri 2.0 构建的现代化 SSH 客户端**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
@@ -10,31 +10,31 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-![HeTaoSSH Preview](docs/preview.png)
+![HeTaoSSH 预览](docs/preview.png)
 
 </div>
 
-## ✨ Features
+## ✨ 功能特性
 
-- 🔐 **Secure Connection Management** - AES-256 encrypted storage for passwords and keys
-- 🖥️ **Multi-tab Terminal** - Manage multiple SSH sessions simultaneously
-- ⚡ **High-Performance Terminal** - xterm.js with WebGL acceleration
-- 💻 **Local Terminal** - Integrated local shell support (PowerShell/Bash)
-- 📁 **Remote File Browser** - SFTP file management with drag-and-drop upload
-- 📝 **Code Editor** - Monaco Editor (VS Code kernel) with syntax highlighting
-- 📊 **System Monitoring** - Real-time CPU, Memory, Disk, and Network monitoring
-- 🎯 **Command Snippets** - Quick execution of common commands
-- 🔄 **Auto Update** - Seamless updates via GitHub Releases
-- 🎨 **Theming** - Customizable themes and appearance
+- 🔐 **安全连接管理** - 采用 AES-256 加密存储密码和密钥
+- 🖥️ **多标签终端** - 同时管理多个 SSH 会话
+- ⚡ **高性能终端** - 基于 xterm.js 和 WebGL 加速
+- 💻 **本地终端** - 集成本地 Shell 支持 (PowerShell/Bash)
+- 📁 **远程文件管理** - 支持 SFTP 文件管理与拖拽上传
+- 📝 **代码编辑器** - 内置 Monaco Editor (VS Code 内核)，支持语法高亮
+- 📊 **系统监控** - 实时监控 CPU、内存、磁盘和网络状态
+- 🎯 **命令片段** - 常用命令的快速保存与执行
+- 🔄 **自动更新** - 通过 GitHub Releases 实现无缝自动更新
+- 🎨 **主题系统** - 支持自定义主题和外观
 
-## 🏗️ Architecture
+## 🏗️ 架构设计
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Frontend                             │
+│                            前端                              │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │  Server  │  │ Terminal │  │   File   │  │  System  │   │
-│  │   List   │  │  (xterm) │  │  Browser │  │  Monitor │   │
+│  │  服务器  │  │   终端   │  │   文件   │  │   系统   │   │
+│  │   列表   │  │  (xterm) │  │   管理   │  │   监控   │   │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
 │            React + TypeScript + Tailwind CSS               │
 └─────────────────────────────────────────────────────────────┘
@@ -42,65 +42,65 @@
                     Tauri IPC Bridge
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                          Backend                             │
+│                            后端                              │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │   SSH    │  │   SFTP   │  │  SQLite  │  │  Crypto  │   │
+│  │   SSH    │  │   SFTP   │  │  SQLite  │  │  加密    │   │
 │  │ (russh)  │  │          │  │  (sqlx)  │  │(AES-256) │   │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
 │                      Rust + Tokio                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 环境要求
 
 - [Rust](https://www.rust-lang.org/tools/install) (1.75+)
 - [Node.js](https://nodejs.org/) (18+)
 - [pnpm](https://pnpm.io/installation)
 
-### Installation
+### 安装步骤
 
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/hthappy/HeTaoSSH.git
 cd HeTaoSSH
 
-# Install dependencies
+# 安装依赖
 pnpm install
 
-# Start development server
+# 启动开发服务器
 pnpm tauri dev
 
-# Build for production
+# 构建生产版本
 pnpm tauri build
 ```
 
-## 📦 Release & Update
+## 📦 发布与更新
 
-We use GitHub Actions for automated releases.
+我们使用 GitHub Actions 进行自动发布。
 
 ```bash
-# Create a new release (updates version, tags, and pushes)
+# 创建新版本 (自动更新版本号、打标签并推送)
 pnpm release:push
 ```
 
-## 📖 Documentation
+## 📖 文档
 
-- [User Guide](docs/USER_GUIDE.md) - How to use HeTaoSSH
-- [API Documentation](docs/API.md) - Tauri commands and data structures
-- [Development Guidelines](AGENTS.md) - Code style and build commands
+- [用户指南](docs/USER_GUIDE.md) - 如何使用 HeTaoSSH
+- [API 文档](docs/API.md) - Tauri 命令和数据结构
+- [开发指南](AGENTS.md) - 代码规范和构建命令
 
-## 🤝 Contributing
+## 🤝 贡献指南
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+欢迎提交 Pull Request 来改进本项目！
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
 
-## 📄 License
+## 📄 开源协议
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+本项目基于 MIT 协议开源 - 详见 [LICENSE](LICENSE) 文件。

@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 export function FileExplorer() {
   const { t } = useTranslation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen] = useState(true);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   const { activeTabId } = useSshStore();

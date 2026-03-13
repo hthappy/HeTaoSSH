@@ -11,6 +11,9 @@ import { useSshStore } from '@/stores/ssh-store';
 import { Terminal, X, FileCode2, Plus } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { check } from '@tauri-apps/plugin-updater';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
 import { ToastProvider } from '@/components/Toast';
 import { useTranslation } from 'react-i18next';
@@ -42,6 +45,34 @@ function App() {
   const [previewTheme, setPreviewTheme] = useState<ThemeSchema | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const serverListRef = useRef<ServerListHandle>(null);
+  
+  // Check for updates on startup
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        const update = await check();
+        if (update?.available) {
+          const yes = await ask(
+            t('update.available_msg', { version: update.version, body: update.body }),
+            { 
+              title: t('update.title'), 
+              kind: 'info', 
+              okLabel: t('update.update_now'), 
+              cancelLabel: t('update.cancel') 
+            }
+          );
+          if (yes) {
+            await update.downloadAndInstall();
+            await relaunch();
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check for updates:', error);
+      }
+    };
+
+    checkForUpdates();
+  }, [t]);
   
   // Check window maximized state for border removal
   useEffect(() => {

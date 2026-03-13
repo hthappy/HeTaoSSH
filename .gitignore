@@ -1,4 +1,41 @@
+# Node / Frontend
 node_modules
-target
+dist
+build
 .env
 .env.local
+*.log
+pnpm-debug.log*
+npm-debug.log*
+yarn-error.log*
+
+# Rust / Tauri
+src-tauri/target/
+target/
+src-tauri/gen/
+**/*.rs.bk
+
+# Database (Sensitive Data)
+src-tauri/HetaoSSH/hetaossh.db
+src-tauri/HetaoSSH/hetaossh.db-shm
+src-tauri/HetaoSSH/hetaossh.db-wal
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agent / Temporary
+.sisyphus/
+check_output.txt
+output.txt
+output_utf8.txt
+test_output.log

@@ -26,6 +26,15 @@ export default {
     optional: '（可选）',
     new_local_terminal: '新建本地终端',
   },
+  update: {
+    title: '发现新版本',
+    available_msg: '发现新版本 {{version}}！\n\n更新内容：\n{{body}}',
+    update_now: '立即更新',
+    cancel: '稍后',
+    checking: '正在检查更新...',
+    uptodate: '当前已是最新版本',
+    error: '检查更新失败：{{error}}'
+  },
   server: {
     add: '添加服务器',
     edit: '编辑服务器',
