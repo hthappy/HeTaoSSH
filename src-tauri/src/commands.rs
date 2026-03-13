@@ -7,7 +7,7 @@ use crate::local_term::LocalTerminalManager;
 use crate::security::contains_traversal_pattern;
 use crate::theme::{self, ThemeSchema};
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Manager};
 
 #[tauri::command]
 pub fn parse_theme(content: String) -> Result<ThemeSchema> {
@@ -201,11 +201,63 @@ pub async fn sftp_download_dir(
     tab_id: String,
     remote_path: String,
     local_path: String,
-    state: State<'_, Arc<ConnectionManager>>,
+    state: State<'_, Arc<ConnectionManager>>
 ) -> Result<()> {
-    state
-        .sftp_download_dir(&tab_id, &remote_path, &local_path)
-        .await
+    if contains_traversal_pattern(&remote_path) {
+        return Err(SshError::Config(
+            "Path traversal detected: suspicious pattern in path".into()
+        ));
+    }
+    state.sftp_download_dir(&tab_id, &remote_path, &local_path).await
+}
+
+// Local File Operations
+#[tauri::command]
+pub fn local_get_home_dir(app_handle: AppHandle) -> Result<String> {
+    app_handle.path().home_dir()
+        .map(|p| p.to_string_lossy().replace("\\", "/"))
+        .map_err(|e| SshError::Config(format!("Failed to get home dir: {}", e)))
+}
+
+#[tauri::command]
+pub async fn local_list_dir(path: String) -> Result<Vec<crate::ssh::SftpEntry>> {
+    let path = std::path::Path::new(&path);
+    let mut entries = Vec::new();
+    
+    if path.is_dir() {
+        let read_dir = std::fs::read_dir(path).map_err(|e| SshError::Io(e))?;
+        for entry in read_dir {
+            let entry = entry.map_err(|e| SshError::Io(e))?;
+            let metadata = entry.metadata().map_err(|e| SshError::Io(e))?;
+            let filename = entry.file_name().to_string_lossy().to_string();
+            
+            // Skip . and ..
+            if filename == "." || filename == ".." {
+                continue;
+            }
+            
+            entries.push(crate::ssh::SftpEntry {
+                filename: filename.clone(),
+                longname: filename, // Simplified for local files
+                is_dir: metadata.is_dir(),
+                is_file: metadata.is_file(),
+                size: metadata.len(),
+            });
+        }
+    }
+    
+    // Sort directories first, then files (case-insensitive)
+    entries.sort_by(|a, b| {
+        if a.is_dir && !b.is_dir {
+            std::cmp::Ordering::Less
+        } else if !a.is_dir && b.is_dir {
+            std::cmp::Ordering::Greater
+        } else {
+            a.filename.to_lowercase().cmp(&b.filename.to_lowercase())
+        }
+    });
+    
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -228,8 +280,19 @@ pub async fn sftp_upload_file(
 pub async fn get_system_usage(
     tab_id: String,
     state: State<'_, Arc<ConnectionManager>>,
+    local_monitor: State<'_, Arc<monitor::LocalMonitor>>,
 ) -> Result<monitor::SystemUsage> {
-    state.get_remote_system_usage(&tab_id).await
+    if tab_id.starts_with("local-") {
+        let monitor = local_monitor.inner().clone();
+        // Run in blocking task because sysinfo refresh might be slow
+        let usage = tokio::task::spawn_blocking(move || {
+            monitor.get_usage()
+        }).await.map_err(|e| SshError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        
+        Ok(usage)
+    } else {
+        state.get_remote_system_usage(&tab_id).await
+    }
 }
 
 // Command snippets

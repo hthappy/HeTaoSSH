@@ -51,6 +51,7 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [children, setChildren] = useState<SftpEntry[] | null>(null);
+  const isLocal = tabId.startsWith('local-');
 
   // Listen for terminal enter key events to refresh children if expanded
   useEffect(() => {
@@ -60,7 +61,9 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
       const customEvent = e as CustomEvent<{ tabId: string }>;
       if (customEvent.detail?.tabId === tabId) {
         // Refresh children silently (no loading state to avoid flicker)
-        invoke<SftpEntry[]>('sftp_list_dir', { tabId, path })
+        const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
+        const args = isLocal ? { path } : { tabId, path };
+        invoke<SftpEntry[]>(cmd, args)
           .then(setChildren)
           .catch(console.error);
       }
@@ -70,14 +73,16 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
     return () => {
       window.removeEventListener('ssh-terminal-enter', handleTerminalEnter);
     };
-  }, [tabId, path, isExpanded, entry.is_dir]);
+  }, [tabId, path, isExpanded, entry.is_dir, isLocal]);
 
   const handleToggle = async () => {
     if (entry.is_dir) {
       if (!isExpanded && !children) {
         setIsLoading(true);
         try {
-          const entries = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path });
+          const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
+          const args = isLocal ? { path } : { tabId, path };
+          const entries = await invoke<SftpEntry[]>(cmd, args);
           setChildren(entries);
         } catch (error) {
           console.error('Failed to list directory:', error);
@@ -169,11 +174,16 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const [pathInput, setPathInput] = useState('');
   const [showHidden, setShowHidden] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  const isLocal = tabId.startsWith('local-');
 
   const normalizePath = useCallback((p: string) => {
     let s = p.trim();
     if (!s) return '/';
-    if (!s.startsWith('/')) s = `/${s}`;
+    // Support Windows drive letters (C:/...) for local terminal
+    const isWindowsPath = /^[a-zA-Z]:/.test(s);
+    if (!isWindowsPath && !s.startsWith('/')) s = `/${s}`;
+    
     s = s.replace(/\/{2,}/g, '/');
     if (s.length > 1 && s.endsWith('/')) s = s.replace(/\/+$/g, '/');
     return s;
@@ -183,9 +193,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: normalizePath(dirPath) });
-      setEntries(result);
       const normalized = normalizePath(dirPath);
+      const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
+      const args = isLocal ? { path: normalized } : { tabId, path: normalized };
+      const result = await invoke<SftpEntry[]>(cmd, args);
+      setEntries(result);
       setCurrentPath(normalized);
       setPathInput('');
     } catch (err) {
@@ -193,13 +205,15 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [tabId, normalizePath, t]);
+  }, [tabId, normalizePath, t, isLocal]);
 
   // 自动加载用户主目录
   useEffect(() => {
     const init = async () => {
       try {
-        const home = await invoke<string>('sftp_get_home_dir', { tabId });
+        const cmd = isLocal ? 'local_get_home_dir' : 'sftp_get_home_dir';
+        const args = isLocal ? {} : { tabId };
+        const home = await invoke<string>(cmd, args);
         loadDir(home || '/');
       } catch (error) {
         console.warn('Failed to get home dir, falling back to root:', error);
@@ -207,7 +221,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       }
     };
     init();
-  }, [tabId, loadDir]);
+  }, [tabId, loadDir, isLocal]);
 
   // Listen for terminal enter key events to refresh file list
   useEffect(() => {
@@ -371,7 +385,9 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     const seq = ++acRequestSeq.current;
     setAcLoading(true);
     try {
-      const list = await invoke<SftpEntry[]>('sftp_list_dir', { tabId, path: parent });
+      const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
+      const args = isLocal ? { path: parent } : { tabId, path: parent };
+      const list = await invoke<SftpEntry[]>(cmd, args);
       if (seq !== acRequestSeq.current) return;
       const filtered = list
         .filter((e) => (prefix ? e.filename.toLowerCase().startsWith(prefix.toLowerCase()) : true))
@@ -386,7 +402,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     } finally {
       if (seq === acRequestSeq.current) setAcLoading(false);
     }
-  }, [getParentAndPrefix, tabId]);
+  }, [getParentAndPrefix, tabId, isLocal]);
 
   useEffect(() => {
     if (!tabId) return;
@@ -458,6 +474,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     e.stopPropagation();
 
     if (!tabId) return;
+    if (isLocal) return;
 
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
@@ -575,21 +592,25 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                 icon={<Copy className="w-4 h-4" />}
                 onClick={handleCopyPath}
               />
-              <ContextMenuSeparator />
-              <ContextMenuItem 
-                label={t('file.download', 'Download')} 
-                icon={<Download className="w-4 h-4" />}
-                onClick={() => {
-                  handleDownload();
-                  setContextMenu(null);
-                }}
-              />
-              <ContextMenuItem 
-                label={t('file.delete', 'Delete')} 
-                icon={<Trash2 className="w-4 h-4" />}
-                danger
-                onClick={handleDelete}
-              />
+              {!isLocal && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem 
+                    label={t('file.download', 'Download')} 
+                    icon={<Download className="w-4 h-4" />}
+                    onClick={() => {
+                      handleDownload();
+                      setContextMenu(null);
+                    }}
+                  />
+                  <ContextMenuItem 
+                    label={t('file.delete', 'Delete')} 
+                    icon={<Trash2 className="w-4 h-4" />}
+                    danger
+                    onClick={handleDelete}
+                  />
+                </>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-0.5 p-1">

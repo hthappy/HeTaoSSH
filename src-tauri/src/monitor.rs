@@ -1,6 +1,91 @@
 use crate::error::{Result, SshError};
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use sysinfo::{System, Disks, Networks};
+
+/// 本地系统监控器
+pub struct LocalMonitor {
+    sys: Mutex<System>,
+    disks: Mutex<Disks>,
+    networks: Mutex<Networks>,
+}
+
+impl LocalMonitor {
+    pub fn new() -> Self {
+        Self {
+            sys: Mutex::new(System::new_all()),
+            disks: Mutex::new(Disks::new_with_refreshed_list()),
+            networks: Mutex::new(Networks::new_with_refreshed_list()),
+        }
+    }
+
+    pub fn get_usage(&self) -> SystemUsage {
+        let mut sys = self.sys.lock().unwrap();
+        let mut disks = self.disks.lock().unwrap();
+        let mut networks = self.networks.lock().unwrap();
+
+        sys.refresh_all();
+        disks.refresh(true);
+        networks.refresh(true);
+
+        let cpu_usage = sys.global_cpu_usage();
+        let memory_total = sys.total_memory();
+        let memory_used = sys.used_memory();
+        let memory_available = sys.available_memory(); // or free_memory depending on sysinfo version, usually available is better
+        
+        let memory_usage = if memory_total > 0 {
+            (memory_used as f32 / memory_total as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        let uptime = System::uptime();
+        let load_avg = System::load_average();
+        let load_average = vec![load_avg.one, load_avg.five, load_avg.fifteen];
+
+        let mut disk_usage = Vec::new();
+        for disk in disks.list() {
+            let total = disk.total_space();
+            let available = disk.available_space();
+            let used = total.saturating_sub(available);
+            let usage_percent = if total > 0 {
+                (used as f32 / total as f32) * 100.0
+            } else {
+                0.0
+            };
+
+            disk_usage.push(DiskUsage {
+                mount_point: disk.mount_point().to_string_lossy().to_string(),
+                total,
+                used,
+                available,
+                usage_percent,
+            });
+        }
+
+        let mut network_rx = 0;
+        let mut network_tx = 0;
+        for (_interface_name, network) in networks.iter() {
+            network_rx += network.total_received();
+            network_tx += network.total_transmitted();
+        }
+
+        SystemUsage {
+            cpu_usage,
+            memory_usage,
+            memory_total,
+            memory_used,
+            memory_available,
+            network_rx,
+            network_tx,
+            uptime,
+            load_average,
+            disk_usage,
+        }
+    }
+}
+
 
 /// 远程系统资源使用情况
 #[derive(Debug, Clone, Serialize, Deserialize)]

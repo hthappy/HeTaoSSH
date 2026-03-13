@@ -12,7 +12,7 @@ import { Terminal, X, FileCode2, Plus } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { check } from '@tauri-apps/plugin-updater';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { ask, message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
 import { ToastProvider } from '@/components/Toast';
@@ -81,6 +81,11 @@ function App() {
         }
       } catch (error) {
         console.error('Failed to check for updates:', error);
+        // Show error to user so they know why update failed
+        await message(
+          t('update.error', { error: String(error) }), 
+          { title: t('update.title'), kind: 'error' }
+        );
       }
     };
 
@@ -252,7 +257,9 @@ function App() {
                     </div>
                     <div className="flex-1 overflow-auto">
                       <FileTree
-                        tabId={`conn-${activeConnection.serverId}`}
+                        tabId={activeConnection.isLocal 
+                          ? `local-${activeConnection.serverId}` 
+                          : `conn-${activeConnection.serverId}`}
                         onFileSelect={handleFileSelect}
                       />
                     </div>

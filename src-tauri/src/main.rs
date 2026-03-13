@@ -16,6 +16,7 @@ use error::Result;
 use log::info;
 use ssh::ConnectionManager;
 use local_term::LocalTerminalManager;
+use monitor::LocalMonitor;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -27,6 +28,7 @@ async fn main() -> Result<()> {
     let snippet_manager = Arc::new(snippets::SnippetManager::new().await?);
     let ssh_manager = Arc::new(ConnectionManager::new());
     let local_term_manager = Arc::new(LocalTerminalManager::new());
+    let local_monitor = Arc::new(LocalMonitor::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -39,6 +41,7 @@ async fn main() -> Result<()> {
         .manage(snippet_manager)
         .manage(ssh_manager)
         .manage(local_term_manager)
+        .manage(local_monitor)
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::get_version,
@@ -72,6 +75,8 @@ async fn main() -> Result<()> {
             commands::local_term_write,
             commands::local_term_resize,
             commands::local_term_close,
+            commands::local_list_dir,
+            commands::local_get_home_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
