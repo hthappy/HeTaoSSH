@@ -30,7 +30,10 @@
     "active": true,
     "targets": [
       "nsis",
-      "msi"
+      "msi",
+      "app",
+      "dmg",
+      "updater"
     ],
     "category": "DeveloperTool",
     "icon": [
