@@ -76,14 +76,6 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-## 📦 Release & Update
-
-We use GitHub Actions for automated releases.
-
-```bash
-# Create a new release (updates version, tags, and pushes)
-pnpm release:push
-```
 
 ## 📖 Documentation
 

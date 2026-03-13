@@ -76,14 +76,6 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-## 📦 发布与更新
-
-我们使用 GitHub Actions 进行自动发布。
-
-```bash
-# 创建新版本 (自动更新版本号、打标签并推送)
-pnpm release:push
-```
 
 ## 📖 文档
 
