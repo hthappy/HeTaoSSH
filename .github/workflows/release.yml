@@ -36,7 +36,11 @@ jobs:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -n "$KEY" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY=$(echo "$KEY" | tr -d '\r' | tr -d '\n')" >> $GITHUB_ENV
+            # Fix: Properly handle multi-line secrets and strip only surrounding whitespace/newlines
+            # Using heredoc to preserve the key content while assigning to env var
+            echo "TAURI_SIGNING_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+            echo "$KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
           fi
 
       - name: Build and Release
