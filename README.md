@@ -29,13 +29,21 @@
 
 ## 📸 Screenshots
 
-| Server Management | File Explorer |
-|:---:|:---:|
-| ![Server Management](docs/ServersList.png) | ![File Explorer](docs/Explorer.png) |
+### 🖥️ Server Management
+Easily manage your SSH connections. Supports organizing servers, quick connection toggles, and secure credential storage.
+![Server Management](docs/ServersList.png)
 
-| Command Snippets | Terminal Preview |
-|:---:|:---:|
-| ![Command Snippets](docs/Snippets.png) | ![Terminal Preview](docs/preview.png) |
+### 📂 File Explorer
+Full-featured SFTP client integrated directly into the interface. Browse, upload (drag & drop), download, and edit remote files effortlessly.
+![File Explorer](docs/Explorer.png)
+
+### ⚡ Command Snippets
+Store your frequently used commands and scripts. Execute them with a single click to boost your productivity.
+![Command Snippets](docs/Snippets.png)
+
+### 🎨 Modern Terminal
+A high-performance terminal experience powered by xterm.js, featuring custom themes, adjustable fonts, and multi-tab support.
+![Terminal Preview](docs/preview.png)
 
 ## 🏗️ Architecture
 

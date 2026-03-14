@@ -27,6 +27,24 @@
 - 🔄 **自动更新** - 通过 GitHub Releases 实现无缝自动更新
 - 🎨 **主题系统** - 支持自定义主题和外观
 
+## 📸 软件截图
+
+### 🖥️ 服务器管理
+轻松管理您的 SSH 连接。支持密码和密钥认证、分组管理以及快速搜索功能。
+![Server Management](docs/ServersList.png)
+
+### 📂 文件管理器
+集成的 SFTP 客户端，实现无缝文件传输。支持拖拽上传、右键下载以及直接编辑远程文件。
+![File Explorer](docs/Explorer.png)
+
+### ⚡ 命令片段
+保存常用命令和脚本以便快速访问。一键执行复杂操作，提升工作效率。
+![Command Snippets](docs/Snippets.png)
+
+### 🎨 现代化终端
+基于 xterm.js 的高性能终端体验，支持自定义主题、字体调节以及多标签页功能。
+![Terminal Preview](docs/preview.png)
+
 ## 🏗️ 架构设计
 
 ```
