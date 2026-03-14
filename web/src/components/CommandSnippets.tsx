@@ -37,6 +37,11 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
     snippet?: CommandSnippet;
   } | null>(null);
 
+  const [hoveredSnippet, setHoveredSnippet] = useState<{
+    snippet: CommandSnippet;
+    rect: DOMRect;
+  } | null>(null);
+
   const loadSnippets = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -310,6 +315,11 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                       key={snippet.id}
                       onContextMenu={(e) => handleContextMenu(e, snippet)}
                       className="group bg-term-selection/20 rounded-md px-2 py-1.5 border border-term-selection hover:border-term-blue/30 transition-colors"
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredSnippet({ snippet, rect });
+                      }}
+                      onMouseLeave={() => setHoveredSnippet(null)}
                     >
                       <div className="flex items-center gap-2">
                         <div className="min-w-0 flex-1">
@@ -358,6 +368,31 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
           </div>
         )}
       </div>
+
+      {/* Tooltip (Fixed Position) */}
+      {hoveredSnippet && (
+        <div 
+          className="fixed z-[9999] pointer-events-none"
+          style={{
+            left: hoveredSnippet.rect.right + 10,
+            top: hoveredSnippet.rect.top + hoveredSnippet.rect.height / 2,
+            transform: 'translate(0, -50%)',
+            maxWidth: '300px'
+          }}
+        >
+          <div className="bg-term-bg border border-term-selection rounded shadow-xl p-2.5 text-xs text-left">
+            <div className="font-semibold text-term-fg mb-1">{hoveredSnippet.snippet.name}</div>
+            {hoveredSnippet.snippet.description && (
+              <div className="text-term-fg/70 mb-2 pb-2 border-b border-term-selection/50 whitespace-pre-wrap leading-relaxed">
+                {hoveredSnippet.snippet.description}
+              </div>
+            )}
+            <div className="font-mono text-term-green break-all whitespace-pre-wrap bg-black/20 p-1.5 rounded border border-term-selection/30">
+              {hoveredSnippet.snippet.command}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Editor Modal */}
       {isEditorOpen && editing && (

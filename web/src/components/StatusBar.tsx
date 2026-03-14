@@ -191,11 +191,6 @@ export function StatusBar({
           </div>
         )}
 
-        {/* Encoding */}
-        <div className="flex items-center gap-1.5">
-          <FileType className="w-3 h-3" />
-          <span>{encoding}</span>
-        </div>
       </div>
 
       {/* Monitor (moved to right) */}

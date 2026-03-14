@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { open } from '@tauri-apps/plugin-dialog';
+import { FolderOpen, ChevronDown } from 'lucide-react';
 import type { ServerConfig } from '@/types/config';
 
 interface ServerFormDialogProps {
@@ -23,11 +25,41 @@ export function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogPr
     }
   );
 
+  const [authMethod, setAuthMethod] = useState<'password' | 'private_key'>(
+    server?.private_key_path ? 'private_key' : 'password'
+  );
+
+  const handleSelectKeyFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Key File',
+          extensions: ['pem', 'key', 'pub', 'ppk', '*']
+        }]
+      });
+      if (selected && typeof selected === 'string') {
+        setFormData(prev => ({ ...prev, private_key_path: selected }));
+      }
+    } catch (err) {
+      console.error('Failed to open dialog:', err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+
+    const dataToSave = { ...formData };
+    if (authMethod === 'password') {
+      dataToSave.private_key_path = '';
+      dataToSave.passphrase = '';
+    } else {
+      dataToSave.password = '';
+    }
+
     try {
-      await onSave(formData);
+      await onSave(dataToSave);
     } catch (e) {
         console.error(e);
     } finally {
@@ -91,36 +123,69 @@ export function ServerFormDialog({ server, onClose, onSave }: ServerFormDialogPr
           </div>
 
           <div>
-            <label className="block text-sm text-term-fg/60 mb-1">{t('server.password_optional')}</label>
-            <input
-              type="password"
-              value={formData.password || ''}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
-              placeholder={t('server.password_placeholder')}
-            />
+            <label className="block text-sm text-term-fg/60 mb-1">{t('server.auth_method')}</label>
+            <div className="relative">
+              <select
+                value={authMethod}
+                onChange={(e) => setAuthMethod(e.target.value as 'password' | 'private_key')}
+                className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue appearance-none pr-8"
+              >
+                <option value="password">{t('server.auth_password')}</option>
+                <option value="private_key">{t('server.auth_private_key')}</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-term-fg/50">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm text-term-fg/60 mb-1">{t('server.private_key_path')}</label>
-            <input
-              type="text"
-              value={formData.private_key_path || ''}
-              onChange={(e) => setFormData({ ...formData, private_key_path: e.target.value })}
-              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
-              placeholder="~/.ssh/id_ed25519"
-            />
-          </div>
+          {authMethod === 'password' && (
+            <div>
+              <label className="block text-sm text-term-fg/60 mb-1">{t('server.password')}</label>
+              <input
+                type="password"
+                value={formData.password || ''}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
+                placeholder={t('server.password_placeholder')}
+              />
+            </div>
+          )}
 
-          <div>
-            <label className="block text-sm text-term-fg/60 mb-1">{t('server.passphrase')}</label>
-            <input
-              type="password"
-              value={formData.passphrase || ''}
-              onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
-              className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
-            />
-          </div>
+          {authMethod === 'private_key' && (
+            <>
+              <div>
+                <label className="block text-sm text-term-fg/60 mb-1">{t('server.private_key_path')}</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.private_key_path || ''}
+                    onChange={(e) => setFormData({ ...formData, private_key_path: e.target.value })}
+                    className="flex-1 bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
+                    placeholder="~/.ssh/id_ed25519"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSelectKeyFile}
+                    className="px-3 py-2 bg-term-selection border border-term-selection rounded-md hover:bg-term-selection/80 transition-colors flex items-center justify-center min-w-[40px]"
+                    title={t('server.browse')}
+                  >
+                    <FolderOpen className="w-4 h-4 text-term-fg" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-term-fg/60 mb-1">{t('server.passphrase')}</label>
+                <input
+                  type="password"
+                  value={formData.passphrase || ''}
+                  onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
+                  className="w-full bg-term-selection border border-term-selection rounded-md px-3 py-2 text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
+                />
+              </div>
+            </>
+          )}
 
           <div className="flex gap-3 pt-4">
             <button

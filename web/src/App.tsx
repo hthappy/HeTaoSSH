@@ -28,6 +28,7 @@ import { ThemeSchema } from '@/types/theme';
 function App() {
   const { t, i18n } = useTranslation();
   const { 
+    servers,
     connectServer, 
     workspaceTabs, 
     activeTabId, 
@@ -187,6 +188,24 @@ function App() {
 
   const activeTab = workspaceTabs.find(t => t.id === activeTabId);
   const activeConnection = connections.find(c => c.serverId === activeTab?.serverId);
+  const activeServer = servers.find(s => s.id === activeTab?.serverId);
+
+  const displayServerName = useMemo(() => {
+    if (!activeTab) return t('terminal.disconnected');
+    
+    // 如果是本地终端或本地文件
+    if (activeTab.type === 'local' || activeTab.isLocal) {
+      return t('common.new_local_terminal').replace('新建', ''); // 或直接返回 'Local Terminal' / 本地终端
+    }
+    
+    // 如果是远程服务器，返回服务器名称
+    if (activeServer) {
+      return activeServer.name;
+    }
+    
+    // 默认回退（如未匹配到 server）
+    return activeTab.title;
+  }, [activeTab, activeServer, t]);
 
   const handleFileSelect = (path: string) => {
     if (activeTab?.serverId) {
@@ -394,7 +413,7 @@ function App() {
         {/* Status Bar - Moved to bottom full width */}
         <StatusBar
           isConnected={!!activeConnection && activeConnection.status === 'connected'}
-          serverName={activeTab ? activeTab.title : t('terminal.disconnected')}
+          serverName={displayServerName}
           tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
           latency={0}
           encoding="UTF-8"

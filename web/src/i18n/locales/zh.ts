@@ -58,6 +58,10 @@ export default {
     test_success: '连接成功！',
     test_failed: '连接失败或被拒绝。',
     password_placeholder: '留空以使用密钥认证',
+    auth_method: '认证方式',
+    auth_password: '密码',
+    auth_private_key: '私钥',
+    browse: '浏览...',
   },
   terminal: {
     welcome: '欢迎使用 HeTaoSSH',

@@ -58,6 +58,10 @@ export default {
     test_success: 'Connection successful!',
     test_failed: 'Connection failed or rejected.',
     password_placeholder: 'Leave empty for key auth',
+    auth_method: 'Auth Method',
+    auth_password: 'Password',
+    auth_private_key: 'Private Key',
+    browse: 'Browse...',
   },
   terminal: {
     welcome: 'Welcome to HeTaoSSH',
