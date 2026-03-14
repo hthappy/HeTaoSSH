@@ -33,13 +33,16 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
   }, [filePath]);
 
   const loadFile = async (path: string) => {
+    console.log('[FileEditor] Loading file:', path, 'TabID:', tabId);
     setIsLoading(true);
     setError(null);
     try {
       const fileContent = await invoke<string>('sftp_read_file', { tabId, path });
+      console.log('[FileEditor] File loaded, length:', fileContent.length);
       setContent(fileContent);
       setHasChanges(false);
     } catch (err) {
+      console.error('[FileEditor] Load failed:', err);
       const msg = t('file.load_failed', { error: `${err}` });
       setError(msg);
       showToast(msg, 'error');
@@ -64,6 +67,7 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
   };
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
+    console.log('[FileEditor] Editor mounted');
     editorRef.current = editor;
     monacoRef.current = monaco;
 
@@ -161,7 +165,7 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
 
   if (!filePath) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-term-bg">
+      <div className="flex-1 flex items-center justify-center bg-term-bg h-full">
         <div className="text-center text-term-fg opacity-50">
           <p className="text-lg mb-2">{t('file.no_file_selected')}</p>
           <p className="text-sm">{t('file.select_tip')}</p>
@@ -171,7 +175,7 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-term-bg overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-term-bg overflow-hidden h-full w-full relative">
       {filePath && (
         <div className="h-9 flex items-center justify-between px-4 border-b border-term-selection bg-term-bg shrink-0">
           <span className="text-sm text-term-fg truncate opacity-80">{filePath}</span>
@@ -189,9 +193,9 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
           </div>
         </div>
       )}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         {isLoading ? (
-          <div className="h-full flex items-center justify-center text-term-fg opacity-60">
+          <div className="h-full w-full flex items-center justify-center text-term-fg opacity-60 absolute inset-0 z-10 bg-term-bg">
             <div className="text-center">
               <div className="w-8 h-8 border-4 border-term-selection border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
               <p>{t('file.loading')}</p>
@@ -205,19 +209,25 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
             </div>
           </div>
         ) : (
-          <Editor
-            height="100%"
-            defaultLanguage="plaintext"
-            value={content}
-            onChange={handleChange}
-            onMount={handleEditorMount}
-            theme={theme ? "dynamic-theme" : "vs-dark"}
-            loading={
-              <div className="h-full flex items-center justify-center text-term-fg opacity-60">
-                {t('file.loading_editor')}
-              </div>
-            }
-          />
+          <div className="h-full w-full absolute inset-0">
+             <Editor
+              height="100%"
+              width="100%"
+              defaultLanguage="plaintext"
+              value={content}
+              onChange={handleChange}
+              onMount={handleEditorMount}
+              theme={theme ? "dynamic-theme" : "vs-dark"}
+              options={{
+                fixedOverflowWidgets: true
+              }}
+              loading={
+                <div className="h-full flex items-center justify-center text-term-fg opacity-60">
+                  {t('file.loading_editor')}
+                </div>
+              }
+            />
+          </div>
         )}
       </div>
     </div>

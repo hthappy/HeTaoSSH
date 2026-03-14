@@ -203,7 +203,6 @@ export function StatusBar({
         >
           <div className="flex items-center gap-1 text-term-brightBlack">
             <Activity className="w-3 h-3" />
-            <span>{t('status.monitor')}</span>
           </div>
           {usage ? (
             <>

@@ -27,7 +27,7 @@ export function TitleBar({ children, actions }: TitleBarProps) {
     // For now we just check on mount and click. Real-time resize listener might need setup.
     const checkInterval = setInterval(updateState, 1000);
     return () => clearInterval(checkInterval);
-  }, []);
+  }, [appWindow]);
 
   const handleMaximize = async () => {
     await appWindow.toggleMaximize();

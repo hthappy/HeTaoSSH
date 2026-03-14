@@ -107,6 +107,10 @@ pub async fn sftp_list_dir(
         ));
     }
     
+    if tab_id.starts_with("local-") {
+        return local_list_dir(path).await;
+    }
+
     state.sftp_list_dir(&tab_id, &path).await
 }
 
@@ -123,6 +127,12 @@ pub async fn sftp_read_file(
         ));
     }
     
+    if tab_id.starts_with("local-") {
+        let content = std::fs::read(&path).map_err(SshError::Io)?;
+        return String::from_utf8(content)
+            .map_err(|e| crate::error::SshError::Channel(format!("Invalid UTF-8: {}", e)));
+    }
+
     let content = state.sftp_read_file(&tab_id, &path).await?;
     String::from_utf8(content)
         .map_err(|e| crate::error::SshError::Channel(format!("Invalid UTF-8: {}", e)))
@@ -142,6 +152,10 @@ pub async fn sftp_write_file(
         ));
     }
     
+    if tab_id.starts_with("local-") {
+        return std::fs::write(&path, content).map_err(SshError::Io);
+    }
+
     state.sftp_write_file(&tab_id, &path, content.as_bytes()).await
 }
 
@@ -156,6 +170,16 @@ pub async fn sftp_remove_file(
             "Path traversal detected: suspicious pattern in path".into()
         ));
     }
+    
+    if tab_id.starts_with("local-") {
+        let path = std::path::Path::new(&path);
+        if path.is_dir() {
+            return std::fs::remove_dir_all(path).map_err(SshError::Io);
+        } else {
+            return std::fs::remove_file(path).map_err(SshError::Io);
+        }
+    }
+
     state.sftp_remove_file(&tab_id, &path).await
 }
 
@@ -164,6 +188,11 @@ pub async fn sftp_get_home_dir(
     tab_id: String,
     state: State<'_, Arc<ConnectionManager>>
 ) -> Result<String> {
+    if tab_id.starts_with("local-") {
+        return dirs::home_dir()
+            .map(|p| p.to_string_lossy().replace("\\", "/"))
+            .ok_or(SshError::Config("Failed to get home dir".into()));
+    }
     state.sftp_get_home_dir(&tab_id).await
 }
 
@@ -178,6 +207,11 @@ pub async fn sftp_create_dir(
             "Path traversal detected: suspicious pattern in path".into()
         ));
     }
+    
+    if tab_id.starts_with("local-") {
+        return std::fs::create_dir_all(&path).map_err(SshError::Io);
+    }
+
     state.sftp_create_dir(&tab_id, &path).await
 }
 

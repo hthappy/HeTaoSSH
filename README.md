@@ -27,6 +27,16 @@
 - 🔄 **Auto Update** - Seamless updates via GitHub Releases
 - 🎨 **Theming** - Customizable themes and appearance
 
+## 📸 Screenshots
+
+| Server Management | File Explorer |
+|:---:|:---:|
+| ![Server Management](docs/ServersList.png) | ![File Explorer](docs/Explorer.png) |
+
+| Command Snippets | Terminal Preview |
+|:---:|:---:|
+| ![Command Snippets](docs/Snippets.png) | ![Terminal Preview](docs/preview.png) |
+
 ## 🏗️ Architecture
 
 ```
@@ -81,7 +91,6 @@ pnpm tauri build
 
 - [User Guide](docs/USER_GUIDE.md) - How to use HeTaoSSH
 - [API Documentation](docs/API.md) - Tauri commands and data structures
-- [Development Guidelines](AGENTS.md) - Code style and build commands
 
 ## 🤝 Contributing
 

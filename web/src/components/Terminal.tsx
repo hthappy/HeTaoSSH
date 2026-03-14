@@ -27,10 +27,11 @@ interface TerminalProps {
   fontSize?: number;
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
+  isActive?: boolean;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu' },
+  { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false },
   ref
 ) {
   const { t } = useTranslation();
@@ -39,12 +40,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const onEnterRef = useRef(onEnter);
+  const onDataRef = useRef(onData);
+  const onResizeRef = useRef(onResize);
+  const disconnectedRef = useRef(disconnected);
+  const initializedRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
 
-  // Update onEnter ref
+  // Update refs
   useEffect(() => {
     onEnterRef.current = onEnter;
   }, [onEnter]);
+  useEffect(() => {
+    onDataRef.current = onData;
+  }, [onData]);
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  }, [onResize]);
+  useEffect(() => {
+    disconnectedRef.current = disconnected;
+  }, [disconnected]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -75,6 +89,26 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
   useEffect(() => {
     if (!terminalRef.current) return;
+    if (!isActive && !initializedRef.current) return;
+    if (initializedRef.current) {
+        if (isActive && xtermRef.current && fitAddonRef.current) {
+            // Fit when becoming active
+            requestAnimationFrame(() => {
+                try {
+                    const element = xtermRef.current?.element;
+                    if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
+                        fitAddonRef.current?.fit();
+                    }
+                } catch (e) {
+                    // Ignore
+                }
+            });
+        }
+        return;
+    }
+
+    initializedRef.current = true;
+    let isUnmounted = false;
 
     // Initialize xterm
     const term = new XTerm({
@@ -116,8 +150,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.loadAddon(fitAddon);
     fitAddonRef.current = fitAddon;
 
-    let isUnmounted = false;
-
     // Open terminal
     term.open(terminalRef.current);
     xtermRef.current = term;
@@ -131,8 +163,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         try {
           const element = xtermRef.current.element;
           // Check if element is visible and has dimensions
+          // Only fit if the element is visible in the DOM
           if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
-            fitAddonRef.current.fit();
+            // Check proposed dimensions first
+            const dims = fitAddonRef.current.proposeDimensions();
+            if (dims && dims.cols > 0 && dims.rows > 0) {
+                fitAddonRef.current.fit();
+            }
           }
         } catch (e) {
           console.warn('Fit failed', e);
@@ -145,15 +182,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       if (isUnmounted) return;
       fitTerminal();
       // Ensure remote PTY size matches the initial fitted size
-      if (xtermRef.current && onResize && xtermRef.current.cols && xtermRef.current.rows) {
-        onResize(xtermRef.current.cols, xtermRef.current.rows);
+      if (xtermRef.current && onResizeRef.current && xtermRef.current.cols && xtermRef.current.rows) {
+        onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
       }
     }, 100);
 
     // Handle data (user input)
     const onDataDisposable = term.onData((data) => {
-      if (!disconnected && onData) {
-        onData(data);
+      if (!disconnectedRef.current && onDataRef.current) {
+        onDataRef.current(data);
       }
     });
 
@@ -172,14 +209,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       resizeTimeout = setTimeout(() => {
         if (isUnmounted) return;
         fitTerminal();
-        if (xtermRef.current && onResize && xtermRef.current.cols && xtermRef.current.rows) {
-          onResize(xtermRef.current.cols, xtermRef.current.rows);
+        if (xtermRef.current && onResizeRef.current && xtermRef.current.cols && xtermRef.current.rows) {
+          onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
         }
       }, 50);
     };
 
     // Resize observer
-    const resizeObserver = new ResizeObserver(handleResize);
+    const resizeObserver = new ResizeObserver(() => {
+        // Only trigger resize if the element is visible
+        if (terminalRef.current && terminalRef.current.offsetParent) {
+            // Use requestAnimationFrame to debounce and align with render cycle
+            requestAnimationFrame(() => handleResize());
+        }
+    });
     if (terminalRef.current) {
       resizeObserver.observe(terminalRef.current);
     }
@@ -189,6 +232,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     return () => {
       isUnmounted = true;
+      initializedRef.current = false;
       clearTimeout(initialFitTimeout);
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
@@ -202,7 +246,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [theme, fontSize, lineHeight, disconnected, onData, onResize]);
+  }, [isActive, theme, fontSize, lineHeight]); // Add initial props as dependencies for creation if it mounts active later
 
   // Handle theme changes
   useEffect(() => {

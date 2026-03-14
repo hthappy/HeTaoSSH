@@ -4,6 +4,8 @@
 
 HeTaoSSH 是一款现代化的 SSH 客户端，基于 Tauri 2.0 构建，结合了 Rust 的性能优势和 React 的优秀用户体验。
 
+![HeTaoSSH Preview](preview.png)
+
 ### 主要特性
 
 - 🔐 **安全的连接管理** - AES-256 加密存储密码和密钥
@@ -47,6 +49,8 @@ chmod +x HeTaoSSH_x.x.x_amd64.AppImage
 
 ### 1. 添加第一个服务器
 
+![Server Management](ServersList.png)
+
 1. 点击左侧边栏的 **+** 按钮
 2. 填写服务器信息：
    - **Name**: 服务器名称（如 "Production Server"）
@@ -63,6 +67,8 @@ chmod +x HeTaoSSH_x.x.x_amd64.AppImage
 3. 开始输入命令
 
 ### 3. 使用远程文件管理器
+
+![File Explorer](Explorer.png)
 
 1. 点击顶部视图切换按钮的 **Files**
 2. 点击 **Refresh** 加载远程目录
@@ -150,6 +156,8 @@ chmod +x HeTaoSSH_x.x.x_amd64.AppImage
 - **磁盘使用**: 各挂载点使用情况
 
 ### 命令片段
+
+![Command Snippets](Snippets.png)
 
 点击右侧面板的 **Snippets** 标签：
 

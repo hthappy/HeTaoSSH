@@ -8,7 +8,7 @@ import { SettingsDialog, type AppSettings } from '@/components/SettingsDialog';
 import { ActivityBar, type Activity } from '@/components/ActivityBar';
 import { CommandSnippets } from '@/components/CommandSnippets';
 import { useSshStore } from '@/stores/ssh-store';
-import { Terminal, X, FileCode2, Plus } from 'lucide-react';
+import { Terminal, X, FileCode2, Plus, Loader2 } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { check } from '@tauri-apps/plugin-updater';
@@ -256,12 +256,29 @@ function App() {
                       {t('file.explorer')}
                     </div>
                     <div className="flex-1 overflow-auto">
-                      <FileTree
-                        tabId={activeConnection.isLocal 
-                          ? `local-${activeConnection.serverId}` 
-                          : `conn-${activeConnection.serverId}`}
-                        onFileSelect={handleFileSelect}
-                      />
+                      {activeConnection.status === 'connected' ? (
+                        <FileTree
+                          tabId={activeConnection.isLocal 
+                            ? `local-${activeConnection.serverId}` 
+                            : `conn-${activeConnection.serverId}`}
+                          onFileSelect={handleFileSelect}
+                        />
+                      ) : activeConnection.status === 'connecting' ? (
+                        <div className="flex flex-col items-center justify-center h-full text-term-fg/40 p-4">
+                          <Loader2 className="w-6 h-6 animate-spin mb-2" />
+                          <p className="text-sm">{t('terminal.connecting', 'Connecting...')}</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-term-fg/40 p-4 text-center">
+                          <p className="mb-2 text-lg">⚠️</p>
+                          <p>{t('terminal.disconnected', 'Disconnected')}</p>
+                          {activeConnection.error && (
+                            <p className="text-xs mt-2 text-red-400 max-w-[200px] break-words">
+                              {activeConnection.error}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -361,11 +378,12 @@ function App() {
                         fontSize={settings.terminalFontSize}
                         lineHeight={settings.terminalLineHeight}
                         rightClickBehavior={settings.rightClickBehavior}
+                        isActive={isActive}
                       />
                     ) : (
                       <RemoteFiles
                         isActive={isActive}
-                        tabId={tab.id}
+                        tabId={tab.isLocal || (tab.serverId && tab.serverId < 0) ? `local-${tab.serverId}` : `conn-${tab.serverId}`}
                         filePath={tab.filePath!}
                         theme={xtermTheme}
                       />
@@ -391,7 +409,7 @@ function App() {
         <StatusBar
           isConnected={!!activeConnection && activeConnection.status === 'connected'}
           serverName={activeTab ? activeTab.title : t('terminal.disconnected')}
-          tabId={activeConnection ? `conn-${activeConnection.serverId}` : undefined}
+          tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
           latency={0}
           encoding="UTF-8"
           permissions="rw-r--r--"

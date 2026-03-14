@@ -335,8 +335,8 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         });
         showToast(t('file.download_success', 'File downloaded successfully'), 'success');
       }
-    } catch (error: any) {
-      const errorMsg = error.toString();
+    } catch (error) {
+      const errorMsg = String(error);
       if (errorMsg.includes('Cannot download a directory')) {
         showToast(t('file.download_dir_error', 'Cannot download a directory (or symlink to one)'), 'error');
         // Expected error for directories, log as info
@@ -480,7 +480,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     if (files.length === 0) return;
 
     for (const file of files) {
-      // @ts-ignore
+      // @ts-expect-error file.path exists in Tauri environment
       const localPath = file.path;
       
       if (!localPath) {
@@ -505,7 +505,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     }
     
     loadDir(currentPath);
-  }, [tabId, currentPath, t, showToast, loadDir]);
+  }, [tabId, currentPath, t, showToast, loadDir, isLocal]);
 
   // Listen for Tauri global drag-drop event (fallback for missing file paths)
   useEffect(() => {

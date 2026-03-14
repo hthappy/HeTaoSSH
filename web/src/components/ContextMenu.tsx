@@ -34,9 +34,7 @@ export function ContextMenuItem({ label, icon, onClick, danger, shortcut, disabl
   );
 }
 
-interface ContextMenuSeparatorProps {}
-
-export function ContextMenuSeparator({}: ContextMenuSeparatorProps) {
+export function ContextMenuSeparator() {
   return <div className="h-px bg-term-selection my-1 mx-1" />;
 }
 
@@ -64,13 +62,14 @@ export function ContextMenu({ x, y, onClose, children }: ContextMenuProps) {
     window.addEventListener('resize', onClose);
     // Prevent default context menu within our context menu
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    menuRef.current?.addEventListener('contextmenu', handleContextMenu);
+    const currentMenuRef = menuRef.current;
+    currentMenuRef?.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('scroll', onClose, true);
       window.removeEventListener('resize', onClose);
-      menuRef.current?.removeEventListener('contextmenu', handleContextMenu);
+      currentMenuRef?.removeEventListener('contextmenu', handleContextMenu);
     };
   }, [onClose]);
 

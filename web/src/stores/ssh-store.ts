@@ -44,6 +44,7 @@ export interface WorkspaceTab {
   type: 'terminal' | 'file' | 'local';
   title: string;
   filePath?: string; // Only valid if type === 'file'
+  isLocal?: boolean;
 }
 
 export interface ConnectionStatus {
@@ -211,6 +212,7 @@ export const useSshStore = create<SshState>((set, get) => ({
       type: 'file',
       title: fileName,
       filePath,
+      isLocal: serverId < 0,
     };
 
     set({ workspaceTabs: [...get().workspaceTabs, newTab], activeTabId: newTab.id });
@@ -277,6 +279,7 @@ export const useSshStore = create<SshState>((set, get) => ({
           serverId: localId,
           type: 'local',
           title: 'Local Terminal',
+          isLocal: true,
         }
       ],
       activeTabId: tabId

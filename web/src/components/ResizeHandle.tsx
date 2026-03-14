@@ -56,7 +56,7 @@ export function ResizeHandle({ direction, onResize, onResizeStart, onResizeEnd, 
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isDragging, direction, onResize]);
+  }, [isDragging, direction, onResize, onResizeEnd]);
 
   return (
     <div

@@ -81,7 +81,6 @@ pnpm tauri build
 
 - [用户指南](docs/USER_GUIDE.md) - 如何使用 HeTaoSSH
 - [API 文档](docs/API.md) - Tauri 命令和数据结构
-- [开发指南](AGENTS.md) - 代码规范和构建命令
 
 ## 🤝 贡献指南
 

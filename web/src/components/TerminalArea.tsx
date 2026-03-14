@@ -12,15 +12,17 @@ interface TerminalAreaProps {
   fontSize?: number;
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
+  isActive?: boolean;
 }
 
-export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClickBehavior }: TerminalAreaProps) {
+export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClickBehavior, isActive = false }: TerminalAreaProps) {
   const { t } = useTranslation();
   const { connections, sendToTerminal } = useSshStore();
   const terminalRef = useRef<TerminalHandle | null>(null);
 
   const activeConnection = connections.find((c) => c.serverId === serverId);
   const isLocal = activeConnection?.isLocal;
+  const connectionStatus = activeConnection?.status;
   const tabId = isLocal ? serverId.toString() : `conn-${serverId}`;
 
   const handleTerminalData = useCallback((data: string) => {
@@ -107,7 +109,7 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
           invoke('local_term_close', { id: serverId.toString() }).catch(console.error);
       }
     };
-  }, [tabId, activeConnection, isLocal, serverId]);
+  }, [serverId, isLocal, tabId, activeConnection, connectionStatus]);
 
   if (!activeConnection) {
     return (
@@ -131,19 +133,20 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
         </div>
       ) : activeConnection.status === 'connected' ? (
         <div className="flex-1 relative w-full h-full overflow-hidden">
-          <TerminalComponent
-            ref={terminalRef}
-            className="absolute inset-0"
-            onData={handleTerminalData}
-            onResize={handleTerminalResize}
-            onEnter={handleTerminalEnter}
-            disconnected={false}
-            theme={theme}
-            fontSize={fontSize}
-            lineHeight={lineHeight}
-            rightClickBehavior={rightClickBehavior}
-          />
-        </div>
+        <TerminalComponent
+          ref={terminalRef}
+          className="absolute inset-0"
+          onData={handleTerminalData}
+          onResize={handleTerminalResize}
+          onEnter={handleTerminalEnter}
+          disconnected={activeConnection?.status !== 'connected'}
+          theme={theme}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          rightClickBehavior={rightClickBehavior}
+          isActive={isActive}
+        />
+      </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
           <div className="text-center">
