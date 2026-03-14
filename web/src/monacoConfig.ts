@@ -10,7 +10,6 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 loader.config({ monaco });
 
 // Configure Monaco environment
-// @ts-expect-error - Worker types are not fully compatible with window
 self.MonacoEnvironment = {
   getWorker(_: unknown, label: string) {
     if (label === 'json') {
