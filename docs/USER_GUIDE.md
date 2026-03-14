@@ -83,9 +83,9 @@ chmod +x HeTaoSSH_x.x.x_amd64.AppImage
 
 ![File Explorer](Explorer.png)
 
-1. 点击顶部视图切换按钮的 **Files**
-2. 点击 **Refresh** 加载远程目录
-3. 点击文件夹展开/折叠
+1. 点击左侧边栏的 **Files** 图标
+2. 默认显示当前用户 `home` 目录
+3. 输入路径导航到其他目录（如 `/var/www`），支持自动关联补全路径。
 4. 点击文件在编辑器中打开
 
 ### 4. 编辑远程文件

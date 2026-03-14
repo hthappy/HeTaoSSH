@@ -459,10 +459,48 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         applySuggestion(acActiveIndex, { loadOnAccept: true });
         return;
       }
-      const target = pathInput.trim();
-      if (target) loadDir(target);
+      
+      let target = pathInput.trim();
+      if (target) {
+        // Normalize slashes
+        target = target.replace(/\\/g, '/');
+        
+        // Check if absolute
+        const isAbsoluteUnix = target.startsWith('/');
+        const isAbsoluteWin = /^[a-zA-Z]:/.test(target);
+        
+        // Resolve relative path to absolute
+        if (!isAbsoluteUnix && !isAbsoluteWin) {
+          const base = currentPath === '/' ? '' : currentPath;
+          const separator = base.endsWith('/') ? '' : '/';
+          target = `${base}${separator}${target}`;
+        }
+        
+        // Resolve '..' and '.'
+        const parts = target.split('/');
+        const stack: string[] = [];
+        for (const p of parts) {
+          if (p === '' || p === '.') continue;
+          if (p === '..') {
+            stack.pop();
+          } else {
+            stack.push(p);
+          }
+        }
+        
+        // Reconstruct path
+        const isWinResult = stack.length > 0 && /^[a-zA-Z]:$/.test(stack[0]);
+        if (isWinResult) {
+          target = stack.join('/');
+          if (stack.length === 1) target += '/'; // Ensure "C:" becomes "C:/"
+        } else {
+          target = '/' + stack.join('/');
+        }
+        
+        loadDir(target);
+      }
     }
-  }, [acOpen, acItems, acActiveIndex, applySuggestion, loadDir, pathInput]);
+  }, [acOpen, acItems, acActiveIndex, applySuggestion, loadDir, pathInput, currentPath]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

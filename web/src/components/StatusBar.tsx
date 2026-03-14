@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, FileType, Lock, Clock, Server } from 'lucide-react';
+import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, FileType, Clock, Server } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
   latency?: number;
   encoding?: string;
-  permissions?: string;
   serverName?: string;
   isConnected?: boolean;
   tabId?: string;
@@ -64,7 +63,6 @@ const ProgressBar = ({ value, colorClass }: { value: number, colorClass: string 
 export function StatusBar({
   latency = 45,
   encoding = 'UTF-8',
-  permissions = 'rw-r--r--',
   serverName,
   isConnected = false,
   tabId,
@@ -77,21 +75,32 @@ export function StatusBar({
     return 'text-[var(--term-red)]';
   };
 
-  const formatPermissions = (perm: string) => {
-    // Simple formatter for demonstration
-    return perm;
-  };
-
   const [usage, setUsage] = useState<SystemUsage | null>(null);
   const [networkSpeed, setNetworkSpeed] = useState<{ rx: number; tx: number }>({ rx: 0, tx: 0 });
   const [usageError, setUsageError] = useState<string | null>(null);
   const [monitorHover, setMonitorHover] = useState(false);
   const lastUsageRef = useRef<{ usage: SystemUsage; time: number } | null>(null);
+  
+  // Track current tabId to prevent race conditions
+  const currentTabIdRef = useRef(tabId);
+  useEffect(() => {
+    currentTabIdRef.current = tabId;
+    // Reset state when tab changes
+    setUsage(null);
+    setUsageError(null);
+    lastUsageRef.current = null;
+    setNetworkSpeed({ rx: 0, tx: 0 });
+  }, [tabId]);
 
   const fetchUsage = useCallback(async () => {
     if (!tabId || !isConnected) return;
+    
     try {
       const data = await invoke<SystemUsage>('get_system_usage', { tabId });
+      
+      // Prevent race condition: if tab changed during fetch, ignore result
+      if (currentTabIdRef.current !== tabId) return;
+
       const now = Date.now();
 
       if (lastUsageRef.current) {
@@ -111,6 +120,7 @@ export function StatusBar({
       setUsage(data);
       setUsageError(null);
     } catch (e) {
+      if (currentTabIdRef.current !== tabId) return;
       setUsageError(`${e}`);
     }
   }, [isConnected, tabId]);
@@ -185,12 +195,6 @@ export function StatusBar({
         <div className="flex items-center gap-1.5">
           <FileType className="w-3 h-3" />
           <span>{encoding}</span>
-        </div>
-
-        {/* Permissions */}
-        <div className="flex items-center gap-1.5">
-          <Lock className="w-3 h-3" />
-          <span className="font-mono text-term-brightBlack">{formatPermissions(permissions)}</span>
         </div>
       </div>
 

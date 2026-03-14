@@ -42,8 +42,7 @@ Store your frequently used commands and scripts. Execute them with a single clic
 
 ### 🎨 Modern Terminal
 A high-performance terminal experience powered by xterm.js, featuring custom themes, adjustable fonts, and multi-tab support.
-![Terminal Preview](docs/preview.png)
-
+![Settings](docs/Settings.png)
 ## 🏗️ Architecture
 
 ```

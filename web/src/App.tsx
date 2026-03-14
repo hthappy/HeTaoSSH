@@ -412,7 +412,6 @@ function App() {
           tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
           latency={0}
           encoding="UTF-8"
-          permissions="rw-r--r--"
         />
 
         <SettingsDialog

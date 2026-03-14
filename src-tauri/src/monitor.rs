@@ -30,6 +30,9 @@ impl LocalMonitor {
         networks.refresh(true);
 
         let cpu_usage = sys.global_cpu_usage();
+        // Handle NaN which can cause JSON serialization error
+        let cpu_usage = if cpu_usage.is_nan() { 0.0 } else { cpu_usage };
+
         let memory_total = sys.total_memory();
         let memory_used = sys.used_memory();
         let memory_available = sys.available_memory(); // or free_memory depending on sysinfo version, usually available is better
@@ -43,6 +46,8 @@ impl LocalMonitor {
         let uptime = System::uptime();
         let load_avg = System::load_average();
         let load_average = vec![load_avg.one, load_avg.five, load_avg.fifteen];
+        // Handle NaN in load average
+        let load_average: Vec<f64> = load_average.into_iter().map(|v| if v.is_nan() { 0.0 } else { v }).collect();
 
         let mut disk_usage = Vec::new();
         for disk in disks.list() {

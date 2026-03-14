@@ -43,7 +43,7 @@
 
 ### 🎨 现代化终端
 基于 xterm.js 的高性能终端体验，支持自定义主题、字体调节以及多标签页功能。
-![Terminal Preview](docs/preview.png)
+![Settings](docs/Settings.png)
 
 ## 🏗️ 架构设计
 
