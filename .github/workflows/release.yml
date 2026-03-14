@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest]
+        platform: [macos-latest] # Windows build is handled locally to save time
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -43,6 +43,13 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           fi
 
+      - name: Download existing latest.json (Windows)
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download ${{ github.ref_name }} -p latest.json -O latest-windows.json || echo "No existing latest.json found"
+
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -50,7 +57,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'App v__VERSION__'
+          releaseName: 'HeTaoSSH v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: false
           prerelease: false
+
+      - name: Merge and Upload latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "latest-windows.json" ]; then
+            echo "Merging latest.json..."
+            # Find the generated latest.json (it should be in bundle output)
+            # On macOS it is usually in src-tauri/target/release/bundle/macos/latest.json or similar
+            # But tauri-action might have moved it? tauri-action doesn't move it, it just uploads.
+            # We need to find it.
+            find src-tauri/target/release/bundle -name "latest.json" -type f -exec cp {} latest-macos.json \;
+            
+            if [ -f "latest-macos.json" ]; then
+              node scripts/merge_latest_json.js latest-windows.json latest-macos.json latest.json
+              gh release upload ${{ github.ref_name }} latest.json --clobber
+            else
+              echo "Could not find local latest.json to merge."
+            fi
+          fi
