@@ -46,10 +46,18 @@ try {
     $env:TAURI_SIGNING_PRIVATE_KEY = $keyPath
     $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "hetaossh"
 
+    # CLEANUP: Remove old bundles to prevent uploading wrong version
+    Write-Host "Cleaning up old build artifacts..." -ForegroundColor Gray
+    if (Test-Path "src-tauri/target/release/bundle") {
+        Remove-Item -Path "src-tauri/target/release/bundle" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     # Build Frontend
+    Write-Host "Building frontend..." -ForegroundColor Gray
     pnpm build
 
     # Build Backend & Sign
+    Write-Host "Building Tauri backend..." -ForegroundColor Gray
     pnpm tauri build
 
     if ($LASTEXITCODE -ne 0) {
@@ -69,12 +77,12 @@ try {
 
     $assets = @()
 
-    # Find MSI
-    $msi = Get-ChildItem "$bundleDir/*.msi" | Select-Object -First 1
+    # Find MSI matching version
+    $msi = Get-ChildItem "$bundleDir/*$version*.msi" | Select-Object -First 1
     if ($msi) { $assets += $msi.FullName }
 
-    # Find EXE (NSIS)
-    $exe = Get-ChildItem "$nsisDir/*.exe" | Select-Object -First 1
+    # Find EXE (NSIS) matching version
+    $exe = Get-ChildItem "$nsisDir/*$version*.exe" | Select-Object -First 1
     if ($exe) { $assets += $exe.FullName }
 
     # Find Update Files (could be in msi or nsis dir)
@@ -88,9 +96,20 @@ try {
 
     $latest = Join-Path $bundleDir "latest.json"
     if (-not (Test-Path $latest)) { $latest = Join-Path $nsisDir "latest.json" }
-    if (Test-Path $latest) { $assets += $latest }
+    
+    # CRITICAL CHECK for latest.json
+    if (Test-Path $latest) { 
+        $assets += $latest 
+        Write-Host "Found latest.json at $latest" -ForegroundColor Green
+    } else {
+        Write-Warning "latest.json NOT FOUND! Auto-update will not work."
+        # List directory content for debugging
+        Write-Host "Contents of $bundleDir :"
+        Get-ChildItem $bundleDir | Select-Object Name | Format-Table -HideTableHeaders
+    }
 
     if ($assets.Count -gt 0) {
+        Write-Host "Uploading $($assets.Count) files..."
         gh release upload $tagName $assets --clobber
         Write-Host "Assets uploaded successfully." -ForegroundColor Green
     } else {
