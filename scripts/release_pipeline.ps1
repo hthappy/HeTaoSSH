@@ -35,19 +35,23 @@ git push origin --tags
 # 4. Build Windows (Local)
 Write-Host "Building Windows version locally..." -ForegroundColor Green
 
-# Set Signing Key (Pass content directly to env var to avoid path issues)
+# Set Signing Key using Node.js to ensure perfect binary/encoding handling
     $b64Key = "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5VCs1ejN1LzRSNUR2ckRtNXVTaHA5eldyUk9qM2cvZjNLM1hhR0hBYjBSNEFBQkFBQUFBQUFBQUFBQUlBQUFBQWh5RHkwMEFtUi93RlNzaDJzV0FpVFQrUnJNVWNWWm5jQk9LSVQyN0U4ZW0wYklaMFI4bHhuUWdSN2I4TVV0bWw0MGhlaDMwYm9RTC9OYVVPRE5ic2xHUGVBVHBMSUpBRVdrQ3F2Ym83R2UvY1orMjA2dlk2UDNTQXluYnNqRnlHOUs1NkFvTytXN0E9Cg=="
-    $keyBytes = [System.Convert]::FromBase64String($b64Key)
-    $keyContent = [System.Text.Encoding]::UTF8.GetString($keyBytes)
+    $keyPath = Join-Path $PSScriptRoot "private.key"
+    # Use Node to write the file to avoid PowerShell encoding issues (BOM, CRLF, etc.)
+    $nodeScript = "const fs = require('fs'); fs.writeFileSync('$($keyPath.Replace('\', '\\'))', Buffer.from('$b64Key', 'base64'));"
+    node -e $nodeScript
+
+    if (-not (Test-Path $keyPath)) {
+        throw "Failed to create private key file at $keyPath"
+    }
     
-    $env:TAURI_SIGNING_PRIVATE_KEY = $keyContent
+    $env:TAURI_SIGNING_PRIVATE_KEY = $keyPath
     $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "hetaossh"
 
-    Write-Host "Signing key set in environment variables." -ForegroundColor Gray
-
-    # Verify Env Var Propagation
-    Write-Host "Verifying environment variable visibility..." -ForegroundColor Gray
-    node -e "console.log('Node process sees key:', !!process.env.TAURI_SIGNING_PRIVATE_KEY)"
+    Write-Host "Signing key prepared at: $keyPath" -ForegroundColor Gray
+    Write-Host "Key file size: $( (Get-Item $keyPath).Length ) bytes" -ForegroundColor Gray
+    Write-Host "Password set (length: $($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD.Length))" -ForegroundColor Gray
 
     try {
         # CLEANUP: Remove old bundles to prevent uploading wrong version
@@ -134,4 +138,9 @@ Write-Host "Building Windows version locally..." -ForegroundColor Green
 } catch {
     Write-Error $_
     exit 1
+} finally {
+    # Cleanup key file
+    if (Test-Path $keyPath) {
+        Remove-Item $keyPath -ErrorAction SilentlyContinue
+    }
 }
