@@ -24,7 +24,6 @@
 - 📝 **Code Editor** - Monaco Editor (VS Code kernel) with syntax highlighting
 - 📊 **System Monitoring** - Real-time CPU, Memory, Disk, and Network monitoring
 - 🎯 **Command Snippets** - Quick execution of common commands
-- 🔄 **Auto Update** - Seamless updates via GitHub Releases
 - 🎨 **Theming** - Customizable themes and appearance
 
 ## 📸 Screenshots
