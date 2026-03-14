@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, macos-13] # macos-latest (ARM), macos-13 (Intel)
+        platform: [macos-latest] # macos-latest (ARM) - macos-13 (Intel) disabled due to runner error
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -58,9 +58,9 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Uploading assets for $TAG_NAME..."
           
-          # Upload DMG/App/Zip/Sig
+          # Upload DMG/App/Zip
           # Using find to locate artifacts in bundle directory
-          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec gh release upload $TAG_NAME {} --clobber \;
+          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" \) -exec gh release upload $TAG_NAME {} --clobber \;
           
           # Find and upload latest.json as latest-${{ matrix.platform }}.json
           JSON_PATH=$(find src-tauri/target/release/bundle -name "latest.json" -type f | head -n 1)
