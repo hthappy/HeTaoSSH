@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
   latency?: number;
-  encoding?: string;
   serverName?: string;
   isConnected?: boolean;
   tabId?: string;
