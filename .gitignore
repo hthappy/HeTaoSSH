@@ -8,8 +8,11 @@ build
 pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
-docs/PRD.md
 
+temp_*
+
+docs/PRD.md
+AGENTS.md
 # Rust / Tauri
 src-tauri/target/
 target/

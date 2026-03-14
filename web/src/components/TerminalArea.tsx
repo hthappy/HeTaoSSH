@@ -121,7 +121,7 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-term-bg" style={{ backgroundColor: theme?.background }}>
+    <div className="w-full h-full flex flex-col overflow-hidden bg-term-bg" style={{ backgroundColor: theme?.background }}>
       {activeConnection.status === 'connecting' ? (
         <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
           <div className="text-center">
