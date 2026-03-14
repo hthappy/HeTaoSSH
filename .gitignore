@@ -51,3 +51,4 @@ scripts/*.key.txt
 scripts/release_pipeline.ps1
 scripts/build_local.ps1
 
+latest.json
