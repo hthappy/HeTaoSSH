@@ -33,6 +33,7 @@ export default {
   update: {
     title: 'Update Available',
     available_msg: 'A new version {{version}} is available!\n\nRelease notes:\n{{body}}',
+    available_msg_simple: 'A new version {{version}} is available. Do you want to update now?',
     update_now: 'Update Now',
     cancel: 'Later',
     checking: 'Checking for updates...',

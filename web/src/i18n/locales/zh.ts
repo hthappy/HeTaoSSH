@@ -33,6 +33,7 @@ export default {
   update: {
     title: '发现新版本',
     available_msg: '发现新版本 {{version}}！\n\n更新内容：\n{{body}}',
+    available_msg_simple: '发现新版本 {{version}}，是否立即更新？',
     update_now: '立即更新',
     cancel: '稍后',
     checking: '正在检查更新...',

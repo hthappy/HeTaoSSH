@@ -11,11 +11,12 @@ import { useSshStore } from '@/stores/ssh-store';
 import { Terminal, X, FileCode2, Plus, Loader2 } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { check } from '@tauri-apps/plugin-updater';
-import { ask, message } from '@tauri-apps/plugin-dialog';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
 import { ToastProvider } from '@/components/Toast';
+import { UpdateDialog } from '@/components/UpdateDialog';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
@@ -46,6 +47,8 @@ function App() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const serverListRef = useRef<ServerListHandle>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   // Check for updates on startup
   useEffect(() => {
@@ -65,27 +68,10 @@ function App() {
       try {
         const update = await check();
         if (update?.available) {
-          const yes = await ask(
-            t('update.available_msg', { version: update.version, body: update.body }),
-            { 
-              title: t('update.title'), 
-              kind: 'info', 
-              okLabel: t('update.update_now'), 
-              cancelLabel: t('update.cancel') 
-            }
-          );
-          if (yes) {
-            await update.downloadAndInstall();
-            await relaunch();
-          }
+          setUpdateAvailable(update);
         }
       } catch (error) {
         console.error('Failed to check for updates:', error);
-        // Show error to user so they know why update failed
-        await message(
-          t('update.error', { error: String(error) }), 
-          { title: t('update.title'), kind: 'error' }
-        );
       }
     };
 
@@ -420,6 +406,28 @@ function App() {
             settings={settings}
             onSave={setSettings}
             onPreviewTheme={setPreviewTheme}
+          />
+
+          <UpdateDialog
+            isOpen={!!updateAvailable}
+            version={updateAvailable?.version || ''}
+            isUpdating={isUpdating}
+            onUpdate={async () => {
+              if (!updateAvailable) return;
+              setIsUpdating(true);
+              try {
+                await updateAvailable.downloadAndInstall();
+                await relaunch();
+              } catch (e) {
+                console.error(e);
+                await message(
+                  t('update.error', { error: String(e) }), 
+                  { title: t('update.title'), kind: 'error' }
+                );
+                setIsUpdating(false);
+              }
+            }}
+            onClose={() => setUpdateAvailable(null)}
           />
       </div>
     </ToastProvider>
