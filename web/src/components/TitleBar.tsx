@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useTranslation } from 'react-i18next';
 import { Minus, Square, X, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +10,7 @@ export interface TitleBarProps {
 }
 
 export function TitleBar({ children, actions }: TitleBarProps) {
+  const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const appWindow = getCurrentWindow();
 
@@ -63,21 +65,21 @@ export function TitleBar({ children, actions }: TitleBarProps) {
         <button 
           onClick={() => appWindow.minimize()}
           className="inline-flex items-center justify-center w-10 h-full hover:bg-term-selection text-term-fg transition-colors"
-          title="Minimize"
+          title={t('common.minimize')}
         >
           <Minus className="w-4 h-4" />
         </button>
         <button 
           onClick={handleMaximize}
           className="inline-flex items-center justify-center w-10 h-full hover:bg-term-selection text-term-fg transition-colors"
-          title={isMaximized ? "Restore" : "Maximize"}
+          title={isMaximized ? t('common.restore') : t('common.maximize')}
         >
           <Square className={cn("w-3.5 h-3.5", isMaximized && "fill-current opacity-50")} />
         </button>
         <button 
           onClick={() => appWindow.close()}
           className="inline-flex items-center justify-center w-10 h-full hover:bg-red-500 hover:text-white text-term-fg transition-colors"
-          title="Close"
+          title={t('common.close')}
         >
           <X className="w-4 h-4" />
         </button>

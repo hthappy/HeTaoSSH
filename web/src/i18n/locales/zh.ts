@@ -29,6 +29,9 @@ export default {
     all: '全部',
     optional: '（可选）',
     new_local_terminal: '新建本地终端',
+    minimize: '最小化',
+    maximize: '最大化',
+    restore: '恢复',
   },
   update: {
     title: '发现新版本',

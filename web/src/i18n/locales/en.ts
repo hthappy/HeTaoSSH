@@ -29,6 +29,9 @@ export default {
     all: 'All',
     optional: '(Optional)',
     new_local_terminal: 'New Local Terminal',
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore',
   },
   update: {
     title: 'Update Available',

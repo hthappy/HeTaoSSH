@@ -43,7 +43,9 @@ impl ConfigManager {
         // Use SqliteConnectOptions with explicit create_if_missing
         let connect_options = SqliteConnectOptions::new()
             .filename(&db_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
         
         info!("DB file exists before connect: {}", db_path.exists());
         info!("Connecting to: {}", db_path.display());
@@ -107,33 +109,55 @@ impl ConfigManager {
             self.crypto.encrypt(p).map_err(|e| SshError::Config(format!("Encryption failed: {}", e)))
         }).transpose()?;
 
-        let result = sqlx::query(
-            r#"
-            INSERT INTO servers (name, host, port, username, password_encrypted, private_key_path, passphrase_encrypted)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                name = excluded.name,
-                host = excluded.host,
-                port = excluded.port,
-                username = excluded.username,
-                password_encrypted = excluded.password_encrypted,
-                private_key_path = excluded.private_key_path,
-                passphrase_encrypted = excluded.passphrase_encrypted,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING id
-            "#,
-        )
-        .bind(&config.name)
-        .bind(&config.host)
-        .bind(config.port as i64)
-        .bind(&config.username)
-        .bind(password_encrypted.as_deref())
-        .bind(config.private_key_path.as_deref())
-        .bind(passphrase_encrypted.as_deref())
-        .fetch_one(&self.pool)
-        .await?;
+        if let Some(id) = config.id {
+            // Update existing server
+            sqlx::query(
+                r#"
+                UPDATE servers SET 
+                    name = ?, 
+                    host = ?, 
+                    port = ?, 
+                    username = ?, 
+                    password_encrypted = ?, 
+                    private_key_path = ?, 
+                    passphrase_encrypted = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                "#,
+            )
+            .bind(&config.name)
+            .bind(&config.host)
+            .bind(config.port as i64)
+            .bind(&config.username)
+            .bind(password_encrypted.as_deref())
+            .bind(config.private_key_path.as_deref())
+            .bind(passphrase_encrypted.as_deref())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
-        Ok(result.get::<i64, _>(0))
+            Ok(id)
+        } else {
+            // Insert new server
+            let result = sqlx::query(
+                r#"
+                INSERT INTO servers (name, host, port, username, password_encrypted, private_key_path, passphrase_encrypted)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                "#,
+            )
+            .bind(&config.name)
+            .bind(&config.host)
+            .bind(config.port as i64)
+            .bind(&config.username)
+            .bind(password_encrypted.as_deref())
+            .bind(config.private_key_path.as_deref())
+            .bind(passphrase_encrypted.as_deref())
+            .fetch_one(&self.pool)
+            .await?;
+
+            Ok(result.get::<i64, _>(0))
+        }
     }
 
     pub async fn list_servers(&self) -> Result<Vec<ServerConfig>> {

@@ -103,19 +103,24 @@ impl ConnectionManager {
 
     /// 创建新的 SSH 连接，并启动 Actor 任务
     pub async fn create_connection(&self, id: &str, config: ServerConfig, app_handle: tauri::AppHandle) -> Result<()> {
-        let mut handles = self.handles.lock().await;
-
-        // 如果连接已存在，先清理旧的 Actor（支持重连场景）
-        if let Some(old_handle) = handles.remove(id) {
-            // 发送断开命令给旧 Actor，忽略回复（Actor 可能已退出）
-            let (reply_tx, _reply_rx) = oneshot::channel();
-            let _ = old_handle.tx.send(ConnCommand::Disconnect { reply: reply_tx }).await;
-            info!("Removed existing connection actor for reconnection: {}", id);
+        // 先清理旧的 Actor（支持重连场景）
+        {
+            let mut handles = self.handles.lock().await;
+            if let Some(old_handle) = handles.remove(id) {
+                // 发送断开命令给旧 Actor，忽略回复（Actor 可能已退出）
+                let (reply_tx, _reply_rx) = oneshot::channel();
+                let _ = old_handle.tx.send(ConnCommand::Disconnect { reply: reply_tx }).await;
+                info!("Removed existing connection actor for reconnection: {}", id);
+            }
         }
 
-        // 建立连接
+        // 建立连接 (不持有锁，避免阻塞其他操作)
         let mut conn = SshConnection::new(config);
-        conn.connect_with_shell().await?;
+        
+        // 增加连接超时，防止永久卡住
+        tokio::time::timeout(std::time::Duration::from_secs(15), conn.connect_with_shell())
+            .await
+            .map_err(|_| SshError::ConnectionFailed("Connection timed out".to_string()))??;
 
         // 创建 Actor channel
         let (tx, rx) = mpsc::channel::<ConnCommand>(64);
@@ -126,7 +131,10 @@ impl ConnectionManager {
             connection_actor(conn_id, conn, rx, app_handle).await;
         });
 
-        handles.insert(id.to_string(), ConnHandle { tx });
+        {
+            let mut handles = self.handles.lock().await;
+            handles.insert(id.to_string(), ConnHandle { tx });
+        }
         info!("Created SSH connection actor: {}", id);
 
         Ok(())

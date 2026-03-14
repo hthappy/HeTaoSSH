@@ -138,6 +138,12 @@ function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent F5 and Ctrl+R/Cmd+R (Reload)
+      if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key === 'r')) {
+        e.preventDefault();
+        return;
+      }
+
       // Ctrl+N: New Connection
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
@@ -350,9 +356,10 @@ function App() {
                         e.stopPropagation();
                         closeTab(tab.id);
                       }}
-                      className="ml-1 p-0.5 rounded-sm opacity-0 group-hover:opacity-100 hover:bg-term-selection/80 transition-all"
+                      className="flex-shrink-0 ml-1 p-0.5 rounded-sm text-foreground opacity-100 hover:text-white transition-all"
+                      style={{ opacity: 1 }}
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}

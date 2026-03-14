@@ -78,7 +78,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         try {
           const element = xtermRef.current?.element;
           if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0) {
+            const currentCols = xtermRef.current?.cols;
+            const currentRows = xtermRef.current?.rows;
             fitAddonRef.current.fit();
+            
+            if (onResizeRef.current && xtermRef.current) {
+                if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
+                    onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                }
+            }
           }
         } catch (e) {
           console.warn('Resize fit failed', e);
@@ -97,7 +105,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
                 try {
                     const element = xtermRef.current?.element;
                     if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
+                        const currentCols = xtermRef.current?.cols;
+                        const currentRows = xtermRef.current?.rows;
                         fitAddonRef.current?.fit();
+                        
+                        if (onResizeRef.current && xtermRef.current) {
+                            if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
+                                onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                            }
+                        }
                     }
                 } catch (e) {
                     // Ignore
@@ -168,7 +184,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             // Check proposed dimensions first
             const dims = fitAddonRef.current.proposeDimensions();
             if (dims && dims.cols > 0 && dims.rows > 0) {
+                const currentCols = xtermRef.current.cols;
+                const currentRows = xtermRef.current.rows;
                 fitAddonRef.current.fit();
+                
+                // Only notify backend if dimensions actually changed
+                if (onResizeRef.current && (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows)) {
+                    onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                }
             }
           }
         } catch (e) {
@@ -181,10 +204,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     const initialFitTimeout = setTimeout(() => {
       if (isUnmounted) return;
       fitTerminal();
-      // Ensure remote PTY size matches the initial fitted size
-      if (xtermRef.current && onResizeRef.current && xtermRef.current.cols && xtermRef.current.rows) {
-        onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
-      }
+      // Wait for fit to complete (2 frames), then send initial size
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!isUnmounted && xtermRef.current && onResizeRef.current) {
+            onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+          }
+        });
+      });
     }, 100);
 
     // Handle data (user input)
@@ -209,9 +236,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       resizeTimeout = setTimeout(() => {
         if (isUnmounted) return;
         fitTerminal();
-        if (xtermRef.current && onResizeRef.current && xtermRef.current.cols && xtermRef.current.rows) {
-          onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
-        }
       }, 50);
     };
 
@@ -267,7 +291,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         try {
           const element = xtermRef.current?.element;
           if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
+             const currentCols = xtermRef.current?.cols;
+             const currentRows = xtermRef.current?.rows;
              fitAddonRef.current.fit();
+             
+             if (onResizeRef.current && xtermRef.current) {
+                 if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
+                     onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                 }
+             }
           }
         } catch (e) {
           console.warn('Font resize fit failed', e);

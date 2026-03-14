@@ -29,9 +29,10 @@ export function TabBar() {
               e.stopPropagation();
               closeTab(tab.id);
             }}
-            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-term-selection rounded transition-opacity"
+            className="flex-shrink-0 p-0.5 rounded transition-colors text-foreground opacity-100 hover:bg-red-500 hover:text-white"
+            style={{ opacity: 1 }}
           >
-            <X className="w-3 h-3" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       ))}

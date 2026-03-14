@@ -19,6 +19,7 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   const { t } = useTranslation();
   const { connections, sendToTerminal } = useSshStore();
   const terminalRef = useRef<TerminalHandle | null>(null);
+  const localTermCreated = useRef(false);
 
   const activeConnection = connections.find((c) => c.serverId === serverId);
   const isLocal = activeConnection?.isLocal;
@@ -30,17 +31,19 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   }, [serverId, sendToTerminal]);
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
-    const cmd = isLocal ? 'local_term_resize' : 'ssh_resize';
-    const payload = isLocal ? { id: serverId.toString(), cols, rows } : { tabId, cols, rows };
-    
-    // For local terminal, we also need to trigger creation if it's the first resize (initialization)
-    // But better to separate creation.
-    // However, xterm 'onResize' fires early.
-    // Let's just call resize.
-    
-    invoke(cmd, payload).catch(err => {
-      console.error('Failed to resize terminal:', err);
-    });
+    if (isLocal) {
+      if (!localTermCreated.current) {
+        localTermCreated.current = true;
+        invoke('open_local_terminal', { id: serverId.toString(), rows, cols })
+          .catch(err => console.error('Failed to start local terminal:', err));
+      } else {
+        invoke('local_term_resize', { id: serverId.toString(), cols, rows })
+          .catch(err => console.error('Failed to resize terminal:', err));
+      }
+    } else {
+      invoke('ssh_resize', { tabId, cols, rows })
+        .catch(err => console.error('Failed to resize terminal:', err));
+    }
   }, [tabId, isLocal, serverId]);
 
   const handleTerminalEnter = useCallback(() => {
@@ -54,13 +57,6 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   useEffect(() => {
     if (!activeConnection || activeConnection.status !== 'connected') return;
     
-    // If local, create the terminal session
-    if (isLocal) {
-       // Default size, will be resized by xterm
-       invoke('open_local_terminal', { id: serverId.toString(), rows: 24, cols: 80 })
-         .catch(err => console.error('Failed to start local terminal:', err));
-    }
-
     let unlisten: (() => void) | undefined;
     let isMounted = true;
 

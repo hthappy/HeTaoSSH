@@ -12,6 +12,7 @@ export interface ServerListHandle {
 }
 
 import { ServerFormDialog } from './ServerFormDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface ServerListProps {
   onServerClick: (serverId: number) => void;
@@ -32,6 +33,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingServer, setEditingServer] = useState<ServerConfig | null>(null);
+  const [deletingServerId, setDeletingServerId] = useState<number | null>(null);
   const [testingServerId, setTestingServerId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { showToast } = useToast();
@@ -69,9 +71,14 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
     setShowAddDialog(true);
   };
 
-  const handleDeleteServer = async (id: number) => {
-    if (confirm(t('server.delete_confirm'))) {
-      await deleteServer(id);
+  const handleDeleteServer = (id: number) => {
+    setDeletingServerId(id);
+  };
+
+  const confirmDeleteServer = async () => {
+    if (deletingServerId !== null) {
+      await deleteServer(deletingServerId);
+      setDeletingServerId(null);
     }
   };
 
@@ -249,6 +256,17 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
             await saveServer(config);
             setShowAddDialog(false);
           }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deletingServerId !== null && (
+        <ConfirmDialog
+          title={t('common.delete', 'Delete')}
+          message={t('server.delete_confirm', 'Are you sure you want to delete this server?')}
+          onConfirm={confirmDeleteServer}
+          onCancel={() => setDeletingServerId(null)}
+          isDanger={true}
         />
       )}
 
