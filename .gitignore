@@ -48,4 +48,6 @@ test_output.log
 # Scripts secrets
 scripts/*.key
 scripts/*.key.txt
+scripts/release_pipeline.ps1
+scripts/build_local.ps1
 
