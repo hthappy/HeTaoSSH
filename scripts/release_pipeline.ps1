@@ -35,22 +35,23 @@ git push origin --tags
 # 4. Build Windows (Local)
 Write-Host "Building Windows version locally..." -ForegroundColor Green
 
-# Set Signing Key (Decode base64 to file to ensure correct formatting)
-$b64Key = "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5VCs1ejN1LzRSNUR2ckRtNXVTaHA5eldyUk9qM2cvZjNLM1hhR0hBYjBSNEFBQkFBQUFBQUFBQUFBQUlBQUFBQWh5RHkwMEFtUi93RlNzaDJzV0FpVFQrUnJNVWNWWm5jQk9LSVQyN0U4ZW0wYklaMFI4bHhuUWdSN2I4TVV0bWw0MGhlaDMwYm9RTC9OYVVPRE5ic2xHUGVBVHBMSUpBRVdrQ3F2Ym83R2UvY1orMjA2dlk2UDNTQXluYnNqRnlHOUs1NkFvTytXN0E9Cg=="
-$keyBytes = [System.Convert]::FromBase64String($b64Key)
-$keyPath = Join-Path $PSScriptRoot "private.key"
-
-try {
-    # CRITICAL FIX: Write raw bytes to avoid newline/encoding issues
-    [System.IO.File]::WriteAllBytes($keyPath, $keyBytes)
+# Set Signing Key (Pass content directly to env var to avoid path issues)
+    $b64Key = "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5VCs1ejN1LzRSNUR2ckRtNXVTaHA5eldyUk9qM2cvZjNLM1hhR0hBYjBSNEFBQkFBQUFBQUFBQUFBQUlBQUFBQWh5RHkwMEFtUi93RlNzaDJzV0FpVFQrUnJNVWNWWm5jQk9LSVQyN0U4ZW0wYklaMFI4bHhuUWdSN2I4TVV0bWw0MGhlaDMwYm9RTC9OYVVPRE5ic2xHUGVBVHBMSUpBRVdrQ3F2Ym83R2UvY1orMjA2dlk2UDNTQXluYnNqRnlHOUs1NkFvTytXN0E9Cg=="
+    $keyBytes = [System.Convert]::FromBase64String($b64Key)
+    $keyContent = [System.Text.Encoding]::UTF8.GetString($keyBytes)
     
-    $env:TAURI_SIGNING_PRIVATE_KEY = $keyPath
+    $env:TAURI_SIGNING_PRIVATE_KEY = $keyContent
     $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "hetaossh"
 
-    Write-Host "Signing key prepared at: $keyPath" -ForegroundColor Gray
+    Write-Host "Signing key set in environment variables." -ForegroundColor Gray
 
-    # CLEANUP: Remove old bundles to prevent uploading wrong version
-    Write-Host "Cleaning up old build artifacts..." -ForegroundColor Gray
+    # Verify Env Var Propagation
+    Write-Host "Verifying environment variable visibility..." -ForegroundColor Gray
+    node -e "console.log('Node process sees key:', !!process.env.TAURI_SIGNING_PRIVATE_KEY)"
+
+    try {
+        # CLEANUP: Remove old bundles to prevent uploading wrong version
+        Write-Host "Cleaning up old build artifacts..." -ForegroundColor Gray
     if (Test-Path "src-tauri/target/release/bundle") {
         Remove-Item -Path "src-tauri/target/release/bundle" -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -61,7 +62,8 @@ try {
 
     # Build Backend & Sign
     Write-Host "Building Tauri backend..." -ForegroundColor Gray
-    pnpm tauri build
+    # Use --verbose to debug signing issues
+    pnpm tauri build --verbose
 
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed."
@@ -132,9 +134,4 @@ try {
 } catch {
     Write-Error $_
     exit 1
-} finally {
-    # Cleanup key file
-    if (Test-Path $keyPath) {
-        Remove-Item $keyPath -ErrorAction SilentlyContinue
-    }
 }
