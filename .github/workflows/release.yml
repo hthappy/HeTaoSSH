@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest] # Windows build is handled locally to save time
+        platform: [macos-latest, macos-13] # macos-latest (ARM), macos-13 (Intel)
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -36,49 +36,83 @@ jobs:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -n "$KEY" ]; then
-            # Fix: Properly handle multi-line secrets and strip only surrounding whitespace/newlines
-            # Using heredoc to preserve the key content while assigning to env var
             echo "TAURI_SIGNING_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
             echo "$KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
           fi
 
-      - name: Download existing latest.json (Windows)
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download ${{ github.ref_name }} -p latest.json -O latest-windows.json || echo "No existing latest.json found"
-
-      - name: Build and Release
+      - name: Build (No Release)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'HeTaoSSH v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: false
-          prerelease: false
+          # No tagName means build only, no auto-upload
+          args: --verbose
 
-      - name: Merge and Upload latest.json
+      - name: Upload Assets
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f "latest-windows.json" ]; then
-            echo "Merging latest.json..."
-            # Find the generated latest.json (it should be in bundle output)
-            # On macOS it is usually in src-tauri/target/release/bundle/macos/latest.json or similar
-            # But tauri-action might have moved it? tauri-action doesn't move it, it just uploads.
-            # We need to find it.
-            find src-tauri/target/release/bundle -name "latest.json" -type f -exec cp {} latest-macos.json \;
-            
-            if [ -f "latest-macos.json" ]; then
-              node scripts/merge_latest_json.js latest-windows.json latest-macos.json latest.json
-              gh release upload ${{ github.ref_name }} latest.json --clobber
-            else
-              echo "Could not find local latest.json to merge."
-            fi
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Uploading assets for $TAG_NAME..."
+          
+          # Upload DMG/App/Zip/Sig
+          # Using find to locate artifacts in bundle directory
+          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" -o -name "*.sig" \) -exec gh release upload $TAG_NAME {} --clobber \;
+          
+          # Find and upload latest.json as latest-${{ matrix.platform }}.json
+          JSON_PATH=$(find src-tauri/target/release/bundle -name "latest.json" -type f | head -n 1)
+          if [ -n "$JSON_PATH" ]; then
+             echo "Found latest.json at $JSON_PATH"
+             cp "$JSON_PATH" "latest-${{ matrix.platform }}.json"
+             gh release upload $TAG_NAME "latest-${{ matrix.platform }}.json" --clobber
+          else
+             echo "Warning: latest.json not found in bundle output"
+          fi
+
+  finalize-release:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download all latest-*.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Downloading jsons for $TAG_NAME..."
+          
+          # Download windows latest.json (uploaded by local script) if exists
+          # We save it as latest-windows.json to avoid overwriting
+          gh release download $TAG_NAME -p "latest.json" -O latest-windows.json || echo "No windows latest.json found"
+          
+          # Download macOS jsons
+          gh release download $TAG_NAME -p "latest-macos-latest.json" || echo "No macos-latest json found"
+          gh release download $TAG_NAME -p "latest-macos-13.json" || echo "No macos-13 json found"
+          
+          ls -l latest*.json
+          
+      - name: Merge JSONs
+        run: |
+          # Use our updated script to merge all available jsons
+          # Inputs that don't exist will be skipped by the script
+          node scripts/merge_latest_json.js latest.json latest-windows.json latest-macos-latest.json latest-macos-13.json
+          
+      - name: Upload merged latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          if [ -f "latest.json" ]; then
+            echo "Uploading merged latest.json..."
+            gh release upload $TAG_NAME latest.json --clobber
+          else
+            echo "Error: Merged latest.json not generated"
+            exit 1
           fi

@@ -140,7 +140,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       });
     };
 
-    // Fit terminal after a tiny delay to ensure DOM dimensions are computed
+    // Fit terminal after a delay to ensure DOM dimensions are computed
     const initialFitTimeout = setTimeout(() => {
       if (isUnmounted) return;
       fitTerminal();
@@ -148,7 +148,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       if (xtermRef.current && onResize && xtermRef.current.cols && xtermRef.current.rows) {
         onResize(xtermRef.current.cols, xtermRef.current.rows);
       }
-    }, 10);
+    }, 100);
 
     // Handle data (user input)
     const onDataDisposable = term.onData((data) => {
@@ -360,7 +360,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     <>
       <div 
         ref={terminalRef} 
-        className={cn('flex-1 w-full h-full overflow-hidden', className)}
+        className={cn('absolute inset-0 w-full h-full overflow-hidden', className)}
         style={{ backgroundColor: theme?.background }}
       />
       {contextMenu.visible && (

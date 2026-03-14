@@ -130,9 +130,10 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
           </div>
         </div>
       ) : activeConnection.status === 'connected' ? (
-        <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 relative w-full h-full overflow-hidden">
           <TerminalComponent
             ref={terminalRef}
+            className="absolute inset-0"
             onData={handleTerminalData}
             onResize={handleTerminalResize}
             onEnter={handleTerminalEnter}
