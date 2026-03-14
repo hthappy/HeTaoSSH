@@ -13,6 +13,7 @@ temp_*
 
 docs/PRD.md
 AGENTS.md
+
 # Rust / Tauri
 src-tauri/target/
 target/
@@ -43,3 +44,8 @@ check_output.txt
 output.txt
 output_utf8.txt
 test_output.log
+
+# Scripts secrets
+scripts/*.key
+scripts/*.key.txt
+

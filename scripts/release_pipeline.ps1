@@ -36,10 +36,16 @@ git push origin --tags
 Write-Host "Building Windows version locally..." -ForegroundColor Green
 
 # Set Signing Key using Node.js to ensure perfect binary/encoding handling
-    $b64Key = "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5VCs1ejN1LzRSNUR2ckRtNXVTaHA5eldyUk9qM2cvZjNLM1hhR0hBYjBSNEFBQkFBQUFBQUFBQUFBQUlBQUFBQWh5RHkwMEFtUi93RlNzaDJzV0FpVFQrUnJNVWNWWm5jQk9LSVQyN0U4ZW0wYklaMFI4bHhuUWdSN2I4TVV0bWw0MGhlaDMwYm9RTC9OYVVPRE5ic2xHUGVBVHBMSUpBRVdrQ3F2Ym83R2UvY1orMjA2dlk2UDNTQXluYnNqRnlHOUs1NkFvTytXN0E9Cg=="
+    $keyFileSource = Join-Path $PSScriptRoot "tauri.key.txt"
+    if (-not (Test-Path $keyFileSource)) {
+        throw "Key file not found at $keyFileSource. Please create it with your base64 private key."
+    }
+
     $keyPath = Join-Path $PSScriptRoot "private.key"
-    # Use Node to write the file to avoid PowerShell encoding issues (BOM, CRLF, etc.)
-    $nodeScript = "const fs = require('fs'); fs.writeFileSync('$($keyPath.Replace('\', '\\'))', Buffer.from('$b64Key', 'base64'));"
+    
+    # Use Node to read base64 from source and write binary to target
+    # This avoids all PowerShell string encoding issues
+    $nodeScript = "const fs = require('fs'); const b64 = fs.readFileSync('$($keyFileSource.Replace('\', '\\'))', 'utf8').trim(); fs.writeFileSync('$($keyPath.Replace('\', '\\'))', Buffer.from(b64, 'base64'));"
     node -e $nodeScript
 
     if (-not (Test-Path $keyPath)) {
