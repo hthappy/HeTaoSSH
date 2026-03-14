@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, FileType, Clock, Server } from 'lucide-react';
+import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, Clock, Server } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
@@ -62,7 +62,6 @@ const ProgressBar = ({ value, colorClass }: { value: number, colorClass: string 
 
 export function StatusBar({
   latency = 45,
-  encoding = 'UTF-8',
   serverName,
   isConnected = false,
   tabId,
