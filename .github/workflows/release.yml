@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest] # macos-latest (ARM) - macos-13 (Intel) disabled due to runner error
+        platform: [macos-latest, windows-latest] # macos-latest (ARM) - macos-13 (Intel) disabled due to runner error
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -73,6 +73,7 @@ jobs:
           gh release edit $TAG_NAME --title "$TAG_NAME" --notes "$NOTES"
 
       - name: Rename macOS Assets
+        if: matrix.platform == 'macos-latest'
         run: |
           echo "Renaming .dmg files to include -beta..."
           find src-tauri/target/release/bundle -name "*.dmg" -exec sh -c 'mv "$1" "${1%.dmg}-beta.dmg"' _ {} \;
