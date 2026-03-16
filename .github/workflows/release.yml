@@ -50,6 +50,37 @@ jobs:
           # No tagName means build only, no auto-upload
           args: --verbose
 
+      - name: Create Release and Update Notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Processing release for $TAG_NAME..."
+          
+          # Define release notes with macOS warning
+          NOTES="## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
+          
+          > **Note:** This release has not been fully tested on macOS environments.
+          > **注意：** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
+          
+          The macOS installer has been marked as **beta**.
+          macOS 安装包已标记为 **beta**。
+          "
+          
+          # Create release if it doesn't exist, or update it if it does
+          # We force the notes to ensure the warning is visible
+          gh release create $TAG_NAME --title "$TAG_NAME" --notes "$NOTES" --draft=false --prerelease=false || \
+          gh release edit $TAG_NAME --title "$TAG_NAME" --notes "$NOTES"
+
+      - name: Rename macOS Assets
+        run: |
+          echo "Renaming .dmg files to include -beta..."
+          find src-tauri/target/release/bundle -name "*.dmg" -exec sh -c 'mv "$1" "${1%.dmg}-beta.dmg"' _ {} \;
+          
+          echo "Patching latest.json to reflect beta filename..."
+          # macOS sed requires empty string argument for -i
+          find src-tauri/target/release/bundle -name "latest.json" -exec sed -i '' 's/\.dmg/-beta.dmg/g' {} \;
+
       - name: Upload Assets
         shell: bash
         env:
@@ -60,6 +91,7 @@ jobs:
           
           # Upload DMG/App/Zip
           # Using find to locate artifacts in bundle directory
+          # Note: .dmg files are now renamed to *-beta.dmg
           find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" \) -exec gh release upload $TAG_NAME {} --clobber \;
           
           # Find and upload latest.json as latest-${{ matrix.platform }}.json
