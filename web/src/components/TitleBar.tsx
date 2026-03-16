@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { Monitor, Minus, Square, X } from 'lucide-react';
-import { platform } from '@tauri-apps/plugin-os';
 
 export interface TitleBarProps {
   children?: React.ReactNode;
@@ -16,8 +15,8 @@ export function TitleBar({ children, actions }: TitleBarProps) {
   const appWindow = getCurrentWindow();
 
   useEffect(() => {
-    const plat = platform();
-    setIsMac(plat === 'macos');
+    const userAgent = navigator.userAgent.toLowerCase();
+    setIsMac(userAgent.includes('mac'));
   }, []);
 
   useEffect(() => {
