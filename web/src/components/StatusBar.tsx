@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, Clock, Server } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
+import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, Clock, Server, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
@@ -8,6 +9,12 @@ interface StatusBarProps {
   serverName?: string;
   isConnected?: boolean;
   tabId?: string;
+}
+
+interface ReconnectEvent {
+  id: string;
+  attempt: number;
+  max_attempts: number;
 }
 
 interface SystemUsage {
@@ -77,17 +84,39 @@ export function StatusBar({
   const [networkSpeed, setNetworkSpeed] = useState<{ rx: number; tx: number }>({ rx: 0, tx: 0 });
   const [usageError, setUsageError] = useState<string | null>(null);
   const [monitorHover, setMonitorHover] = useState(false);
+  const [reconnectInfo, setReconnectInfo] = useState<{ attempt: number; max: number } | null>(null);
   const lastUsageRef = useRef<{ usage: SystemUsage; time: number } | null>(null);
   
-  // Track current tabId to prevent race conditions
   const currentTabIdRef = useRef(tabId);
+  
+  // Listen for reconnect events
+  useEffect(() => {
+    const unlistenReconnecting = listen<ReconnectEvent>('ssh-reconnecting', (event) => {
+      setReconnectInfo({ attempt: event.payload.attempt, max: event.payload.max_attempts });
+    });
+    
+    const unlistenReconnected = listen<string>('ssh-reconnected', () => {
+      setReconnectInfo(null);
+    });
+    
+    const unlistenDisconnected = listen<string>('ssh-disconnected', () => {
+      setReconnectInfo(null);
+    });
+    
+    return () => {
+      unlistenReconnecting.then(f => f());
+      unlistenReconnected.then(f => f());
+      unlistenDisconnected.then(f => f());
+    };
+  }, []);
+  
   useEffect(() => {
     currentTabIdRef.current = tabId;
-    // Reset state when tab changes
     setUsage(null);
     setUsageError(null);
     lastUsageRef.current = null;
     setNetworkSpeed({ rx: 0, tx: 0 });
+    setReconnectInfo(null);
   }, [tabId]);
 
   const fetchUsage = useCallback(async () => {
@@ -129,10 +158,11 @@ export function StatusBar({
       setUsageError(null);
       lastUsageRef.current = null;
       setNetworkSpeed({ rx: 0, tx: 0 });
+      setReconnectInfo(null);
       return;
     }
     fetchUsage();
-    const interval = window.setInterval(fetchUsage, 2000);
+    const interval = window.setInterval(fetchUsage, 3000);
     return () => window.clearInterval(interval);
   }, [fetchUsage, isConnected, tabId]);
 
@@ -173,14 +203,23 @@ export function StatusBar({
 
         {/* Connection Status */}
         <div className="flex items-center gap-1.5">
-          <Wifi className="w-3 h-3" />
-          <span className={isConnected ? 'text-term-green' : 'text-term-brightBlack'}>
-            {isConnected ? t('status.connected') : t('status.disconnected')}
+          {reconnectInfo ? (
+            <Loader2 className="w-3 h-3 animate-spin text-term-yellow" />
+          ) : (
+            <Wifi className={`w-3 h-3 ${isConnected ? 'text-term-green' : 'text-term-brightBlack'}`} />
+          )}
+          <span className={isConnected && !reconnectInfo ? 'text-term-green' : 'text-term-brightBlack'}>
+            {reconnectInfo 
+              ? `${t('status.reconnecting')} (${reconnectInfo.attempt}/${reconnectInfo.max})`
+              : isConnected 
+                ? t('status.connected')
+                : t('status.disconnected')
+            }
           </span>
         </div>
 
         {/* Latency */}
-        {isConnected && (
+        {isConnected && !reconnectInfo && (
           <div className="flex items-center gap-1.5">
             <Clock className="w-3 h-3" />
             <span className={getLatencyColor(latency)}>
@@ -188,7 +227,6 @@ export function StatusBar({
             </span>
           </div>
         )}
-
       </div>
 
       {/* Monitor (moved to right) */}

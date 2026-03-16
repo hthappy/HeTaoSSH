@@ -84,6 +84,10 @@ interface SshState {
 
   // Terminal API
   sendToTerminal: (serverId: number, data: string) => Promise<void>;
+  
+  // Session Management
+  saveSession: () => Promise<void>;
+  restoreSession: () => Promise<void>;
 }
 
 export const useSshStore = create<SshState>((set, get) => ({
@@ -293,14 +297,9 @@ export const useSshStore = create<SshState>((set, get) => ({
   },
 
   sendToTerminal: async (serverId: number, data: string) => {
-    // Check if it's a local terminal
     const conn = get().connections.find(c => c.serverId === serverId);
     if (conn?.isLocal) {
-       // For local terminal, we might want to send directly or buffer differently
-       // For now, let's just invoke directly to avoid mixing with SSH buffer logic which uses 'ssh_send'
-       // But wait, the buffer uses 'ssh_send'. We need 'local_term_write'.
        try {
-         // Convert string to byte array for Rust
          const encoder = new TextEncoder();
          const bytes = Array.from(encoder.encode(data));
          await invoke('local_term_write', { id: serverId.toString(), data: bytes });
@@ -309,6 +308,37 @@ export const useSshStore = create<SshState>((set, get) => ({
        }
     } else {
       sendBuffered(serverId, data);
+    }
+  },
+  
+  saveSession: async () => {
+    try {
+      const serverIds = get().connections
+        .filter(c => c.status === 'connected' && !c.isLocal)
+        .map(c => c.serverId);
+      
+      if (serverIds.length > 0) {
+        await invoke('save_session', { serverIds });
+      }
+    } catch (err) {
+      console.error('Failed to save session:', err);
+    }
+  },
+  
+  restoreSession: async () => {
+    try {
+      const session = await invoke<{ server_ids: number[] } | null>('get_session');
+      
+      if (session && session.server_ids.length > 0) {
+        for (const serverId of session.server_ids) {
+          const server = get().servers.find(s => s.id === serverId);
+          if (server) {
+            get().connectServer(serverId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to restore session:', err);
     }
   },
 }));

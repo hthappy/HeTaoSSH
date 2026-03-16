@@ -431,3 +431,18 @@ pub async fn fetch_url(url: String) -> Result<String> {
 
     Ok(content)
 }
+
+#[tauri::command]
+pub async fn save_session(
+    server_ids: Vec<i64>,
+    state: State<'_, Arc<ConfigManager>>,
+) -> Result<()> {
+    state.save_session(server_ids).await
+}
+
+#[tauri::command]
+pub async fn get_session(
+    state: State<'_, Arc<ConfigManager>>,
+) -> Result<Option<crate::config::SessionState>> {
+    state.get_session().await
+}

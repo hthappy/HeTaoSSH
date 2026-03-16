@@ -1,13 +1,13 @@
-//! SSH Connection Manager — Actor 模型
-//! 每个连接运行在独立的 tokio 任务中，通过 mpsc channel 接收命令
-//! 消除了嵌套 RwLock 的锁竞争问题
-
 use crate::config::ServerConfig;
 use crate::error::{Result, SshError};
 use crate::ssh::SshConnection;
-use log::info;
+use log::{info, warn, error};
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::time::{Duration, sleep};
+
+const MAX_RECONNECT_ATTEMPTS: u32 = 2;
+const RECONNECT_INTERVAL: Duration = Duration::from_secs(3);
 
 /// Actor 命令：发送给连接 Actor 的请求
 enum ConnCommand {
@@ -391,9 +391,7 @@ impl Default for ConnectionManager {
     }
 }
 
-// =============================================================================
-// 连接 Actor 任务 — 独占 SshConnection，串行处理所有命令
-// =============================================================================
+
 
 async fn connection_actor(
     id: String,
@@ -404,6 +402,7 @@ async fn connection_actor(
     use tauri::Emitter;
     info!("Connection actor started: {}", id);
     let event_name = format!("ssh-data-{}", id);
+    let mut reconnect_attempts = 0;
 
     loop {
         tokio::select! {
@@ -411,78 +410,88 @@ async fn connection_actor(
                 let Some(cmd) = cmd_opt else { break; };
                 match cmd {
                     ConnCommand::SendData { data, reply } => {
-                        let result = conn.send(&data).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(conn.send(&data).await);
                     }
                     ConnCommand::RecvData { reply } => {
-                        // Polling recv via RecvData is deprecated as we continuously poll below,
-                        // but handle it so we don't break existing Rust signatures.
                         let _ = reply.send(None);
                     }
                     ConnCommand::ResizeTerminal { cols, rows, reply } => {
-                        let result = conn.resize(cols, rows).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(conn.resize(cols, rows).await);
                     }
                     ConnCommand::SftpListDir { path, reply } => {
-                        let result = handle_sftp_list_dir(&conn, &path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_list_dir(&conn, &path).await);
                     }
                     ConnCommand::SftpReadFile { path, reply } => {
-                        let result = handle_sftp_read_file(&conn, &path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_read_file(&conn, &path).await);
                     }
-                    ConnCommand::SftpWriteFile {
-                        path,
-                        content,
-                        reply,
-                    } => {
-                        let result = handle_sftp_write_file(&conn, &path, &content).await;
-                        let _ = reply.send(result);
+                    ConnCommand::SftpWriteFile { path, content, reply } => {
+                        let _ = reply.send(handle_sftp_write_file(&conn, &path, &content).await);
                     }
                     ConnCommand::SftpGetHomeDir { reply } => {
-                        let result = handle_sftp_get_home_dir(&conn).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_get_home_dir(&conn).await);
                     }
                     ConnCommand::SftpRemoveFile { path, reply } => {
-                        let result = handle_sftp_remove_file(&conn, &path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_remove_file(&conn, &path).await);
                     }
                     ConnCommand::SftpCreateDir { path, reply } => {
-                        let result = handle_sftp_create_dir(&conn, &path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_create_dir(&conn, &path).await);
                     }
                     ConnCommand::SftpDownloadFile { remote_path, local_path, reply } => {
-                        let result = handle_sftp_download_file(&conn, &remote_path, &local_path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_download_file(&conn, &remote_path, &local_path).await);
                     }
                     ConnCommand::SftpDownloadDir { remote_path, local_path, reply } => {
-                        let result = handle_sftp_download_dir(&conn, &remote_path, &local_path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_download_dir(&conn, &remote_path, &local_path).await);
                     }
                     ConnCommand::SftpUploadFile { local_path, remote_path, reply } => {
-                        let result = handle_sftp_upload_file(&conn, &local_path, &remote_path).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_sftp_upload_file(&conn, &local_path, &remote_path).await);
                     }
                     ConnCommand::GetSystemUsage { reply } => {
-                        let result = handle_get_system_usage(&conn).await;
-                        let _ = reply.send(result);
+                        let _ = reply.send(handle_get_system_usage(&conn).await);
                     }
                     ConnCommand::Disconnect { reply } => {
-                        let result = conn.disconnect().await;
-                        let _ = reply.send(result);
-                        break; // 退出 Actor 循环
+                        let _ = reply.send(conn.disconnect().await);
+                        break;
                     }
                 }
             }
             data_opt = conn.recv() => {
                 match data_opt {
                     Some(data) => {
+                        reconnect_attempts = 0;
                         let _ = app_handle.emit(&event_name, data);
                     }
                     None => {
-                        // PTY Session EOF
-                        let _ = app_handle.emit(&event_name, b"\r\n[SSH Connection Closed]\r\n".to_vec());
-                        break;
+                        warn!("Connection {} lost, attempting auto-reconnect...", id);
+                        
+                        let _ = app_handle.emit("ssh-reconnecting", &ReconnectEvent {
+                            id: id.clone(),
+                            attempt: reconnect_attempts + 1,
+                            max_attempts: MAX_RECONNECT_ATTEMPTS,
+                        });
+                        
+                        if reconnect_attempts < MAX_RECONNECT_ATTEMPTS {
+                            reconnect_attempts += 1;
+                            sleep(RECONNECT_INTERVAL).await;
+                            
+                            info!("Reconnecting {} (attempt {}/{})", id, reconnect_attempts, MAX_RECONNECT_ATTEMPTS);
+                            
+                            match conn.reconnect().await {
+                                Ok(_) => {
+                                    info!("Reconnection successful for {}", id);
+                                    reconnect_attempts = 0;
+                                    let _ = app_handle.emit("ssh-reconnected", &id);
+                                    continue;
+                                }
+                                Err(e) => {
+                                    error!("Reconnection failed for {}: {}", id, e);
+                                }
+                            }
+                        } else {
+                            error!("Max reconnection attempts reached for {}, giving up", id);
+                            let _ = app_handle.emit("ssh-disconnected", &id);
+                            let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[SSH Connection Lost]\x1b[0m\r\n".to_vec());
+                            break;
+                        }
                     }
                 }
             }
@@ -490,6 +499,13 @@ async fn connection_actor(
     }
 
     info!("Connection actor stopped: {}", id);
+}
+
+#[derive(Clone, serde::Serialize)]
+struct ReconnectEvent {
+    id: String,
+    attempt: u32,
+    max_attempts: u32,
 }
 
 // =============================================================================
@@ -590,7 +606,6 @@ async fn handle_sftp_download_file(conn: &SshConnection, remote_path: &str, loca
         .as_ref()
         .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
 
-    // Check if remote path is a directory
     let metadata = sftp.metadata(remote_path).await
         .map_err(|e| SshError::ConnectionFailed(format!("stat failed: {}", e)))?;
     
@@ -598,15 +613,12 @@ async fn handle_sftp_download_file(conn: &SshConnection, remote_path: &str, loca
         return Err(SshError::ConnectionFailed("Cannot download a directory".to_string()));
     }
 
-    // Open remote file for reading
     let mut remote_file = sftp.open(remote_path).await
         .map_err(|e| SshError::ConnectionFailed(format!("open remote file failed: {}", e)))?;
 
-    // Create local file for writing
     let mut local_file = tokio::fs::File::create(local_path).await
         .map_err(|e| SshError::Io(e))?;
 
-    // Stream copy
     tokio::io::copy(&mut remote_file, &mut local_file).await
         .map_err(|e| SshError::Io(e))?;
 
@@ -683,15 +695,12 @@ async fn handle_sftp_upload_file(conn: &SshConnection, local_path: &str, remote_
         .as_ref()
         .ok_or_else(|| SshError::ConnectionFailed("SFTP session not initialized".to_string()))?;
 
-    // Open local file for reading
     let mut local_file = tokio::fs::File::open(local_path).await
         .map_err(|e| SshError::Io(e))?;
 
-    // Open remote file for writing (create or truncate)
     let mut remote_file = sftp.create(remote_path).await
         .map_err(|e| SshError::ConnectionFailed(format!("create remote file failed: {}", e)))?;
 
-    // Stream copy
     tokio::io::copy(&mut local_file, &mut remote_file).await
         .map_err(|e| SshError::Io(e))?;
 

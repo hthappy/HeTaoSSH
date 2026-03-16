@@ -235,4 +235,17 @@ impl SshConnection {
             Err(SshError::Channel("Channel not initialized".to_string()))
         }
     }
+
+    /// Reconnect the SSH session (used for auto-reconnect)
+    pub async fn reconnect(&mut self) -> Result<()> {
+        info!("Reconnecting to {}:{}", self.config.host, self.config.port);
+        
+        // Clean up existing session first
+        if self.session.is_some() {
+            let _ = self.disconnect().await;
+        }
+        
+        // Re-establish connection
+        self.connect_with_shell().await
+    }
 }

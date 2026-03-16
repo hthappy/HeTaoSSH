@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import { Minus, Square, X, Monitor } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Monitor } from 'lucide-react';
 
 export interface TitleBarProps {
   children?: React.ReactNode;
@@ -38,51 +37,32 @@ export function TitleBar({ children, actions }: TitleBarProps) {
 
   return (
     <div className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
-      {/* Left Area: Logo & Title (Drag Region) */}
-      <div data-tauri-drag-region className="flex items-center gap-2 px-3 h-full flex-shrink-0">
-        <Monitor className="w-4 h-4 text-term-blue" />
-        <span className="text-xs font-medium text-term-fg/80 hidden sm:inline">HeTaoSSH</span>
+      <div className="flex items-center gap-1 px-3 h-full">
+        <button 
+          onClick={() => appWindow.minimize()}
+          className="w-3 h-3 rounded-full bg-term-yellow hover:bg-yellow-500 transition-colors"
+          title={t('common.minimize')}
+        />
+        <button 
+          onClick={handleMaximize}
+          className="w-3 h-3 rounded-full bg-term-green hover:bg-green-500 transition-colors"
+          title={isMaximized ? t('common.restore') : t('common.maximize')}
+        />
+        <button 
+          onClick={() => appWindow.close()}
+          className="w-3 h-3 rounded-full bg-term-red hover:bg-red-500 transition-colors"
+          title={t('common.close')}
+        />
       </div>
 
-      {/* Center Area: Tabs (Not Drag Region) */}
-      <div className="flex items-center h-full overflow-hidden max-w-[calc(100vw-300px)]">
+      <div data-tauri-drag-region className="flex items-center gap-2 h-full overflow-hidden flex-1 mx-4">
+        <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
+        <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
         {children}
       </div>
 
-      {/* Spacer (Drag Region) */}
-      <div data-tauri-drag-region className="flex-1 h-full min-w-[20px]" />
-
-      {/* Right Area: Actions & Window Controls */}
-      <div className="flex h-full relative z-50">
-        {/* Custom Actions (Settings, etc.) */}
-        {actions && (
-          <div className="flex items-center h-full mr-2">
-            {actions}
-          </div>
-        )}
-        
-        {/* Window Controls */}
-        <button 
-          onClick={() => appWindow.minimize()}
-          className="inline-flex items-center justify-center w-10 h-full hover:bg-term-selection text-term-fg transition-colors"
-          title={t('common.minimize')}
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <button 
-          onClick={handleMaximize}
-          className="inline-flex items-center justify-center w-10 h-full hover:bg-term-selection text-term-fg transition-colors"
-          title={isMaximized ? t('common.restore') : t('common.maximize')}
-        >
-          <Square className={cn("w-3.5 h-3.5", isMaximized && "fill-current opacity-50")} />
-        </button>
-        <button 
-          onClick={() => appWindow.close()}
-          className="inline-flex items-center justify-center w-10 h-full hover:bg-red-500 hover:text-white text-term-fg transition-colors"
-          title={t('common.close')}
-        >
-          <X className="w-4 h-4" />
-        </button>
+      <div className="flex h-full relative z-50 mr-2">
+        {actions}
       </div>
     </div>
   );

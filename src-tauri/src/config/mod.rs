@@ -23,6 +23,11 @@ pub struct ServerConfig {
     pub passphrase: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionState {
+    pub server_ids: Vec<i64>,
+}
+
 pub struct ConfigManager {
     pool: SqlitePool,
     crypto: Arc<CryptoManager>,
@@ -90,6 +95,18 @@ impl ConfigManager {
                 passphrase_encrypted TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS session_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_ids TEXT NOT NULL,
+                saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             "#,
         )
@@ -215,5 +232,40 @@ impl ConfigManager {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn save_session(&self, server_ids: Vec<i64>) -> Result<()> {
+        let server_ids_json = serde_json::to_string(&server_ids)
+            .map_err(|e| SshError::Config(format!("Failed to serialize server ids: {}", e)))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO session_state (server_ids) VALUES (?)
+            ON CONFLICT(id) DO UPDATE SET server_ids = ?, saved_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(&server_ids_json)
+        .bind(&server_ids_json)
+        .execute(&self.pool)
+        .await?;
+
+        info!("Session saved with {} servers", server_ids.len());
+        Ok(())
+    }
+
+    pub async fn get_session(&self) -> Result<Option<SessionState>> {
+        let row = sqlx::query("SELECT server_ids FROM session_state ORDER BY id DESC LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await?;
+
+        if let Some(row) = row {
+            let server_ids_json: String = row.get("server_ids");
+            let server_ids: Vec<i64> = serde_json::from_str(&server_ids_json)
+                .map_err(|e| SshError::Config(format!("Failed to deserialize server ids: {}", e)))?;
+
+            Ok(Some(SessionState { server_ids }))
+        } else {
+            Ok(None)
+        }
     }
 }

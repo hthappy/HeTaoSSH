@@ -77,6 +77,9 @@ async fn main() -> Result<()> {
             commands::local_term_close,
             commands::local_list_dir,
             commands::local_get_home_dir,
+            // Session management
+            commands::save_session,
+            commands::get_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
