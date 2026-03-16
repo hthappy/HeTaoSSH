@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
 import { TitleBar } from '@/components/TitleBar';
+import { CommandPalette } from '@/components/CommandPalette';
 import logo from '@/assets/logo.png';
 
 import { ThemeSchema } from '@/types/theme';
@@ -50,6 +51,7 @@ function App() {
   const serverListRef = useRef<ServerListHandle>(null);
   const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   
   // Check for updates on startup
   useEffect(() => {
@@ -144,12 +146,17 @@ function App() {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setShowCommandPalette(true);
+        return;
+      }
+
       // Ctrl+N: New Connection
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
         setActiveActivity('hosts');
         setIsSidebarOpen(true);
-        // Small delay to ensure component is mounted
         setTimeout(() => serverListRef.current?.openAddDialog(), 50);
       }
       // Ctrl+,: Settings
@@ -453,6 +460,57 @@ function App() {
               }
             }}
             onClose={() => setUpdateAvailable(null)}
+          />
+
+          <CommandPalette
+            isOpen={showCommandPalette}
+            onClose={() => setShowCommandPalette(false)}
+            commands={[
+              {
+                id: 'new-connection',
+                label: t('common.new_connection', 'New Connection'),
+                shortcut: 'Ctrl+N',
+                category: 'connection',
+                action: () => {
+                  setActiveActivity('hosts');
+                  setIsSidebarOpen(true);
+                  setTimeout(() => serverListRef.current?.openAddDialog(), 50);
+                },
+              },
+              {
+                id: 'new-local-terminal',
+                label: t('common.new_local_terminal', 'New Local Terminal'),
+                shortcut: 'Ctrl+T',
+                category: 'terminal',
+                action: () => createLocalTerminal(),
+              },
+              {
+                id: 'toggle-sidebar',
+                label: t('common.toggle_sidebar', 'Toggle Sidebar'),
+                shortcut: 'Ctrl+B',
+                category: 'terminal',
+                action: () => setIsSidebarOpen(prev => !prev),
+              },
+              {
+                id: 'open-settings',
+                label: t('common.settings', 'Settings'),
+                shortcut: 'Ctrl+,',
+                category: 'settings',
+                action: () => setShowSettings(true),
+              },
+              {
+                id: 'open-file',
+                label: t('file.open', 'Open File'),
+                category: 'file',
+                action: () => setActiveActivity('sftp'),
+              },
+              {
+                id: 'view-snippets',
+                label: t('common.snippets', 'Command Snippets'),
+                category: 'tools',
+                action: () => setActiveActivity('snippets'),
+              },
+            ]}
           />
       </div>
     </ToastProvider>
