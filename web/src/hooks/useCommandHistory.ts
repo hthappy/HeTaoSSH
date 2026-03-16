@@ -26,16 +26,16 @@ const saveHistory = (history: string[]) => {
 
 export const useCommandHistory = (serverId: number) => {
   // Per-server command history
-  const historyRef = useRef<Record<number, string[]>>(() => {
-    const allHistory = loadHistory();
-    return { [serverId]: allHistory };
-  });
+  const historyRef = useRef<Record<number, string[]>>({});
+  if (!historyRef.current[serverId]) {
+    historyRef.current[serverId] = loadHistory();
+  }
   
   // Current position in history (for ↑/↓ navigation)
   const positionRef = useRef<Record<number, number>>({});
   
   // Current input buffer (what user is typing)
-  const bufferRef = useRef<Record<number, string>>('');
+  const bufferRef = useRef<Record<number, string>>({});
   
   // Add command to history
   const addToHistory = useCallback((cmd: string) => {
