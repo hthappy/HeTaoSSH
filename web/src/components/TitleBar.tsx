@@ -42,7 +42,7 @@ export function TitleBar({ children, actions }: TitleBarProps) {
   };
 
   return (
-    <div className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
+    <div data-tauri-drag-region className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
       {isMac ? (
         <>
           <div className="flex items-center gap-1 px-3 h-full">
