@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Globe, Palette, Upload, Trash2 } from 'lucide-react';
+import { Globe, Palette, Upload, Trash2, Keyboard, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -7,6 +7,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { presets } from '../themes/presets';
 import { ThemeSchema } from '../types/theme';
+import { ShortcutsSettings, type ShortcutConfig } from './ShortcutsSettings';
 
 export interface AppSettings {
   language: string;
@@ -18,6 +19,7 @@ export interface AppSettings {
   editorMinimap: boolean;
   editorWordWrap: boolean;
   rightClickBehavior: 'menu' | 'paste';
+  shortcuts?: ShortcutConfig[];
 }
 
 interface SettingsDialogProps {
@@ -485,6 +487,17 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
               </label>
             </div>
           </div>
+        </div>
+
+        <div className="pt-6 border-t border-term-selection">
+          <div className="flex items-center gap-2 mb-3">
+            <Keyboard className="w-4 h-4 text-term-fg/60" />
+            <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
+          </div>
+          <ShortcutsSettings
+            shortcuts={localSettings.shortcuts || []}
+            onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
+          />
         </div>
 
         {/* Actions */}
