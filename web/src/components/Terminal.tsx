@@ -1,22 +1,19 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
 import { Terminal as XTerm, ITheme } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { SearchAddon } from 'xterm-addon-search';
 import { useTranslation } from 'react-i18next';
 import { Clipboard, Copy } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
-import { TerminalSearchBar } from './TerminalSearchBar';
-import { addToHistory, getHistory } from '@/lib/commandHistory';
+
 import { useToast } from '@/components/Toast';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
   focus: () => void;
   resize: () => void;
-  search: (query: string) => void;
 };
 
 interface TerminalProps {
@@ -31,11 +28,10 @@ interface TerminalProps {
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
   isActive?: boolean;
-  serverId?: number;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
+  { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false },
   ref
 ) {
   const { t } = useTranslation();
@@ -43,17 +39,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
   const onEnterRef = useRef(onEnter);
   const onDataRef = useRef(onData);
   const onResizeRef = useRef(onResize);
   const disconnectedRef = useRef(disconnected);
   const initializedRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
-  const [showSearch, setShowSearch] = useState(false);
-  const [currentCommand, setCurrentCommand] = useState('');
-  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
-  const commandHistoryRef = useRef<Array<{ command: string; timestamp: number }>>([]);
 
   // Update refs
   useEffect(() => {
@@ -82,6 +73,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       }
     },
     resize: () => {
+      // Use RAF to ensure DOM update is complete before fitting
       requestAnimationFrame(() => {
         try {
           const element = xtermRef.current?.element;
@@ -100,11 +92,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           console.warn('Resize fit failed', e);
         }
       });
-    },
-    search: (query: string) => {
-      if (searchAddonRef.current && query) {
-        searchAddonRef.current.findNext(query);
-      }
     }
   }));
 
@@ -179,10 +166,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.loadAddon(fitAddon);
     fitAddonRef.current = fitAddon;
 
-    const searchAddon = new SearchAddon();
-    term.loadAddon(searchAddon);
-    searchAddonRef.current = searchAddon;
-
     // Open terminal
     term.open(terminalRef.current);
     xtermRef.current = term;
@@ -234,51 +217,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Handle data (user input)
     const onDataDisposable = term.onData((data) => {
       if (!disconnectedRef.current && onDataRef.current) {
-        if (data === '\r' && serverId !== undefined) {
-          if (currentCommand.trim()) {
-            addToHistory(serverId, currentCommand);
-            commandHistoryRef.current = getHistory(serverId);
-          }
-          setCurrentCommand('');
-          setHistoryIndex(null);
-        } else if (data !== '\x7f' && data !== '\b') {
-          setCurrentCommand(prev => prev + data);
-        }
         onDataRef.current(data);
-      }
-    });
-
-    const onKeyDisposable = term.onKey(({ domEvent, key }) => {
-      if (domEvent.keyCode === 13 && onEnterRef.current) {
-        onEnterRef.current();
-      }
-      
-      if (domEvent.keyCode === 38 && serverId !== undefined) {
-        domEvent.preventDefault();
-        const history = commandHistoryRef.current;
-        if (history.length > 0) {
-          const newIndex = historyIndex === null ? 0 : Math.min(historyIndex + 1, history.length - 1);
-          setHistoryIndex(newIndex);
-          const cmd = history[newIndex]?.command || '';
-          term.input('\x15');
-          term.input(cmd);
-        }
-      }
-      
-      if (domEvent.keyCode === 40 && serverId !== undefined) {
-        domEvent.preventDefault();
-        const history = commandHistoryRef.current;
-        if (historyIndex !== null && history.length > 0) {
-          const newIndex = Math.max(historyIndex - 1, -1);
-          setHistoryIndex(newIndex);
-          if (newIndex === -1) {
-            term.input('\x15');
-          } else {
-            const cmd = history[newIndex]?.command || '';
-            term.input('\x15');
-            term.input(cmd);
-          }
-        }
       }
     });
 
@@ -493,23 +432,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
   }, [rightClickBehavior, onData, t, showToast]);
 
-  useEffect(() => {
-    if (isActive && serverId !== undefined) {
-      commandHistoryRef.current = getHistory(serverId);
-    }
-  }, [isActive, serverId]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isActive && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive]);
-
   return (
     <>
       <div 
@@ -517,12 +439,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         className={cn('absolute inset-0 w-full h-full overflow-hidden', className)}
         style={{ backgroundColor: theme?.background }}
       />
-      {showSearch && (
-        <TerminalSearchBar
-          terminalRef={xtermRef}
-          onClose={() => setShowSearch(false)}
-        />
-      )}
       {contextMenu.visible && (
         <ContextMenu
           x={contextMenu.x}
