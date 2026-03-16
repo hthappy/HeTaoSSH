@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { TerminalHandle } from './Terminal';
+import type { Terminal as XTerm } from 'xterm';
 
 interface TerminalSearchBarProps {
-  terminalRef: React.MutableRefObject<TerminalHandle | null>;
+  terminalRef: React.MutableRefObject<XTerm | null>;
   onClose: () => void;
 }
 
