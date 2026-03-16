@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import { Monitor } from 'lucide-react';
+import { Monitor, Minus, Square, X } from 'lucide-react';
+import { platform } from '@tauri-apps/plugin-os';
 
 export interface TitleBarProps {
   children?: React.ReactNode;
@@ -11,7 +12,13 @@ export interface TitleBarProps {
 export function TitleBar({ children, actions }: TitleBarProps) {
   const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const appWindow = getCurrentWindow();
+
+  useEffect(() => {
+    const plat = platform();
+    setIsMac(plat === 'macos');
+  }, []);
 
   useEffect(() => {
     const updateState = async () => {
@@ -37,33 +44,73 @@ export function TitleBar({ children, actions }: TitleBarProps) {
 
   return (
     <div className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
-      <div className="flex items-center gap-1 px-3 h-full">
-        <button 
-          onClick={() => appWindow.minimize()}
-          className="w-3 h-3 rounded-full bg-term-yellow hover:bg-yellow-500 transition-colors"
-          title={t('common.minimize')}
-        />
-        <button 
-          onClick={handleMaximize}
-          className="w-3 h-3 rounded-full bg-term-green hover:bg-green-500 transition-colors"
-          title={isMaximized ? t('common.restore') : t('common.maximize')}
-        />
-        <button 
-          onClick={() => appWindow.close()}
-          className="w-3 h-3 rounded-full bg-term-red hover:bg-red-500 transition-colors"
-          title={t('common.close')}
-        />
-      </div>
+      {isMac ? (
+        <>
+          <div className="flex items-center gap-1 px-3 h-full">
+            <button 
+              onClick={() => appWindow.minimize()}
+              className="w-3 h-3 rounded-full bg-term-yellow hover:bg-yellow-500 transition-colors"
+              title={t('common.minimize')}
+            />
+            <button 
+              onClick={handleMaximize}
+              className="w-3 h-3 rounded-full bg-term-green hover:bg-green-500 transition-colors"
+              title={isMaximized ? t('common.restore') : t('common.maximize')}
+            />
+            <button 
+              onClick={() => appWindow.close()}
+              className="w-3 h-3 rounded-full bg-term-red hover:bg-red-500 transition-colors"
+              title={t('common.close')}
+            />
+          </div>
 
-      <div data-tauri-drag-region className="flex items-center gap-2 h-full overflow-hidden flex-1 mx-4">
-        <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
-        <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
-        {children}
-      </div>
+          <div data-tauri-drag-region className="flex items-center gap-2 h-full overflow-hidden flex-1 mx-4">
+            <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
+            <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
+            {children}
+          </div>
 
-      <div className="flex h-full relative z-50 mr-2">
-        {actions}
-      </div>
+          <div className="flex h-full relative z-50 mr-2">
+            {actions}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 px-3 h-full flex-1">
+            <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
+            <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
+            {children}
+          </div>
+
+          <div className="flex h-full relative z-50">
+            {actions}
+          </div>
+
+          <div className="flex h-full">
+            <button 
+              onClick={() => appWindow.minimize()}
+              className="w-11 h-full hover:bg-term-selection flex items-center justify-center text-term-fg transition-colors"
+              title={t('common.minimize')}
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={handleMaximize}
+              className="w-11 h-full hover:bg-term-selection flex items-center justify-center text-term-fg transition-colors"
+              title={isMaximized ? t('common.restore') : t('common.maximize')}
+            >
+              <Square className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => appWindow.close()}
+              className="w-11 h-full hover:bg-red-500 hover:text-white flex items-center justify-center text-term-fg transition-colors"
+              title={t('common.close')}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
