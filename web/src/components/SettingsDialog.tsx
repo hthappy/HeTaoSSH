@@ -181,14 +181,13 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
       {/* Backdrop */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+          className="fixed inset-0 bg-black/50 z-40 transition-opacity"
           onClick={onClose}
         />
       )}
       
-      {/* Drawer from right */}
       <div className={cn(
-        "fixed top-0 right-0 h-full w-[500px] bg-term-bg border-l border-term-selection z-50 transform transition-transform duration-300 ease-in-out",
+        "fixed top-[40px] right-0 h-[calc(100vh-80px)] w-[500px] bg-term-bg border-l border-term-selection z-50 transform transition-transform duration-300 ease-in-out",
         isOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="flex flex-col h-full">
