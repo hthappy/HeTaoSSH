@@ -246,7 +246,7 @@ function App() {
         "flex flex-col h-screen bg-term-bg overflow-hidden transition-colors duration-300",
         !isMaximized && "border border-term-selection rounded-lg"
       )}>
-        <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex overflow-hidden">
           {/* Activity Bar */}
           <ActivityBar 
             activeActivity={activeActivity} 
@@ -436,13 +436,20 @@ function App() {
           latency={0}
         />
 
-        <SettingsDialog
-            isOpen={showSettings}
-            onClose={() => setShowSettings(false)}
-            settings={settings}
-            onSave={setSettings}
-            onPreviewTheme={setPreviewTheme}
-          />
+        <div className="absolute inset-0 pointer-events-none z-50">
+          <div className={cn(
+            "absolute inset-0 pointer-events-auto",
+            showSettings ? "opacity-100" : "opacity-0 pointer-events-none"
+          )}>
+            <SettingsDialog
+              isOpen={showSettings}
+              onClose={() => setShowSettings(false)}
+              settings={settings}
+              onSave={setSettings}
+              onPreviewTheme={setPreviewTheme}
+            />
+          </div>
+        </div>
 
           <UpdateDialog
             isOpen={!!updateAvailable}
