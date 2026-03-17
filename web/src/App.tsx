@@ -344,7 +344,7 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar px-2 min-w-0">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-2 flex-1 min-w-0">
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Keyboard, Edit2, Save, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,7 +19,23 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempKeys, setTempKeys] = useState('');
-  const [localShortcuts, setLocalShortcuts] = useState<ShortcutConfig[]>(shortcuts.length > 0 ? shortcuts : []);
+  const [localShortcuts, setLocalShortcuts] = useState<ShortcutConfig[]>([]);
+
+  useEffect(() => {
+    if (shortcuts && shortcuts.length > 0) {
+      setLocalShortcuts(shortcuts);
+    } else {
+      setLocalShortcuts(getDefaultShortcuts());
+    }
+  }, [shortcuts]);
+
+  const getDefaultShortcuts = (): ShortcutConfig[] => [
+    { id: 'new-connection', label: 'New Connection', defaultKeys: 'Ctrl+N', keys: 'Ctrl+N', category: 'global' },
+    { id: 'toggle-sidebar', label: 'Toggle Sidebar', defaultKeys: 'Ctrl+B', keys: 'Ctrl+B', category: 'global' },
+    { id: 'new-local-terminal', label: 'New Local Terminal', defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
+    { id: 'settings', label: 'Settings', defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
+    { id: 'terminal-search', label: 'Terminal Search', defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
+  ];
 
   const parseKeys = (keys: string): string[] => {
     return keys.split('+').map(k => k.trim());
