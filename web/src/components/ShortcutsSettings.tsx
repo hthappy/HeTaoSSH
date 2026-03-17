@@ -19,7 +19,7 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempKeys, setTempKeys] = useState('');
-  const [localShortcuts, setLocalShortcuts] = useState(shortcuts);
+  const [localShortcuts, setLocalShortcuts] = useState<ShortcutConfig[]>(shortcuts.length > 0 ? shortcuts : []);
 
   const parseKeys = (keys: string): string[] => {
     return keys.split('+').map(k => k.trim());

@@ -344,24 +344,24 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-2">
+              <div className="flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar px-2 min-w-0">
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer border select-none',
+                      'group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer border select-none min-w-0 flex-shrink',
                       activeTabId === tab.id
                         ? 'bg-term-selection text-term-fg border-term-selection'
                         : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
                     )}
                   >
                     {tab.type === 'terminal' ? (
-                      <Terminal className="w-4 h-4 text-term-blue" />
+                      <Terminal className="w-4 h-4 text-term-blue flex-shrink-0" />
                     ) : (
-                      <FileCode2 className="w-4 h-4 text-term-yellow" />
+                      <FileCode2 className="w-4 h-4 text-term-yellow flex-shrink-0" />
                     )}
-                    <span className="max-w-[150px] truncate">{tab.title}</span>
+                    <span className="max-w-none truncate flex-1 min-w-0">{tab.title}</span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
