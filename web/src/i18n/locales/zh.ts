@@ -214,4 +214,21 @@ export default {
     disconnect_failed: '断开连接失败: {{error}}',
     send_data_failed: '发送数据失败: {{error}}',
   },
+  shortcuts: {
+    title: '快捷键',
+    new_connection: '新建连接',
+    toggle_sidebar: '切换侧边栏',
+    new_local_terminal: '新建本地终端',
+    settings: '设置',
+    terminal_search: '终端搜索',
+  },
+  settings: {
+    shortcuts: {
+      title: '键盘快捷键',
+      press_keys: '按键盘...',
+    },
+    terminal: '终端',
+    font_size: '字体大小',
+    line_height: '行高',
+  },
 };
