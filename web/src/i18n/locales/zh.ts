@@ -23,6 +23,7 @@ export default {
     paste: '粘贴',
     copied_to_clipboard: '已复制到剪贴板',
     copy_failed: '复制失败',
+    paste_failed: '粘贴失败',
     execute: '执行',
     close: '关闭',
     all: '全部',
@@ -31,15 +32,6 @@ export default {
     minimize: '最小化',
     maximize: '最大化',
     restore: '恢复',
-  },
-  shortcuts: {
-    title: '快捷键',
-    new_connection: '新建连接',
-    toggle_sidebar: '切换侧边栏',
-    new_local_terminal: '新建本地终端',
-    settings: '设置',
-    terminal_search: '终端搜索',
-    press_keys: '按下按键...',
   },
   update: {
     title: '发现新版本',
