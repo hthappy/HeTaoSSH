@@ -33,6 +33,15 @@ export default {
     maximize: 'Maximize',
     restore: 'Restore',
   },
+  shortcuts: {
+    title: 'Keyboard Shortcuts',
+    new_connection: 'New Connection',
+    toggle_sidebar: 'Toggle Sidebar',
+    new_local_terminal: 'New Local Terminal',
+    settings: 'Settings',
+    terminal_search: 'Terminal Search',
+    press_keys: 'Press keys...',
+  },
   update: {
     title: 'Update Available',
     available_msg: 'A new version {{version}} is available!\n\nRelease notes:\n{{body}}',
