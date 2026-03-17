@@ -585,6 +585,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
             </div>
           </div>
         </div>
+        </div>
       </div>
     </>
   );
