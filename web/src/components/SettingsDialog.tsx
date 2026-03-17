@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Globe, Palette, Upload, Trash2, Keyboard, Settings } from 'lucide-react';
+import { X, Globe, Palette, Upload, Trash2, Keyboard, Settings, Monitor, MousePointer2, Code2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
