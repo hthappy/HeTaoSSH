@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Globe, Palette, Upload, Trash2, Keyboard, Settings } from 'lucide-react';
+import { X, Globe, Palette, Upload, Trash2, Keyboard, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -8,6 +8,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { presets } from '../themes/presets';
 import { ThemeSchema } from '../types/theme';
 import { ShortcutsSettings, type ShortcutConfig } from './ShortcutsSettings';
+import { cn } from '@/lib/utils';
 
 export interface AppSettings {
   language: string;
@@ -33,44 +34,11 @@ interface SettingsDialogProps {
 export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewTheme }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
-
-  const [importUrl, setImportUrl] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(console.error);
   }, []);
-
-  // Sync local settings when settings prop changes or dialog opens
-  useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings, isOpen]);
-
-  // Preview theme when selection changes
-  useEffect(() => {
-    if (isOpen && onPreviewTheme) {
-      const allThemes = [...presets, ...localSettings.customThemes];
-      const selectedTheme = allThemes.find(t => t.name === localSettings.themeName);
-      if (selectedTheme) {
-        onPreviewTheme(selectedTheme);
-      }
-    }
-  }, [localSettings.themeName, localSettings.customThemes, isOpen, onPreviewTheme]);
-
-  // Clear messages when dialog closes
-  useEffect(() => {
-    if (!isOpen) {
-      setImportError(null);
-      setImportSuccess(null);
-      setImportUrl('');
-      setIsImporting(false);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleSave = () => {
     onSave(localSettings);
@@ -79,6 +47,11 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
       i18n.changeLanguage(localSettings.language);
     }
     onClose();
+  };
+
+  // Check if theme with same name exists
+  const checkThemeExists = (name: string) => {
+    return [...presets, ...localSettings.customThemes].some(t => t.name === name);
   };
 
   const processThemeContent = async (content: string, source: string) => {
@@ -96,7 +69,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           
           theme = {
             name: rawTheme.name,
-            type: 'dark', // Default to dark for Gogh themes
+            type: rawTheme.type || 'dark', // Default to dark for Gogh themes
             colors: {
               background: rawTheme.background,
               foreground: rawTheme.foreground,
@@ -132,18 +105,11 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
       } catch (e) {
         // Check if content looks like HTML (common mistake with GitHub URLs)
         if (content.trim().toLowerCase().startsWith('<!doctype html') || content.includes('<html')) {
-          throw new Error(t('settings.html_content_error'));
+          throw new Error(t('settings.html_content_error', 'HTML content detected. Are you trying to import a raw JSON file?'));
         }
         
         // Only try backend parsing if it wasn't a JSON parse error (which we handled above)
-        // or if we explicitly threw 'Invalid theme JSON'
-        if (e instanceof Error && e.message === 'Invalid theme JSON') {
-             // If JSON fails, try iTerm2 via backend
-             theme = await invoke<ThemeSchema>('parse_theme', { content });
-        } else {
-             // If it was a syntax error in JSON.parse, it might be an iTerm2 XML file
-             theme = await invoke<ThemeSchema>('parse_theme', { content });
-        }
+        throw new Error(t('settings.invalid_format_error', 'Invalid theme format'));
       }
 
       // Check if theme with same name exists
@@ -160,57 +126,15 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
         themeName: theme.name,
         theme: theme.type // Auto switch mode
       });
-      setImportSuccess(t('settings.theme_imported'));
-      setImportUrl('');
     } catch (err) {
       console.error(`Failed to process theme from ${source}:`, err);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setImportError(t('settings.theme_import_failed', { error: (err as any).toString() }));
-    }
-  };
-
-  const convertGithubUrl = (url: string): string => {
-    // Handle refs/heads in raw URLs (common mistake)
-    // e.g. https://raw.githubusercontent.com/user/repo/refs/heads/branch/path -> https://raw.githubusercontent.com/user/repo/branch/path
-    if (url.startsWith('https://raw.githubusercontent.com/') && url.includes('/refs/heads/')) {
-      return url.replace('/refs/heads/', '/');
-    }
-
-    // Convert github.com/user/repo/blob/... to raw.githubusercontent.com/user/repo/...
-    const githubRegex = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
-    const match = url.match(githubRegex);
-    if (match) {
-      const [, user, repo, branch, path] = match;
-      return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
-    }
-    return url;
-  };
-
-  const handleImportUrl = async () => {
-    if (!importUrl) return;
-    
-    setIsImporting(true);
-    setImportError(null);
-    setImportSuccess(null);
-
-    try {
-      const finalUrl = convertGithubUrl(importUrl);
-      const content = await invoke<string>('fetch_url', { url: finalUrl });
-      await processThemeContent(content, 'URL');
-    } catch (err) {
-      console.error('Failed to fetch theme:', err);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setImportError(t('settings.url_import_failed', { error: (err as any).toString() }));
-    } finally {
-      setIsImporting(false);
+      throw err;
     }
   };
 
   const handleImportFile = async () => {
     try {
-      setImportError(null);
-      setImportSuccess(null);
-      
       const selected = await open({
         multiple: false,
         filters: [{
@@ -226,16 +150,11 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
     } catch (err) {
       console.error('Failed to import theme file:', err);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setImportError(t('settings.theme_import_failed', { error: (err as any).toString() }));
+      throw new Error(t('settings.theme_import_failed', { error: (err as any).toString() }));
     }
   };
 
-  const handleDeleteTheme = (themeName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm(t('settings.delete_theme_confirm', { name: themeName }))) {
-      return;
-    }
-
+  const handleDeleteTheme = (themeName: string) => {
     const newCustomThemes = localSettings.customThemes.filter(t => t.name !== themeName);
     
     // If deleting currently selected theme, switch to default
@@ -255,267 +174,319 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
     });
   };
 
-
   const allThemes = [...presets, ...localSettings.customThemes];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-2xl p-6 flex flex-col max-h-[90vh]">
-        <div className="flex items-center gap-2 mb-4 flex-shrink-0 justify-between">
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-term-fg/60" />
-            <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
-          </div>
-          <span className="text-xs text-term-fg/40">v{appVersion}</span>
-        </div>
-
-        <div className="space-y-5 overflow-y-auto pr-2 flex-1 max-h-[calc(90vh-120px)]">
-          {/* Language */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Globe className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">{t('common.language')}</label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setLocalSettings({ ...localSettings, language: 'en' })}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
-                  localSettings.language === 'en'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
-              >
-                English
-              </button>
-              <button
-                onClick={() => setLocalSettings({ ...localSettings, language: 'zh' })}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
-                  localSettings.language === 'zh'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
-              >
-                中文
-              </button>
-            </div>
-          </div>
-
-          {/* Theme Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Palette className="w-4 h-4 text-term-fg/60" />
-                <label className="text-sm font-medium text-term-fg">{t('settings.theme_select')}</label>
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Drawer from right */}
+      <div className={cn(
+        "fixed top-0 right-0 h-full w-[500px] bg-term-bg border-l border-term-selection z-50 transform transition-transform duration-300 ease-in-out",
+        isOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-term-selection flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-term-selection/50 rounded-lg">
+                <Settings className="w-5 h-5 text-term-fg" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-term-fg">{t('settings.title', 'Settings')}</h2>
+                <p className="text-xs text-term-fg/40">v{appVersion}</p>
               </div>
             </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              {allThemes.map((theme) => {
-                const isCustom = localSettings.customThemes.some(t => t.name === theme.name);
-                return (
-                  <button
-                    key={theme.name}
-                    onClick={() => setLocalSettings({ 
-                      ...localSettings, 
-                      themeName: theme.name,
-                      theme: theme.type 
-                    })}
-                    className={`
-                      relative p-3 rounded-lg border text-left transition-all group
-                      ${localSettings.themeName === theme.name 
-                        ? 'border-term-selection bg-term-selection/20 ring-1 ring-term-selection' 
-                        : 'border-term-selection/50 hover:border-term-selection hover:bg-term-selection/10'}
-                    `}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-sm text-term-fg">{theme.name}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.background }} />
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.foreground }} />
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.colors.blue }} />
-                        </div>
-                        {isCustom && (
-                          <div
-                            onClick={(e) => handleDeleteTheme(theme.name, e)}
-                            className="p-1 rounded hover:bg-term-red/20 text-term-fg/40 hover:text-term-red transition-colors opacity-0 group-hover:opacity-100"
-                            title={t('common.delete')}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-term-selection/50">
-              <label className="text-xs font-medium text-term-fg/70 mb-2 block">{t('settings.import_theme')}</label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={importUrl}
-                  onChange={(e) => setImportUrl(e.target.value)}
-                  placeholder={t('settings.url_placeholder')}
-                  className="flex-1 bg-term-bg border border-term-selection rounded px-3 py-1.5 text-sm text-term-fg focus:outline-none focus:border-term-blue"
-                />
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-term-selection/50 transition-colors text-term-fg/60 hover:text-term-fg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Language */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-term-fg/70" />
+                <label className="text-sm font-medium text-term-fg">{t('common.language', 'Language')}</label>
+              </div>
+              <div className="flex gap-2 p-1 bg-term-selection/20 rounded-lg">
                 <button
-                  onClick={handleImportUrl}
-                  disabled={!importUrl || isImporting}
-                  className="px-3 py-1.5 bg-term-selection hover:bg-term-selection/80 text-term-fg rounded text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isImporting ? (
-                    <div className="w-4 h-4 border-2 border-term-fg/30 border-t-term-fg rounded-full animate-spin" />
-                  ) : (
-                    <Globe className="w-4 h-4" />
+                  onClick={() => setLocalSettings({ ...localSettings, language: 'en' })}
+                  className={cn(
+                    'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all',
+                    localSettings.language === 'en'
+                      ? 'bg-term-blue text-term-bg shadow-sm'
+                      : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
                   )}
-                  {t('settings.import_url')}
+                >
+                  English
+                </button>
+                <button
+                  onClick={() => setLocalSettings({ ...localSettings, language: 'zh' })}
+                  className={cn(
+                    'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all',
+                    localSettings.language === 'zh'
+                      ? 'bg-term-blue text-term-bg shadow-sm'
+                      : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                  )}
+                >
+                  中文
                 </button>
               </div>
+            </div>
+
+            {/* Theme Selection */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-term-fg/70" />
+                <label className="text-sm font-medium text-term-fg">{t('settings.theme_select', 'Theme')}</label>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {allThemes.map((theme) => {
+                  const isCustom = localSettings.customThemes.some(t => t.name === theme.name);
+                  return (
+                    <button
+                      key={theme.name}
+                      onClick={() => setLocalSettings({ 
+                        ...localSettings, 
+                        themeName: theme.name,
+                        theme: theme.type 
+                      })}
+                      className={cn(
+                        "group flex items-center gap-2 p-3 rounded-lg border transition-all text-left",
+                        localSettings.themeName === theme.name
+                          ? 'border-term-blue bg-term-selection/20 ring-1 ring-term-blue'
+                          : 'border-term-selection/50 hover:border-term-selection hover:bg-term-selection/10'
+                      )}
+                    >
+                      <div className="flex gap-1">
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: theme.colors.background }}
+                        />
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: theme.colors.foreground }}
+                        />
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: theme.colors.blue }}
+                        />
+                      </div>
+                      <span className="text-sm text-term-fg flex-1 truncate">{theme.name}</span>
+                      {isCustom && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTheme(theme.name);
+                          }}
+                          className="p-1 rounded hover:bg-red-500/20 text-term-fg/40 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title={t('common.delete', 'Delete')}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Import Theme */}
+            <div className="space-y-3">
+              <label className="text-xs text-term-fg/70 mb-2 block">{t('settings.import_theme', 'Import Theme')}</label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  placeholder={t('settings.url_placeholder', 'https://example.com/theme.json')}
+                  className="flex-1 bg-term-selection border border-term-selection rounded-md px-3 py-2 text-sm text-term-fg focus:outline-none focus:ring-2 focus:ring-term-blue placeholder-term-fg/20"
+                  onChange={async (e) => {
+                    if (e.target.value) {
+                      try {
+                        const content = await invoke<string>('fetch_url', { url: e.target.value });
+                        await processThemeContent(content, 'url');
+                        e.target.value = '';
+                      } catch (err) {
+                        console.error('Import failed:', err);
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleImportFile}
+                  className="px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded-md text-term-fg transition-colors text-sm"
+                >
+                  {t('common.browse', 'Browse')}
+                </button>
+              </div>
+            </div>
+
+            {/* Terminal Settings */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-term-selection/30 rounded-md">
+                  <Monitor className="w-4 h-4 text-term-fg/70" />
+                </div>
+                <label className="text-sm font-medium text-term-fg">{t('settings.terminal', 'Terminal')}</label>
+              </div>
+              
+              <div className="space-y-3 pl-7">
+                {/* Font Size */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-term-fg/70">{t('settings.font_size', 'Font Size')}</label>
+                    <span className="text-xs font-mono text-term-fg/60">{localSettings.terminalFontSize}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="24"
+                    step="1"
+                    value={localSettings.terminalFontSize}
+                    onChange={(e) => setLocalSettings({ ...localSettings, terminalFontSize: Number(e.target.value) })}
+                    className="w-full accent-term-blue h-1.5 bg-term-selection/50 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Line Height */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-term-fg/70">{t('settings.line_height', 'Line Height')}</label>
+                    <span className="text-xs font-mono text-term-fg/60">{localSettings.terminalLineHeight}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="2"
+                    step="0.1"
+                    value={localSettings.terminalLineHeight}
+                    onChange={(e) => setLocalSettings({ ...localSettings, terminalLineHeight: Number(e.target.value) })}
+                    className="w-full accent-term-blue h-1.5 bg-term-selection/50 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Mouse Settings */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-term-selection/30 rounded-md">
+                  <MousePointer2 className="w-4 h-4 text-term-fg/70" />
+                </div>
+                <label className="text-sm font-medium text-term-fg">{t('settings.mouse', 'Mouse')}</label>
+              </div>
+              
+              <div className="space-y-2 pl-7">
+                <label className="text-xs text-term-fg/70 block mb-2">{t('settings.right_click', 'Right Click')}</label>
+                <div className="flex gap-2 p-1 bg-term-selection/20 rounded-lg">
+                  <button
+                    onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
+                    className={cn(
+                      'flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all',
+                      localSettings.rightClickBehavior === 'menu'
+                        ? 'bg-term-blue text-term-bg shadow-sm'
+                        : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                    )}
+                  >
+                    {t('settings.behavior_menu', 'Menu')}
+                  </button>
+                  <button
+                    onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
+                    className={cn(
+                      'flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all',
+                      localSettings.rightClickBehavior === 'paste'
+                        ? 'bg-term-blue text-term-bg shadow-sm'
+                        : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                    )}
+                  >
+                    {t('settings.behavior_paste', 'Paste')}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Editor Options */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-term-selection/30 rounded-md">
+                  <Code2 className="w-4 h-4 text-term-fg/70" />
+                </div>
+                <label className="text-sm font-medium text-term-fg">{t('settings.editor', 'Editor')}</label>
+              </div>
+              
+              <div className="space-y-2 pl-7">
+                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-term-selection/20 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.editorMinimap}
+                    onChange={(e) =>
+                      setLocalSettings({ ...localSettings, editorMinimap: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-term-blue"
+                  />
+                  <span className="text-sm text-term-fg">{t('settings.minimap', 'Minimap')}</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-term-selection/20 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.editorWordWrap}
+                    onChange={(e) =>
+                      setLocalSettings({ ...localSettings, editorWordWrap: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-term-blue"
+                  />
+                  <span className="text-sm text-term-fg">{t('settings.word_wrap', 'Word Wrap')}</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Keyboard Shortcuts */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-term-selection/30 rounded-md">
+                  <Keyboard className="w-4 h-4 text-term-fg/70" />
+                </div>
+                <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
+              </div>
+              <div className="mt-3 pl-7">
+                <ShortcutsSettings
+                  shortcuts={localSettings.shortcuts || []}
+                  onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-6 border-t border-term-selection flex-shrink-0">
+            <div className="flex gap-3">
               <button
-                onClick={handleImportFile}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-term-selection rounded-lg hover:bg-term-selection/10 text-term-fg/70 hover:text-term-fg transition-colors text-sm"
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 bg-term-selection hover:bg-term-selection/80 rounded-lg text-term-fg font-medium transition-colors"
               >
-                <Upload className="w-4 h-4" />
-                {t('settings.import_placeholder')}
+                {t('common.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 px-4 py-2.5 bg-term-blue hover:bg-term-blue/80 rounded-lg text-term-bg font-medium transition-colors shadow-sm"
+              >
+                {t('common.save', 'Save')}
               </button>
             </div>
-
-            {importSuccess && (
-              <p className="mt-2 text-xs text-term-green">{importSuccess}</p>
-            )}
-            {importError && (
-              <p className="mt-2 text-xs text-term-red">{importError}</p>
-            )}
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {/* Font Size */}
-            <div>
-              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.font_size')}</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="10"
-                  max="24"
-                  step="1"
-                  value={localSettings.terminalFontSize}
-                  onChange={(e) => setLocalSettings({ ...localSettings, terminalFontSize: Number(e.target.value) })}
-                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalFontSize}px</span>
-              </div>
-            </div>
-
-            {/* Line Height */}
-            <div>
-              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.line_height')}</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="1"
-                  max="2"
-                  step="0.1"
-                  value={localSettings.terminalLineHeight}
-                  onChange={(e) => setLocalSettings({ ...localSettings, terminalLineHeight: Number(e.target.value) })}
-                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalLineHeight}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Click Behavior */}
-          <div className="pt-2">
-             <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.right_click')}</label>
-             <div className="flex gap-2 bg-term-bg border border-term-selection p-1 rounded-lg">
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
-                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
-                    localSettings.rightClickBehavior === 'menu'
-                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
-                      : 'text-term-fg/40 hover:text-term-fg/70'
-                  }`}
-                >
-                  {t('settings.behavior_menu')}
-                </button>
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
-                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
-                    localSettings.rightClickBehavior === 'paste'
-                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
-                      : 'text-term-fg/40 hover:text-term-fg/70'
-                  }`}
-                >
-                  {t('settings.behavior_paste')}
-                </button>
-             </div>
-             <p className="text-[10px] text-term-fg/40 mt-1.5 px-1">
-                {localSettings.rightClickBehavior === 'paste' 
-                  ? t('settings.smart_behavior') 
-                  : t('settings.standard_behavior')}
-              </p>
-          </div>
-
-          {/* Editor Options */}
-          <div>
-            <label className="text-sm font-medium text-term-fg mb-3 block">{t('settings.editor')}</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localSettings.editorMinimap}
-                  onChange={(e) =>
-                    setLocalSettings({ ...localSettings, editorMinimap: e.target.checked })
-                  }
-                  className="accent-term-blue"
-                />
-                <span className="text-sm text-term-fg">{t('settings.minimap')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localSettings.editorWordWrap}
-                  onChange={(e) =>
-                    setLocalSettings({ ...localSettings, editorWordWrap: e.target.checked })
-                  }
-                  className="accent-term-blue"
-                />
-                <span className="text-sm text-term-fg">{t('settings.word_wrap')}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-          <div className="pt-4 border-t border-term-selection">
-            <div className="flex items-center gap-2 mb-2">
-              <Keyboard className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
-            </div>
-            <ShortcutsSettings
-              shortcuts={localSettings.shortcuts || []}
-              onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
-            />
-          </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-6 pt-4 border-t border-term-selection flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded-md text-term-fg transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 px-4 py-2 bg-term-blue hover:bg-term-blue/80 rounded-md text-term-bg font-medium transition-colors"
-          >
-            {t('common.save')}
-          </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
