@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Globe, Palette, Upload, Trash2, Keyboard, Settings } from 'lucide-react';
+import { X, Globe, Palette, Upload, Trash2, Keyboard, Monitor, MousePointer2, Code2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -22,7 +23,7 @@ export interface AppSettings {
   shortcuts?: ShortcutConfig[];
 }
 
-interface SettingsDialogProps {
+interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   settings: AppSettings;
@@ -30,7 +31,7 @@ interface SettingsDialogProps {
   onPreviewTheme?: (theme: ThemeSchema | null) => void;
 }
 
-export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewTheme }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewTheme }: SettingsDrawerProps) {
   const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [importError, setImportError] = useState<string | null>(null);
@@ -259,41 +260,71 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
   const allThemes = [...presets, ...localSettings.customThemes];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-2xl p-6 flex flex-col max-h-[90vh]">
-        <div className="flex items-center gap-2 mb-4 flex-shrink-0 justify-between">
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-term-fg/60" />
-            <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
-          </div>
-          <span className="text-xs text-term-fg/40">v{appVersion}</span>
-        </div>
-
-        <div className="space-y-5 overflow-y-auto pr-2 flex-1 max-h-[calc(90vh-120px)]">
-          {/* Language */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Globe className="w-4 h-4 text-term-fg/60" />
-              <label className="text-sm font-medium text-term-fg">{t('common.language')}</label>
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-50 transition-opacity"
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Drawer */}
+      <div className={cn(
+        "fixed top-0 right-0 h-full w-[480px] bg-term-bg border-l border-term-selection z-50 transform transition-transform duration-300 ease-in-out",
+        isOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-term-selection flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-term-selection/50 rounded-lg">
+                <Settings className="w-5 h-5 text-term-fg" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-term-fg">{t('settings.title', 'Settings')}</h2>
+                <p className="text-xs text-term-fg/40">v{appVersion}</p>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-term-selection/50 transition-colors text-term-fg/60 hover:text-term-fg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="space-y-6">
+          {/* Language */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <Globe className="w-4 h-4 text-term-fg/70" />
+              </div>
+              <label className="text-sm font-medium text-term-fg">{t('common.language', 'Language')}</label>
+            </div>
+            <div className="flex gap-2 p-1 bg-term-selection/20 rounded-lg">
               <button
                 onClick={() => setLocalSettings({ ...localSettings, language: 'en' })}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
+                className={cn(
+                  'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all',
                   localSettings.language === 'en'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
+                    ? 'bg-term-blue text-term-bg shadow-sm'
+                    : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                )}
               >
                 English
               </button>
               <button
                 onClick={() => setLocalSettings({ ...localSettings, language: 'zh' })}
-                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
+                className={cn(
+                  'flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all',
                   localSettings.language === 'zh'
-                    ? 'bg-term-blue text-term-bg font-medium'
-                    : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
-                }`}
+                    ? 'bg-term-blue text-term-bg shadow-sm'
+                    : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                )}
               >
                 中文
               </button>
@@ -301,12 +332,12 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           </div>
 
           {/* Theme Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Palette className="w-4 h-4 text-term-fg/60" />
-                <label className="text-sm font-medium text-term-fg">{t('settings.theme_select')}</label>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <Palette className="w-4 h-4 text-term-fg/70" />
               </div>
+              <label className="text-sm font-medium text-term-fg">{t('settings.theme_select', 'Theme')}</label>
             </div>
             
             <div className="grid grid-cols-2 gap-3">
@@ -392,10 +423,22 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {/* Font Size */}
-            <div>
-              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.font_size')}</label>
-              <div className="flex items-center gap-2">
+          {/* Terminal Settings */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <Monitor className="w-4 h-4 text-term-fg/70" />
+              </div>
+              <label className="text-sm font-medium text-term-fg">{t('settings.terminal', 'Terminal')}</label>
+            </div>
+            
+            <div className="space-y-3 pl-7">
+              {/* Font Size */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-term-fg/70">{t('settings.font_size', 'Font Size')}</label>
+                  <span className="text-xs font-mono text-term-fg/60">{localSettings.terminalFontSize}px</span>
+                </div>
                 <input
                   type="range"
                   min="10"
@@ -403,16 +446,16 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                   step="1"
                   value={localSettings.terminalFontSize}
                   onChange={(e) => setLocalSettings({ ...localSettings, terminalFontSize: Number(e.target.value) })}
-                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
+                  className="w-full accent-term-blue h-1.5 bg-term-selection/50 rounded-lg appearance-none cursor-pointer"
                 />
-                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalFontSize}px</span>
               </div>
-            </div>
 
-            {/* Line Height */}
-            <div>
-              <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.line_height')}</label>
-              <div className="flex items-center gap-2">
+              {/* Line Height */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-term-fg/70">{t('settings.line_height', 'Line Height')}</label>
+                  <span className="text-xs font-mono text-term-fg/60">{localSettings.terminalLineHeight}</span>
+                </div>
                 <input
                   type="range"
                   min="1"
@@ -420,102 +463,129 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                   step="0.1"
                   value={localSettings.terminalLineHeight}
                   onChange={(e) => setLocalSettings({ ...localSettings, terminalLineHeight: Number(e.target.value) })}
-                  className="flex-1 accent-term-blue h-1 bg-term-selection rounded-lg appearance-none cursor-pointer"
+                  className="w-full accent-term-blue h-1.5 bg-term-selection/50 rounded-lg appearance-none cursor-pointer"
                 />
-                <span className="text-sm font-mono w-8 text-right text-term-fg">{localSettings.terminalLineHeight}</span>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          {/* Mouse Settings */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <MousePointer2 className="w-4 h-4 text-term-fg/70" />
+              </div>
+              <label className="text-sm font-medium text-term-fg">{t('settings.mouse', 'Mouse')}</label>
+            </div>
+            
+            <div className="space-y-2 pl-7">
+              <label className="text-xs text-term-fg/70 block mb-2">{t('settings.right_click', 'Right Click')}</label>
+              <div className="flex gap-2 p-1 bg-term-selection/20 rounded-lg">
+                <button
+                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
+                  className={cn(
+                    'flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all',
+                    localSettings.rightClickBehavior === 'menu'
+                      ? 'bg-term-blue text-term-bg shadow-sm'
+                      : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                  )}
+                >
+                  {t('settings.behavior_menu', 'Menu')}
+                </button>
+                <button
+                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
+                  className={cn(
+                    'flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all',
+                    localSettings.rightClickBehavior === 'paste'
+                      ? 'bg-term-blue text-term-bg shadow-sm'
+                      : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/30'
+                  )}
+                >
+                  {t('settings.behavior_paste', 'Paste')}
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Right Click Behavior */}
-          <div className="pt-2">
-             <label className="text-xs text-term-fg/60 mb-1.5 block">{t('settings.right_click')}</label>
-             <div className="flex gap-2 bg-term-bg border border-term-selection p-1 rounded-lg">
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'menu' })}
-                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
-                    localSettings.rightClickBehavior === 'menu'
-                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
-                      : 'text-term-fg/40 hover:text-term-fg/70'
-                  }`}
-                >
-                  {t('settings.behavior_menu')}
-                </button>
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, rightClickBehavior: 'paste' })}
-                  className={`flex-1 py-1.5 px-3 rounded-md text-xs transition-all ${
-                    localSettings.rightClickBehavior === 'paste'
-                      ? 'bg-term-selection text-term-fg font-medium shadow-sm'
-                      : 'text-term-fg/40 hover:text-term-fg/70'
-                  }`}
-                >
-                  {t('settings.behavior_paste')}
-                </button>
-             </div>
-             <p className="text-[10px] text-term-fg/40 mt-1.5 px-1">
-                {localSettings.rightClickBehavior === 'paste' 
-                  ? t('settings.smart_behavior') 
-                  : t('settings.standard_behavior')}
-              </p>
-          </div>
-
           {/* Editor Options */}
-          <div>
-            <label className="text-sm font-medium text-term-fg mb-3 block">{t('settings.editor')}</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <Code2 className="w-4 h-4 text-term-fg/70" />
+              </div>
+              <label className="text-sm font-medium text-term-fg">{t('settings.editor', 'Editor')}</label>
+            </div>
+            
+            <div className="space-y-2 pl-7">
+              <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-term-selection/20 transition-colors">
                 <input
                   type="checkbox"
                   checked={localSettings.editorMinimap}
                   onChange={(e) =>
                     setLocalSettings({ ...localSettings, editorMinimap: e.target.checked })
                   }
-                  className="accent-term-blue"
+                  className="w-4 h-4 accent-term-blue"
                 />
-                <span className="text-sm text-term-fg">{t('settings.minimap')}</span>
+                <span className="text-sm text-term-fg">{t('settings.minimap', 'Minimap')}</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-term-selection/20 transition-colors">
                 <input
                   type="checkbox"
                   checked={localSettings.editorWordWrap}
                   onChange={(e) =>
                     setLocalSettings({ ...localSettings, editorWordWrap: e.target.checked })
                   }
-                  className="accent-term-blue"
+                  className="w-4 h-4 accent-term-blue"
                 />
-                <span className="text-sm text-term-fg">{t('settings.word_wrap')}</span>
+                <span className="text-sm text-term-fg">{t('settings.word_wrap', 'Word Wrap')}</span>
               </label>
             </div>
           </div>
         </div>
 
           <div className="pt-4 border-t border-term-selection">
-            <div className="flex items-center gap-2 mb-2">
-              <Keyboard className="w-4 h-4 text-term-fg/60" />
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-term-selection/30 rounded-md">
+                <Keyboard className="w-4 h-4 text-term-fg/70" />
+              </div>
               <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
             </div>
+            <div className="mt-3 pl-7">
+              <ShortcutsSettings
+                shortcuts={localSettings.shortcuts || []}
+                onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
+              />
+            </div>
+          </div>
+        </div>
             <ShortcutsSettings
               shortcuts={localSettings.shortcuts || []}
               onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
             />
           </div>
 
-        {/* Actions */}
-        <div className="flex gap-3 mt-6 pt-4 border-t border-term-selection flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded-md text-term-fg transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 px-4 py-2 bg-term-blue hover:bg-term-blue/80 rounded-md text-term-bg font-medium transition-colors"
-          >
-            {t('common.save')}
-          </button>
+          </div>
+          
+          {/* Footer */}
+          <div className="p-6 border-t border-term-selection flex-shrink-0">
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 bg-term-selection hover:bg-term-selection/80 rounded-lg text-term-fg font-medium transition-colors"
+              >
+                {t('common.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 px-4 py-2.5 bg-term-blue hover:bg-term-blue/80 rounded-lg text-term-bg font-medium transition-colors shadow-sm"
+              >
+                {t('common.save', 'Save')}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
