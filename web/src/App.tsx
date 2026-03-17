@@ -152,6 +152,12 @@ function App() {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsSidebarOpen(prev => !prev);
+        return;
+      }
+
       // Ctrl+N: New Connection
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
