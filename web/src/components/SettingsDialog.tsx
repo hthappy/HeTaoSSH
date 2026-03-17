@@ -188,7 +188,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
       
       {/* Drawer from left */}
       <div className={cn(
-        "fixed top-0 left-0 h-full w-[500px] bg-term-bg border-r border-term-selection z-50 shadow-2xl transform transition-transform duration-300 ease-in-out",
+        "fixed top-0 left-0 h-full w-[500px] bg-term-bg border-r border-term-selection z-50 shadow-2xl transform transition-transform duration-300 ease-in-out ml-[68px]",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex flex-col h-full">
