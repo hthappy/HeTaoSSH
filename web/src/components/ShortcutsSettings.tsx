@@ -61,43 +61,44 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-term-fg mb-4">
-        <Keyboard className="w-5 h-5" />
-        <h3 className="text-lg font-semibold">{t('settings.shortcuts.title', 'Keyboard Shortcuts')}</h3>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Keyboard className="w-4 h-4 text-term-fg/60" />
+          <h4 className="text-sm font-medium text-term-fg">{t('settings.shortcuts.title', 'Keyboard Shortcuts')}</h4>
+        </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {localShortcuts.map((shortcut) => (
           <div
             key={shortcut.id}
-            className="flex items-center justify-between p-3 bg-term-selection/10 rounded-lg border border-term-selection/30"
+            className="flex items-center justify-between p-2.5 bg-term-selection/10 rounded-md border border-term-selection/30"
           >
             <div className="flex-1">
               <div className="text-sm text-term-fg font-medium">{shortcut.label}</div>
-              <div className="text-xs text-term-fg/40">{shortcut.category}</div>
             </div>
 
             {editingId === shortcut.id ? (
               <div className="flex items-center gap-2">
-                <div className="px-3 py-1.5 bg-term-selection/30 border border-term-blue rounded text-sm text-term-fg min-w-[120px] text-center">
+                <div className="px-2 py-1 bg-term-selection/30 border border-term-blue rounded text-xs text-term-fg min-w-[100px] text-center">
                   {tempKeys || t('settings.shortcuts.press_keys', 'Press keys...')}
                 </div>
                 <button
                   onClick={() => saveShortcut(shortcut)}
-                  className="p-1.5 rounded hover:bg-term-blue/20 text-term-blue"
+                  className="p-1 rounded hover:bg-term-blue/20 text-term-blue"
                   title={t('common.save', 'Save')}
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => {
                     setEditingId(null);
                     setTempKeys('');
                   }}
-                  className="p-1.5 rounded hover:bg-term-red/20 text-term-red"
+                  className="p-1 rounded hover:bg-term-red/20 text-term-red"
                   title={t('common.cancel', 'Cancel')}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
@@ -106,7 +107,7 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
                   {parseKeys(shortcut.keys).map((key, i) => (
                     <kbd
                       key={i}
-                      className="px-2 py-1 text-xs bg-term-selection/50 border border-term-selection rounded text-term-fg"
+                      className="px-1.5 py-1 text-[10px] bg-term-selection/50 border border-term-selection rounded text-term-fg/70"
                     >
                       {key}
                     </kbd>
@@ -117,18 +118,18 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
                     setEditingId(shortcut.id);
                     setTempKeys(shortcut.keys);
                   }}
-                  className="p-1.5 rounded hover:bg-term-selection/50 text-term-fg/60 hover:text-term-fg"
+                  className="p-1 rounded hover:bg-term-selection/50 text-term-fg/60 hover:text-term-fg"
                   title={t('common.edit', 'Edit')}
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Edit2 className="w-3.5 h-3.5" />
                 </button>
                 {shortcut.keys !== shortcut.defaultKeys && (
                   <button
                     onClick={() => resetShortcut(shortcut)}
-                    className="p-1.5 rounded hover:bg-term-yellow/20 text-term-yellow"
+                    className="p-1 rounded hover:bg-term-yellow/20 text-term-yellow"
                     title={t('common.reset', 'Reset')}
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
@@ -137,9 +138,6 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
         ))}
       </div>
 
-      <div className="pt-4 border-t border-term-selection text-xs text-term-fg/40">
-        <p>{t('settings.shortcuts.hint', 'Click the edit button and press your desired key combination')}</p>
-      </div>
     </div>
   );
 }
