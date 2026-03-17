@@ -260,8 +260,8 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-lg p-6 flex flex-col max-h-[90vh]">
-        <div className="flex items-center gap-2 mb-6 flex-shrink-0 justify-between">
+      <div className="bg-term-bg rounded-lg border border-term-selection w-full max-w-2xl p-6 flex flex-col max-h-[90vh]">
+        <div className="flex items-center gap-2 mb-4 flex-shrink-0 justify-between">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-term-fg/60" />
             <h2 className="text-lg font-semibold text-term-fg">{t('settings.title')}</h2>
@@ -269,17 +269,17 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           <span className="text-xs text-term-fg/40">v{appVersion}</span>
         </div>
 
-        <div className="space-y-6 overflow-y-auto pr-2 flex-1">
+        <div className="space-y-5 overflow-y-auto pr-2 flex-1 max-h-[calc(90vh-120px)]">
           {/* Language */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-2">
               <Globe className="w-4 h-4 text-term-fg/60" />
               <label className="text-sm font-medium text-term-fg">{t('common.language')}</label>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setLocalSettings({ ...localSettings, language: 'en' })}
-                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
+                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
                   localSettings.language === 'en'
                     ? 'bg-term-blue text-term-bg font-medium'
                     : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
@@ -289,7 +289,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
               </button>
               <button
                 onClick={() => setLocalSettings({ ...localSettings, language: 'zh' })}
-                className={`flex-1 py-2 px-4 rounded-md text-sm transition-colors ${
+                className={`flex-1 py-1.5 px-3 rounded-md text-sm transition-colors ${
                   localSettings.language === 'zh'
                     ? 'bg-term-blue text-term-bg font-medium'
                     : 'bg-term-selection text-term-fg/60 hover:text-term-fg'
@@ -302,14 +302,14 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
 
           {/* Theme Selection */}
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Palette className="w-4 h-4 text-term-fg/60" />
                 <label className="text-sm font-medium text-term-fg">{t('settings.theme_select')}</label>
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {allThemes.map((theme) => {
                 const isCustom = localSettings.customThemes.some(t => t.name === theme.name);
                 return (
@@ -489,16 +489,16 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           </div>
         </div>
 
-        <div className="pt-6 border-t border-term-selection">
-          <div className="flex items-center gap-2 mb-3">
-            <Keyboard className="w-4 h-4 text-term-fg/60" />
-            <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
+          <div className="pt-4 border-t border-term-selection">
+            <div className="flex items-center gap-2 mb-2">
+              <Keyboard className="w-4 h-4 text-term-fg/60" />
+              <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
+            </div>
+            <ShortcutsSettings
+              shortcuts={localSettings.shortcuts || []}
+              onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
+            />
           </div>
-          <ShortcutsSettings
-            shortcuts={localSettings.shortcuts || []}
-            onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
-          />
-        </div>
 
         {/* Actions */}
         <div className="flex gap-3 mt-6 pt-4 border-t border-term-selection flex-shrink-0">

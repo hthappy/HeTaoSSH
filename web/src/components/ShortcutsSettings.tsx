@@ -30,11 +30,11 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
   }, [shortcuts]);
 
   const getDefaultShortcuts = (): ShortcutConfig[] => [
-    { id: 'new-connection', label: 'New Connection', defaultKeys: 'Ctrl+N', keys: 'Ctrl+N', category: 'global' },
-    { id: 'toggle-sidebar', label: 'Toggle Sidebar', defaultKeys: 'Ctrl+B', keys: 'Ctrl+B', category: 'global' },
-    { id: 'new-local-terminal', label: 'New Local Terminal', defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
-    { id: 'settings', label: 'Settings', defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
-    { id: 'terminal-search', label: 'Terminal Search', defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
+    { id: 'new-connection', label: t('shortcuts.new_connection', 'New Connection'), defaultKeys: 'Ctrl+N', keys: 'Ctrl+N', category: 'global' },
+    { id: 'toggle-sidebar', label: t('shortcuts.toggle_sidebar', 'Toggle Sidebar'), defaultKeys: 'Ctrl+B', keys: 'Ctrl+B', category: 'global' },
+    { id: 'new-local-terminal', label: t('shortcuts.new_local_terminal', 'New Local Terminal'), defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
+    { id: 'settings', label: t('shortcuts.settings', 'Settings'), defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
+    { id: 'terminal-search', label: t('shortcuts.terminal_search', 'Terminal Search'), defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
   ];
 
   const parseKeys = (keys: string): string[] => {
