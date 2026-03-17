@@ -10,12 +10,12 @@ export function TabBar() {
   }
 
   return (
-    <div className="h-10 bg-term-bg border-b border-term-selection flex items-center overflow-x-auto">
+    <div className="h-10 bg-term-bg border-b border-term-selection flex items-center overflow-x-auto flex-1">
       {tabs.map((tab: WorkspaceTab) => (
         <div
           key={tab.id}
           className={cn(
-            'group flex items-center gap-2 px-3 py-2 min-w-[160px] max-w-[200px] cursor-pointer border-r border-term-selection',
+            'group flex items-center gap-2 px-3 py-2 min-w-0 cursor-pointer border-r border-term-selection flex-1',
             activeTabId === tab.id
               ? 'bg-term-selection text-term-fg'
               : 'text-term-fg opacity-60 hover:bg-term-selection/50'
@@ -23,7 +23,7 @@ export function TabBar() {
           onClick={() => setActiveTab(tab.id)}
         >
           <Terminal className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="text-sm truncate flex-1">{tab.title}</span>
+          <span className="text-sm truncate flex-1 min-w-0">{tab.title}</span>
           <button
             onClick={(e) => {
               e.stopPropagation();
