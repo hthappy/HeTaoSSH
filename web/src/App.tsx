@@ -158,6 +158,12 @@ function App() {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        createLocalTerminal().catch(console.error);
+        return;
+      }
+
       // Ctrl+N: New Connection
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
