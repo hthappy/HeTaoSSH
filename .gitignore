@@ -45,6 +45,11 @@ output.txt
 output_utf8.txt
 test_output.log
 
+# Temporary files in src-tauri
+src-tauri/*.txt
+src-tauri/*.log
+src-tauri/HetaoSSH/
+
 # Scripts secrets
 scripts/*.key
 scripts/*.key.txt

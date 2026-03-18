@@ -1,22 +1,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 pub mod commands;
-pub mod error;
-pub mod ssh;
 pub mod config;
 pub mod crypto;
-pub mod monitor;
-pub mod snippets;
-pub mod security;
-pub mod theme;
+pub mod error;
 pub mod local_term;
+pub mod monitor;
+pub mod security;
+pub mod snippets;
+pub mod ssh;
+pub mod theme;
 
 use config::ConfigManager;
 use error::Result;
-use log::info;
-use ssh::ConnectionManager;
 use local_term::LocalTerminalManager;
+use log::info;
 use monitor::LocalMonitor;
+use ssh::ConnectionManager;
 use std::sync::Arc;
 
 #[tokio::main]

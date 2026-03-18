@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Globe, Palette, Upload, Trash2, Keyboard, Settings, Monitor, MousePointer2, Code2 } from 'lucide-react';
+import { X, Globe, Palette, Trash2, Keyboard, Settings, Monitor, MousePointer2, Code2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -31,7 +31,7 @@ interface SettingsDialogProps {
   onPreviewTheme?: (theme: ThemeSchema | null) => void;
 }
 
-export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewTheme }: SettingsDialogProps) {
+export function SettingsDialog({ isOpen, onClose, settings, onSave }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [appVersion, setAppVersion] = useState('');
@@ -49,24 +49,24 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
     onClose();
   };
 
-  // Check if theme with same name exists
-  const checkThemeExists = (name: string) => {
-    return [...presets, ...localSettings.customThemes].some(t => t.name === name);
-  };
+  // Check if theme with same name exists (reserved for future use)
+  // const checkThemeExists = (name: string) => {
+  //   return [...presets, ...localSettings.customThemes].some(t => t.name === name);
+  // };
 
   const processThemeContent = async (content: string, source: string) => {
     try {
       let theme: ThemeSchema;
-      
+
       // Try parsing as JSON first
       try {
         const rawTheme = JSON.parse(content);
-        
+
         // Check if it's a Gogh theme (flat structure)
         if (rawTheme.name && rawTheme.background && (rawTheme.black || rawTheme.color_01)) {
           // Convert Gogh format to our ThemeSchema
           const isIndexed = !!rawTheme.color_01;
-          
+
           theme = {
             name: rawTheme.name,
             type: rawTheme.type || 'dark', // Default to dark for Gogh themes
@@ -76,7 +76,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
               cursor: rawTheme.cursor,
               cursorAccent: rawTheme.cursorAccent || rawTheme.background,
               selection: rawTheme.selection || 'rgba(255, 255, 255, 0.3)',
-              
+
               black: isIndexed ? rawTheme.color_01 : rawTheme.black,
               red: isIndexed ? rawTheme.color_02 : rawTheme.red,
               green: isIndexed ? rawTheme.color_03 : rawTheme.green,
@@ -85,7 +85,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
               magenta: isIndexed ? rawTheme.color_06 : rawTheme.magenta,
               cyan: isIndexed ? rawTheme.color_07 : rawTheme.cyan,
               white: isIndexed ? rawTheme.color_08 : rawTheme.white,
-              
+
               brightBlack: isIndexed ? rawTheme.color_09 : rawTheme.brightBlack,
               brightRed: isIndexed ? rawTheme.color_10 : rawTheme.brightRed,
               brightGreen: isIndexed ? rawTheme.color_11 : rawTheme.brightGreen,
@@ -107,7 +107,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
         if (content.trim().toLowerCase().startsWith('<!doctype html') || content.includes('<html')) {
           throw new Error(t('settings.html_content_error', 'HTML content detected. Are you trying to import a raw JSON file?'));
         }
-        
+
         // Only try backend parsing if it wasn't a JSON parse error (which we handled above)
         throw new Error(t('settings.invalid_format_error', 'Invalid theme format'));
       }
@@ -128,7 +128,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
       });
     } catch (err) {
       console.error(`Failed to process theme from ${source}:`, err);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       throw err;
     }
   };
@@ -156,11 +156,11 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
 
   const handleDeleteTheme = (themeName: string) => {
     const newCustomThemes = localSettings.customThemes.filter(t => t.name !== themeName);
-    
+
     // If deleting currently selected theme, switch to default
     let newThemeName = localSettings.themeName;
     let newThemeType = localSettings.theme;
-    
+
     if (localSettings.themeName === themeName) {
       newThemeName = presets[0].name; // Usually Nord
       newThemeType = presets[0].type;
@@ -177,17 +177,15 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
   const allThemes = [...presets, ...localSettings.customThemes];
 
   return (
-    <>
-      {/* Backdrop */}
+    <div className="relative h-full w-full">
+      {/* Backdrop - covers content area below title bar */}
       {isOpen && (
-        <div 
-          className="absolute inset-0 bg-black/50 z-40 transition-opacity"
-          onClick={onClose}
-        />
+        <div className="absolute top-10 right-0 bottom-0 left-0 bg-black/30 z-40" onClick={onClose} />
       )}
       
+      {/* Settings Panel - starts below title bar (40px) */}
       <div className={cn(
-        "absolute top-0 right-0 h-full w-[500px] bg-term-bg border-l border-term-selection z-50 transform transition-transform duration-300 ease-in-out",
+        "absolute top-10 right-0 h-[calc(100%-40px)] w-[500px] bg-term-bg border-l border-term-selection z-[51] transform transition-transform duration-300 ease-in-out",
         isOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="flex flex-col h-full">
@@ -250,17 +248,17 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 <Palette className="w-4 h-4 text-term-fg/70" />
                 <label className="text-sm font-medium text-term-fg">{t('settings.theme_select', 'Theme')}</label>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 {allThemes.map((theme) => {
                   const isCustom = localSettings.customThemes.some(t => t.name === theme.name);
                   return (
                     <button
                       key={theme.name}
-                      onClick={() => setLocalSettings({ 
-                        ...localSettings, 
+                      onClick={() => setLocalSettings({
+                        ...localSettings,
                         themeName: theme.name,
-                        theme: theme.type 
+                        theme: theme.type
                       })}
                       className={cn(
                         "group flex items-center gap-2 p-3 rounded-lg border transition-all text-left",
@@ -270,16 +268,16 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                       )}
                     >
                       <div className="flex gap-1">
-                        <div 
-                          className="w-2 h-2 rounded-full" 
+                        <div
+                          className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: theme.colors.background }}
                         />
-                        <div 
-                          className="w-2 h-2 rounded-full" 
+                        <div
+                          className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: theme.colors.foreground }}
                         />
-                        <div 
-                          className="w-2 h-2 rounded-full" 
+                        <div
+                          className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: theme.colors.blue }}
                         />
                       </div>
@@ -339,7 +337,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 </div>
                 <label className="text-sm font-medium text-term-fg">{t('settings.terminal', 'Terminal')}</label>
               </div>
-              
+
               <div className="space-y-3 pl-7">
                 {/* Font Size */}
                 <div className="space-y-2">
@@ -385,7 +383,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 </div>
                 <label className="text-sm font-medium text-term-fg">{t('settings.mouse', 'Mouse')}</label>
               </div>
-              
+
               <div className="space-y-2 pl-7">
                 <label className="text-xs text-term-fg/70 block mb-2">{t('settings.right_click', 'Right Click')}</label>
                 <div className="flex gap-2 p-1 bg-term-selection/20 rounded-lg">
@@ -423,7 +421,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 </div>
                 <label className="text-sm font-medium text-term-fg">{t('settings.editor', 'Editor')}</label>
               </div>
-              
+
               <div className="space-y-2 pl-7">
                 <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-term-selection/20 transition-colors">
                   <input
@@ -456,7 +454,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 <div className="p-1.5 bg-term-selection/30 rounded-md">
                   <Keyboard className="w-4 h-4 text-term-fg/70" />
                 </div>
-                <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts_title', 'Keyboard Shortcuts')}</label>
+                <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts.title', 'Keyboard Shortcuts')}</label>
               </div>
               <div className="mt-3 pl-7">
                 <ShortcutsSettings
@@ -486,6 +484,6 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

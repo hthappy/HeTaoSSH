@@ -16,7 +16,7 @@ pub fn validate_and_normalize_path(base_dir: &Path, requested_path: &str) -> Res
     // 检查明显的危险模式
     if contains_traversal_pattern(requested_path) {
         return Err(SshError::Config(
-            "Path traversal detected: suspicious pattern in path".into(),
+            crate::error::messages::PATH_TRAVERSAL.into(),
         ));
     }
 
@@ -30,7 +30,7 @@ pub fn validate_and_normalize_path(base_dir: &Path, requested_path: &str) -> Res
             // 跳过所有父目录引用，防止遍历
             Component::ParentDir => {
                 return Err(SshError::Config(
-                    "Path traversal detected: parent directory access is not allowed".into(),
+                    crate::error::messages::PATH_PARENT_DIR.into(),
                 ));
             }
             // 跳过当前目录引用
@@ -47,7 +47,7 @@ pub fn validate_and_normalize_path(base_dir: &Path, requested_path: &str) -> Res
     // 只需要确保不包含绝对路径跳转到其他位置
     // 由于我们是从 base_dir 开始 join，且移除了所有 ..，
     // 最终路径必然在 base_dir 内或是其子目录
-    
+
     Ok(normalized)
 }
 

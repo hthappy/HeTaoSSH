@@ -11,6 +11,7 @@ import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
 import { TerminalSearchBar } from './TerminalSearchBar';
 import { addToHistory, getHistory } from '@/lib/commandHistory';
 import { useToast } from '@/components/Toast';
+import { useTerminalFit } from '@/hooks/useTerminalFit';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
@@ -42,8 +43,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   const { t } = useTranslation();
   const { showToast } = useToast();
   const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+  const { xtermRef, fitAddonRef } = useTerminalFit();
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const onEnterRef = useRef(onEnter);
   const onDataRef = useRef(onData);

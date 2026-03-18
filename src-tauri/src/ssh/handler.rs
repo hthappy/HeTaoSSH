@@ -25,7 +25,6 @@ impl SshChannelHandler {
         }
     }
 
-    #[allow(clippy::unnecessary_mut)]
     pub async fn init_channel(
         &mut self,
         session: &mut russh::client::Handle<crate::ssh::connection::ClientHandler>,

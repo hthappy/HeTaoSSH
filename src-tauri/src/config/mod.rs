@@ -37,21 +37,20 @@ impl ConfigManager {
     pub async fn new() -> Result<Self> {
         let db_path = Self::get_db_path()?;
         info!("Database path: {:?}", db_path);
-        
+
         // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                SshError::Config(format!("Failed to create directory: {}", e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| SshError::Config(format!("Failed to create directory: {}", e)))?;
         }
-        
+
         // Use SqliteConnectOptions with explicit create_if_missing
         let connect_options = SqliteConnectOptions::new()
             .filename(&db_path)
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
-        
+
         info!("DB file exists before connect: {}", db_path.exists());
         info!("Connecting to: {}", db_path.display());
 
@@ -68,7 +67,9 @@ impl ConfigManager {
 
     fn get_db_path() -> Result<PathBuf> {
         let db_path = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            PathBuf::from(local_app_data).join("HeTaoSSH").join("HeTaoSSH.db")
+            PathBuf::from(local_app_data)
+                .join("HeTaoSSH")
+                .join("HeTaoSSH.db")
         } else if let Some(data_dir) = dirs::data_local_dir() {
             data_dir.join("HeTaoSSH").join("HeTaoSSH.db")
         } else {
@@ -77,7 +78,7 @@ impl ConfigManager {
                 .join("HeTaoSSH")
                 .join("HeTaoSSH.db")
         };
-        
+
         Ok(db_path)
     }
 
@@ -101,6 +102,14 @@ impl ConfigManager {
         .execute(pool)
         .await?;
 
+        // Add indexes for better query performance
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_servers_host ON servers(host)")
+            .execute(pool)
+            .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_servers_name ON servers(name)")
+            .execute(pool)
+            .await?;
+
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS session_state (
@@ -118,13 +127,25 @@ impl ConfigManager {
     }
 
     pub async fn save_server(&self, config: &ServerConfig) -> Result<i64> {
-        let password_encrypted = config.password.as_ref().map(|p| {
-            self.crypto.encrypt(p).map_err(|e| SshError::Config(format!("Encryption failed: {}", e)))
-        }).transpose()?;
-        
-        let passphrase_encrypted = config.passphrase.as_ref().map(|p| {
-            self.crypto.encrypt(p).map_err(|e| SshError::Config(format!("Encryption failed: {}", e)))
-        }).transpose()?;
+        let password_encrypted = config
+            .password
+            .as_ref()
+            .map(|p| {
+                self.crypto
+                    .encrypt(p)
+                    .map_err(|e| SshError::Config(format!("Encryption failed: {}", e)))
+            })
+            .transpose()?;
+
+        let passphrase_encrypted = config
+            .passphrase
+            .as_ref()
+            .map(|p| {
+                self.crypto
+                    .encrypt(p)
+                    .map_err(|e| SshError::Config(format!("Encryption failed: {}", e)))
+            })
+            .transpose()?;
 
         if let Some(id) = config.id {
             // Update existing server
@@ -189,26 +210,37 @@ impl ConfigManager {
             let password_encrypted: Option<String> = row.get("password_encrypted");
             let passphrase_encrypted: Option<String> = row.get("passphrase_encrypted");
 
-            // 解密失败时优雅降级：清空无法解密的字段（可能是密钥迁移后旧数据）
-            let password = password_encrypted.and_then(|enc| {
-                match self.crypto.decrypt(&enc) {
-                    Ok(p) => Some(p),
-                    Err(e) => {
-                        log::warn!("Password decryption failed (key migration?): {}", e);
-                        None
+            // Decrypt password - fail fast if decryption fails (indicates corrupted data or key issue)
+            let password = match password_encrypted {
+                Some(enc) => {
+                    match self.crypto.decrypt(&enc) {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            log::error!("Password decryption failed for server {}: {}", row.get::<i64, _>("id"), e);
+                            return Err(SshError::Encryption(
+                                crate::error::messages::DECRYPTION_FAILED.into()
+                            ));
+                        }
                     }
                 }
-            });
-            
-            let passphrase = passphrase_encrypted.and_then(|enc| {
-                match self.crypto.decrypt(&enc) {
-                    Ok(p) => Some(p),
-                    Err(e) => {
-                        log::warn!("Passphrase decryption failed (key migration?): {}", e);
-                        None
+                None => None,
+            };
+
+            // Decrypt passphrase - fail fast if decryption fails
+            let passphrase = match passphrase_encrypted {
+                Some(enc) => {
+                    match self.crypto.decrypt(&enc) {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            log::error!("Passphrase decryption failed for server {}: {}", row.get::<i64, _>("id"), e);
+                            return Err(SshError::Encryption(
+                                crate::error::messages::DECRYPTION_FAILED.into()
+                            ));
+                        }
                     }
                 }
-            });
+                None => None,
+            };
 
             servers.push(ServerConfig {
                 id: row.get("id"),
@@ -260,8 +292,9 @@ impl ConfigManager {
 
         if let Some(row) = row {
             let server_ids_json: String = row.get("server_ids");
-            let server_ids: Vec<i64> = serde_json::from_str(&server_ids_json)
-                .map_err(|e| SshError::Config(format!("Failed to deserialize server ids: {}", e)))?;
+            let server_ids: Vec<i64> = serde_json::from_str(&server_ids_json).map_err(|e| {
+                SshError::Config(format!("Failed to deserialize server ids: {}", e))
+            })?;
 
             Ok(Some(SessionState { server_ids }))
         } else {

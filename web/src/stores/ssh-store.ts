@@ -2,9 +2,10 @@ import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import type { ServerConfig } from '@/types/config'
 import i18n from '@/i18n'
+import { IPC_DEBOUNCE_MS } from '@/constants/ipc'
 
 // Input buffering to prevent IPC flooding and key loss
-// Accumulates keystrokes for a short window (5ms) before sending
+// Accumulates keystrokes for a short window before sending
 const inputBuffers: Record<number, string> = {};
 const inputTimers: Record<number, NodeJS.Timeout> = {};
 
@@ -35,7 +36,7 @@ const sendBuffered = (serverId: number, data: string) => {
     } catch (err) {
       console.error(i18n.t('store.send_data_failed', { error: err }));
     }
-  }, 5); // 5ms latency is imperceptible but allows batching rapid inputs
+  }, IPC_DEBOUNCE_MS);
 };
 
 export interface WorkspaceTab {

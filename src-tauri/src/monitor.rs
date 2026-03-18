@@ -2,13 +2,19 @@ use crate::error::{Result, SshError};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use sysinfo::{System, Disks, Networks};
+use sysinfo::{Disks, Networks, System};
 
 /// 本地系统监控器
 pub struct LocalMonitor {
     sys: Mutex<System>,
     disks: Mutex<Disks>,
     networks: Mutex<Networks>,
+}
+
+impl Default for LocalMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LocalMonitor {
@@ -36,7 +42,7 @@ impl LocalMonitor {
         let memory_total = sys.total_memory();
         let memory_used = sys.used_memory();
         let memory_available = sys.available_memory(); // or free_memory depending on sysinfo version, usually available is better
-        
+
         let memory_usage = if memory_total > 0 {
             (memory_used as f32 / memory_total as f32) * 100.0
         } else {
@@ -47,7 +53,10 @@ impl LocalMonitor {
         let load_avg = System::load_average();
         let load_average = vec![load_avg.one, load_avg.five, load_avg.fifteen];
         // Handle NaN in load average
-        let load_average: Vec<f64> = load_average.into_iter().map(|v| if v.is_nan() { 0.0 } else { v }).collect();
+        let load_average: Vec<f64> = load_average
+            .into_iter()
+            .map(|v| if v.is_nan() { 0.0 } else { v })
+            .collect();
 
         let mut disk_usage = Vec::new();
         for disk in disks.list() {
@@ -90,7 +99,6 @@ impl LocalMonitor {
         }
     }
 }
-
 
 /// 远程系统资源使用情况
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,16 +275,15 @@ fn parse_disk_usage(raw: &str) -> Vec<DiskUsage> {
         if parts.len() >= 6 {
             let mount_point = parts[5].to_string();
             // 只显示真实文件系统挂载点
-            if !mount_point.starts_with('/')
+            if (!mount_point.starts_with('/')
                 || mount_point.starts_with("/dev")
                 || mount_point.starts_with("/sys")
                 || mount_point.starts_with("/proc")
                 || mount_point.starts_with("/run")
-                || mount_point.starts_with("/snap")
+                || mount_point.starts_with("/snap"))
+                && mount_point != "/"
             {
-                if mount_point != "/" {
-                    continue;
-                }
+                continue;
             }
 
             let total: u64 = parts[1].parse().unwrap_or(0);
@@ -362,11 +369,17 @@ fn parse_load_average(raw: &str) -> Vec<f64> {
 
 /// 从组合命令输出中提取指定段落
 fn extract_section(raw: &str, start_marker: &str, end_marker: &str) -> String {
-    let start = raw.find(start_marker).map(|i| i + start_marker.len()).unwrap_or(0);
+    let start = raw
+        .find(start_marker)
+        .map(|i| i + start_marker.len())
+        .unwrap_or(0);
     let end = if end_marker.is_empty() {
         raw.len()
     } else {
-        raw[start..].find(end_marker).map(|i| start + i).unwrap_or(raw.len())
+        raw[start..]
+            .find(end_marker)
+            .map(|i| start + i)
+            .unwrap_or(raw.len())
     };
     raw[start..end].to_string()
 }

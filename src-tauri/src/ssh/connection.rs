@@ -3,7 +3,7 @@ use crate::error::{Result, SshError};
 use crate::ssh::handler::SshChannelHandler;
 use log::info;
 use russh::client::{Config, Handle, Handler};
-use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, ssh_key};
+use russh::keys::{load_secret_key, ssh_key, PrivateKeyWithHashAlg};
 use russh_keys::known_hosts::learn_known_hosts_path;
 use std::sync::Arc;
 
@@ -29,9 +29,11 @@ impl Handler for ClientHandler {
     ) -> std::result::Result<bool, Self::Error> {
         let mut known_hosts_path = std::env::var("LOCALAPPDATA")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")));
+            .unwrap_or_else(|_| {
+                dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+            });
         known_hosts_path.push("HeTaoSSH");
-        
+
         // Ensure directory exists
         if !known_hosts_path.exists() {
             let _ = std::fs::create_dir_all(&known_hosts_path);
@@ -40,25 +42,31 @@ impl Handler for ClientHandler {
 
         let host = &self.host;
         let port = self.port;
-        
-        let check_result = russh_keys::check_known_hosts_path(
-            host,
-            port,
-            server_public_key,
-            &known_hosts_path
-        );
+
+        let check_result =
+            russh_keys::check_known_hosts_path(host, port, server_public_key, &known_hosts_path);
 
         match check_result {
             Ok(true) => {
                 log::info!("Host key verified from known_hosts.");
                 Ok(true)
-            },
+            }
             Ok(false) | Err(_) => {
                 // Key is unknown (Ok(false)) or file doesn't exist (Err). We trust on first use (TOFU) and save it.
-                log::info!("New or unverified host key detected for {}:{}, adding to known_hosts.", host, port);
-                if let Err(learn_err) = learn_known_hosts_path(host, port, server_public_key, &known_hosts_path) {
-                    log::error!("Failed to save host key to known_hosts at {:?}: {}", known_hosts_path, learn_err);
-                    // On Windows, if saving fails, we log it but still allow the connection 
+                log::info!(
+                    "New or unverified host key detected for {}:{}, adding to known_hosts.",
+                    host,
+                    port
+                );
+                if let Err(learn_err) =
+                    learn_known_hosts_path(host, port, server_public_key, &known_hosts_path)
+                {
+                    log::error!(
+                        "Failed to save host key to known_hosts at {:?}: {}",
+                        known_hosts_path,
+                        learn_err
+                    );
+                    // On Windows, if saving fails, we log it but still allow the connection
                 }
                 Ok(true)
             }
@@ -97,14 +105,16 @@ impl SshConnection {
         if let Some(key_path) = &self.config.private_key_path {
             if !key_path.trim().is_empty() {
                 let passphrase = self.config.passphrase.as_deref();
-                
+
                 // Try to load the key, but don't fail the whole connection if it fails (fallback to password)
                 match load_secret_key(key_path, passphrase) {
                     Ok(key) => {
                         let best_hash = session
                             .best_supported_rsa_hash()
                             .await
-                            .map_err(|e| SshError::ConnectionFailed(format!("Hash alg error: {}", e)))?
+                            .map_err(|e| {
+                                SshError::ConnectionFailed(format!("Hash alg error: {}", e))
+                            })?
                             .flatten();
 
                         match session
@@ -112,7 +122,7 @@ impl SshConnection {
                                 username,
                                 PrivateKeyWithHashAlg::new(Arc::new(key), best_hash),
                             )
-                            .await 
+                            .await
                         {
                             Ok(auth_result) if auth_result.success() => {
                                 info!("Key authentication successful for {}", username);
@@ -120,10 +130,15 @@ impl SshConnection {
                                 return Ok(());
                             }
                             Ok(_) => {
-                                log::warn!("Key authentication failed, falling back to password...");
+                                log::warn!(
+                                    "Key authentication failed, falling back to password..."
+                                );
                             }
                             Err(e) => {
-                                log::warn!("Key authentication error: {}, falling back to password...", e);
+                                log::warn!(
+                                    "Key authentication error: {}, falling back to password...",
+                                    e
+                                );
                             }
                         }
                     }
@@ -149,7 +164,7 @@ impl SshConnection {
         }
 
         Err(SshError::ConnectionFailed(
-            "All authentication methods failed".to_string(),
+            crate::error::messages::ALL_AUTH_METHODS_FAILED.to_string(),
         ))
     }
 
@@ -159,23 +174,30 @@ impl SshConnection {
 
         if let Some(ref mut session) = self.session {
             // Open SFTP Subsystem channel
-            let channel = session.channel_open_session().await
-                .map_err(|e| SshError::ConnectionFailed(format!("Failed to open SFTP channel: {}", e)))?;
-            channel.request_subsystem(true, "sftp").await
-                .map_err(|e| SshError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e)))?;
-            
-            let sftp = russh_sftp::client::SftpSession::new(channel.into_stream()).await
-                .map_err(|e| SshError::ConnectionFailed(format!("Failed to start SFTP session: {}", e)))?;
+            let channel = session.channel_open_session().await.map_err(|e| {
+                SshError::ConnectionFailed(format!("Failed to open SFTP channel: {}", e))
+            })?;
+            channel.request_subsystem(true, "sftp").await.map_err(|e| {
+                SshError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e))
+            })?;
+
+            let sftp = russh_sftp::client::SftpSession::new(channel.into_stream())
+                .await
+                .map_err(|e| {
+                    SshError::ConnectionFailed(format!("Failed to start SFTP session: {}", e))
+                })?;
             self.sftp_session = Some(sftp);
 
             // Open Shell channel
             let mut channel_handler = SshChannelHandler::new();
             channel_handler.init_channel(session).await?;
             self.channel_handler = Some(channel_handler);
-            
+
             Ok(())
         } else {
-            Err(SshError::ConnectionFailed("Session not established".to_string()))
+            Err(SshError::ConnectionFailed(
+                crate::error::messages::SESSION_NOT_ESTABLISHED.to_string(),
+            ))
         }
     }
 
@@ -189,7 +211,11 @@ impl SshConnection {
         // Disconnect session
         if let Some(ref mut session) = self.session {
             session
-                .disconnect(russh::Disconnect::ByApplication, "User disconnect", "English")
+                .disconnect(
+                    russh::Disconnect::ByApplication,
+                    "User disconnect",
+                    "English",
+                )
                 .await
                 .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
             info!(
@@ -239,12 +265,12 @@ impl SshConnection {
     /// Reconnect the SSH session (used for auto-reconnect)
     pub async fn reconnect(&mut self) -> Result<()> {
         info!("Reconnecting to {}:{}", self.config.host, self.config.port);
-        
+
         // Clean up existing session first
         if self.session.is_some() {
             let _ = self.disconnect().await;
         }
-        
+
         // Re-establish connection
         self.connect_with_shell().await
     }

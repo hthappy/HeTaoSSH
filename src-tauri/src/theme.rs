@@ -1,6 +1,6 @@
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::error::Result;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThemeColors {
@@ -10,7 +10,7 @@ pub struct ThemeColors {
     #[serde(rename = "cursorAccent")]
     pub cursor_accent: String,
     pub selection: String,
-    
+
     pub black: String,
     pub red: String,
     pub green: String,
@@ -19,7 +19,7 @@ pub struct ThemeColors {
     pub magenta: String,
     pub cyan: String,
     pub white: String,
-    
+
     #[serde(rename = "brightBlack")]
     pub bright_black: String,
     #[serde(rename = "brightRed")]
@@ -71,8 +71,10 @@ impl ITermColor {
 }
 
 pub fn parse_iterm2_theme(xml_content: &str) -> Result<ThemeSchema> {
-    let dict: HashMap<String, ITermColor> = plist::from_bytes(xml_content.as_bytes())
-        .map_err(|e| crate::error::SshError::ConnectionFailed(format!("Failed to parse plist: {}", e)))?;
+    let dict: HashMap<String, ITermColor> =
+        plist::from_bytes(xml_content.as_bytes()).map_err(|e| {
+            crate::error::SshError::ConnectionFailed(format!("Failed to parse plist: {}", e))
+        })?;
 
     let get_color = |key: &str| -> String {
         dict.get(key)
@@ -86,7 +88,7 @@ pub fn parse_iterm2_theme(xml_content: &str) -> Result<ThemeSchema> {
         cursor: get_color("Cursor Color"),
         cursor_accent: get_color("Cursor Text Color"), // Best approximation
         selection: get_color("Selection Color"),
-        
+
         black: get_color("Ansi 0 Color"),
         red: get_color("Ansi 1 Color"),
         green: get_color("Ansi 2 Color"),
@@ -95,7 +97,7 @@ pub fn parse_iterm2_theme(xml_content: &str) -> Result<ThemeSchema> {
         magenta: get_color("Ansi 5 Color"),
         cyan: get_color("Ansi 6 Color"),
         white: get_color("Ansi 7 Color"),
-        
+
         bright_black: get_color("Ansi 8 Color"),
         bright_red: get_color("Ansi 9 Color"),
         bright_green: get_color("Ansi 10 Color"),

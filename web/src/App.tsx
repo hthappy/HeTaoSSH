@@ -135,12 +135,22 @@ function App() {
     }
   }, [settings.language, i18n]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts - use capture phase to intercept before terminal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Prevent F5 and Ctrl+R/Cmd+R (Reload)
       if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key === 'r')) {
         e.preventDefault();
+        return;
+      }
+
+      // Ctrl+W: Close Tab - handle in capture phase
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTabId) {
+          closeTab(activeTabId);
+        }
         return;
       }
 
@@ -170,9 +180,10 @@ function App() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    // Use capture phase to intercept before terminal handles it
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [activeTabId, closeTab]);
 
   // Resolve current theme object
   const currentTheme = useMemo(() => {
@@ -425,6 +436,19 @@ function App() {
                 </div>
               )}
             </div>
+            
+            {/* Settings Dialog - Inside Tab Content area, below title bar */}
+            {showSettings && (
+              <div className="absolute top-10 right-0 bottom-0 left-0 z-40">
+                <SettingsDialog
+                  isOpen={showSettings}
+                  onClose={() => setShowSettings(false)}
+                  settings={settings}
+                  onSave={setSettings}
+                  onPreviewTheme={setPreviewTheme}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -435,21 +459,6 @@ function App() {
           tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
           latency={0}
         />
-
-        <div className="absolute inset-0 pointer-events-none z-50">
-          <div className={cn(
-            "absolute inset-0 pointer-events-auto",
-            showSettings ? "opacity-100" : "opacity-0 pointer-events-none"
-          )}>
-            <SettingsDialog
-              isOpen={showSettings}
-              onClose={() => setShowSettings(false)}
-              settings={settings}
-              onSave={setSettings}
-              onPreviewTheme={setPreviewTheme}
-            />
-          </div>
-        </div>
 
           <UpdateDialog
             isOpen={!!updateAvailable}

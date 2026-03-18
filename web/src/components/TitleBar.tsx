@@ -41,9 +41,18 @@ export function TitleBar({ children, actions }: TitleBarProps) {
     setIsMaximized(await appWindow.isMaximized());
   };
 
+  const handleDoubleClick = async () => {
+    // Double click to maximize/restore
+    await handleMaximize();
+  };
+
   return (
     <div className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
-      <div data-tauri-drag-region className="flex items-center gap-2 px-3 h-full flex-1">
+      <div 
+        data-tauri-drag-region 
+        onDoubleClick={handleDoubleClick}
+        className="flex items-center gap-2 px-3 h-full flex-1 cursor-default"
+      >
         <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
         <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
         {children}

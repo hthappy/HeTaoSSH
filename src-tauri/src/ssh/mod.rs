@@ -1,7 +1,7 @@
 pub mod connection;
 pub mod handler;
-pub mod sftp;
 pub mod manager;
+pub mod sftp;
 
 pub use connection::SshConnection;
 pub use handler::SshChannelHandler;

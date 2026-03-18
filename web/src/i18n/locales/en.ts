@@ -209,4 +209,13 @@ export default {
     disconnect_failed: 'Failed to disconnect: {{error}}',
     send_data_failed: 'Failed to send data: {{error}}',
   },
+  shortcuts: {
+    title: 'Keyboard Shortcuts',
+    new_connection: 'New Connection',
+    toggle_sidebar: 'Toggle Sidebar',
+    close_tab: 'Close Tab',
+    new_local_terminal: 'New Local Terminal',
+    settings: 'Settings',
+    terminal_search: 'Terminal Search',
+  },
 };

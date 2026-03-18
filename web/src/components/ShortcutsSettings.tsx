@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Keyboard, Edit2, Save, X } from 'lucide-react';
+import { Edit2, Save, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface ShortcutConfig {
@@ -32,6 +32,7 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
   const getDefaultShortcuts = (): ShortcutConfig[] => [
     { id: 'new-connection', label: t('shortcuts.new_connection', 'New Connection'), defaultKeys: 'Ctrl+N', keys: 'Ctrl+N', category: 'global' },
     { id: 'toggle-sidebar', label: t('shortcuts.toggle_sidebar', 'Toggle Sidebar'), defaultKeys: 'Ctrl+B', keys: 'Ctrl+B', category: 'global' },
+    { id: 'close-tab', label: t('shortcuts.close_tab', 'Close Tab'), defaultKeys: 'Ctrl+W', keys: 'Ctrl+W', category: 'global' },
     { id: 'new-local-terminal', label: t('shortcuts.new_local_terminal', 'New Local Terminal'), defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
     { id: 'settings', label: t('shortcuts.settings', 'Settings'), defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
     { id: 'terminal-search', label: t('shortcuts.terminal_search', 'Terminal Search'), defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
@@ -61,13 +62,6 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Keyboard className="w-4 h-4 text-term-fg/60" />
-          <h4 className="text-sm font-medium text-term-fg">{t('settings.shortcuts.title', 'Keyboard Shortcuts')}</h4>
-        </div>
-      </div>
-
       <div className="space-y-2">
         {localShortcuts.map((shortcut) => (
           <div

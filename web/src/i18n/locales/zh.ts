@@ -158,11 +158,17 @@ export default {
     paste_placeholder: '在此粘贴主题 JSON 内容...',
     import: '导入',
     invalid_json: '无效的 JSON 格式',
+    mouse: '鼠标',
     right_click: '鼠标右键',
     behavior_menu: '右键菜单',
     behavior_paste: '粘贴',
     smart_behavior: '智能模式：右键粘贴（若有选中则复制）',
     standard_behavior: '标准模式：右键显示菜单',
+    shortcuts: {
+      title: '快捷键',
+      press_keys: '按键盘...',
+    },
+    terminal: '终端',
   },
   status: {
     not_connected: '未连接',
@@ -218,17 +224,9 @@ export default {
     title: '快捷键',
     new_connection: '新建连接',
     toggle_sidebar: '切换侧边栏',
+    close_tab: '关闭标签页',
     new_local_terminal: '新建本地终端',
     settings: '设置',
     terminal_search: '终端搜索',
-  },
-  settings: {
-    shortcuts: {
-      title: '键盘快捷键',
-      press_keys: '按键盘...',
-    },
-    terminal: '终端',
-    font_size: '字体大小',
-    line_height: '行高',
   },
 };

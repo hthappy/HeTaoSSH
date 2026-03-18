@@ -40,9 +40,8 @@ impl SnippetManager {
         let db_path = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("HeTaoSSH");
-        std::fs::create_dir_all(&db_path).map_err(|e| {
-            SshError::Config(format!("Failed to create database directory: {}", e))
-        })?;
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| SshError::Config(format!("Failed to create database directory: {}", e)))?;
         Ok(db_path.join("snippets.db"))
     }
 
@@ -56,7 +55,9 @@ impl SnippetManager {
                 category TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )"#,
-        ).execute(pool).await?;
+        )
+        .execute(pool)
+        .await?;
 
         // Create metadata table to track initialization state
         sqlx::query(
@@ -64,27 +65,62 @@ impl SnippetManager {
                 key TEXT PRIMARY KEY,
                 value TEXT
             )"#,
-        ).execute(pool).await?;
+        )
+        .execute(pool)
+        .await?;
 
         // Check if snippets have been initialized
-        let initialized: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM app_metadata WHERE key = 'snippets_initialized'")
-            .fetch_one(pool).await?;
+        let initialized: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM app_metadata WHERE key = 'snippets_initialized'")
+                .fetch_one(pool)
+                .await?;
 
         if initialized.0 == 0 {
             let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM snippets")
-                .fetch_one(pool).await?;
+                .fetch_one(pool)
+                .await?;
 
             if count.0 == 0 {
                 let defaults = vec![
-                    ("System Info", "uname -a", "Show system information", "System"),
+                    (
+                        "System Info",
+                        "uname -a",
+                        "Show system information",
+                        "System",
+                    ),
                     ("Disk Usage", "df -h", "Show disk usage", "System"),
                     ("Memory Info", "free -h", "Show memory usage", "System"),
                     ("CPU Info", "lscpu", "Show CPU information", "System"),
-                    ("Top Processes", "top -n 10", "Show top 10 processes", "Process"),
-                    ("Network Connections", "netstat -tulpn", "Show network connections", "Network"),
-                    ("Find Files", "find . -name '{pattern}'", "Find files by name", "File"),
-                    ("Tail Logs", "tail -f /var/log/syslog", "View system logs", "Logs"),
-                    ("Docker Containers", "docker ps -a", "List all containers", "Docker"),
+                    (
+                        "Top Processes",
+                        "top -n 10",
+                        "Show top 10 processes",
+                        "Process",
+                    ),
+                    (
+                        "Network Connections",
+                        "netstat -tulpn",
+                        "Show network connections",
+                        "Network",
+                    ),
+                    (
+                        "Find Files",
+                        "find . -name '{pattern}'",
+                        "Find files by name",
+                        "File",
+                    ),
+                    (
+                        "Tail Logs",
+                        "tail -f /var/log/syslog",
+                        "View system logs",
+                        "Logs",
+                    ),
+                    (
+                        "Docker Containers",
+                        "docker ps -a",
+                        "List all containers",
+                        "Docker",
+                    ),
                     ("Git Status", "git status", "Show git status", "Git"),
                 ];
                 for (name, command, description, category) in defaults {
@@ -94,7 +130,7 @@ impl SnippetManager {
                 }
                 info!("Inserted default command snippets");
             }
-            
+
             // Mark as initialized so we don't re-insert defaults if user deletes them all
             sqlx::query("INSERT OR IGNORE INTO app_metadata (key, value) VALUES ('snippets_initialized', 'true')")
                 .execute(pool).await?;
@@ -103,13 +139,19 @@ impl SnippetManager {
     }
 
     pub async fn list_snippets(&self) -> Result<Vec<CommandSnippet>> {
-        Ok(sqlx::query_as("SELECT * FROM snippets ORDER BY category, name")
-            .fetch_all(&self.pool).await?)
+        Ok(
+            sqlx::query_as("SELECT * FROM snippets ORDER BY category, name")
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub async fn list_categories(&self) -> Result<Vec<String>> {
-        Ok(sqlx::query_scalar("SELECT DISTINCT category FROM snippets WHERE category IS NOT NULL ORDER BY category")
-            .fetch_all(&self.pool).await?)
+        Ok(sqlx::query_scalar(
+            "SELECT DISTINCT category FROM snippets WHERE category IS NOT NULL ORDER BY category",
+        )
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     pub async fn save_snippet(&self, snippet: &CommandSnippet) -> Result<i64> {
