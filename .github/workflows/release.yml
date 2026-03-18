@@ -62,9 +62,6 @@ jobs:
           
           > **Note:** This release has not been fully tested on macOS environments.
           > **注意：** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
-          
-          The macOS installer has been marked as **beta**.
-          macOS 安装包已标记为 **beta**。
           "
           
           # Create release if it doesn't exist, or update it if it does
