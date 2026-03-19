@@ -77,6 +77,7 @@ async fn main() -> Result<()> {
             commands::local_term_close,
             commands::local_list_dir,
             commands::local_get_home_dir,
+            commands::open_path_in_explorer,
             // Session management
             commands::save_session,
             commands::get_session,

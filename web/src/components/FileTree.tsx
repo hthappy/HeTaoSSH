@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2, Download, Trash2, Copy, RefreshCcw, Eye, EyeOff } from 'lucide-react';
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2, Download, Trash2, Copy, RefreshCcw, Eye, EyeOff, CornerDownRight } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { save, open } from '@tauri-apps/plugin-dialog';
@@ -502,6 +502,199 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     }
   }, [acOpen, acItems, acActiveIndex, applySuggestion, loadDir, pathInput, currentPath]);
 
+  // Handle open directory - shows directory browser for both local and remote
+  const handleOpenDirectory = async () => {
+    try {
+      if (isLocal) {
+        // Local terminal: use system directory picker
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: t('file.select_folder', 'Select Folder'),
+        });
+
+        if (selected) {
+          const folderPath = Array.isArray(selected) ? selected[0] : selected;
+          if (folderPath) {
+            loadDir(folderPath);
+          }
+        }
+      } else {
+        // Remote server: show directory browser modal
+        const remotePath = await showRemotePathBrowser();
+        if (remotePath) {
+          loadDir(remotePath);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open directory:', error);
+      showToast(t('file.open_folder_failed', 'Failed to open folder'), 'error');
+    }
+  };
+
+  // Show remote path browser modal
+  const showRemotePathBrowser = async (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      let browserPath = currentPath;
+      let browserEntries: SftpEntry[] = [];
+      let browserLoading = false;
+      
+      // Create modal container
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50';
+      
+      const loadBrowserDir = async (path: string) => {
+        browserLoading = true;
+        renderModal();
+        try {
+          const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
+          const args = isLocal ? { path } : { tabId, path };
+          browserEntries = await invoke<SftpEntry[]>(cmd, args);
+        } catch (error) {
+          console.error('Failed to load directory:', error);
+        } finally {
+          browserLoading = false;
+          renderModal();
+        }
+      };
+      
+      const renderModal = () => {
+        modal.innerHTML = `
+          <div class="bg-term-bg rounded-lg shadow-2xl w-[500px] max-h-[600px] flex flex-col overflow-hidden border border-term-selection">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-term-selection">
+              <h3 class="text-base font-semibold text-term-fg">${t('file.select_folder', 'Select Folder')}</h3>
+              <button id="closeModal" class="p-1 rounded hover:bg-term-selection text-term-fg/60 hover:text-term-fg">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            
+            <div class="px-4 py-2 border-b border-term-selection flex items-center gap-2">
+              <input 
+                type="text" 
+                id="pathInput"
+                value="${browserPath}"
+                class="flex-1 bg-term-selection/50 text-term-fg text-xs px-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none"
+                placeholder="Enter path or select from browser below"
+              />
+              <button id="loadPath" class="px-3 py-1.5 bg-term-blue text-term-bg text-xs font-medium rounded hover:bg-term-blue/80">
+                Load
+              </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-2 min-h-[300px]">
+              ${browserLoading ? `
+                <div class="flex items-center justify-center py-8 text-term-fg/40">
+                  <svg class="animate-spin w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                  Loading...
+                </div>
+              ` : `
+                <div class="space-y-0.5">
+                  ${browserPath !== '/' ? `
+                    <div 
+                      id="parentDir"
+                      class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-term-selection/50 text-term-fg/70 hover:text-term-fg"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 10h10v10H3z"/>
+                        <path d="M21 10a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 10v8a2 2 0 002 2h14a2 2 0 002-2v-6z"/>
+                      </svg>
+                      <span>..</span>
+                    </div>
+                  ` : ''}
+                  ${browserEntries
+                    .filter(e => e.is_dir)
+                    .map(entry => `
+                      <div 
+                        data-path="${entry.filename}"
+                        class="folder-item flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-term-selection/50 text-term-fg/70 hover:text-term-fg"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-term-blue">
+                          <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+                        </svg>
+                        <span>${entry.filename}</span>
+                      </div>
+                    `).join('')}
+                </div>
+              `}
+            </div>
+            
+            <div class="px-4 py-3 border-t border-term-selection flex justify-end gap-2">
+              <button id="cancelBtn" class="px-4 py-2 bg-term-selection hover:bg-term-selection/80 rounded text-term-fg text-sm font-medium transition-colors">
+                ${t('common.cancel', 'Cancel')}
+              </button>
+              <button id="selectBtn" class="px-4 py-2 bg-term-blue hover:bg-term-blue/80 rounded text-term-bg text-sm font-medium transition-colors shadow-sm">
+                ${t('common.select', 'Select')}
+              </button>
+            </div>
+          </div>
+        `;
+        
+        // Event listeners
+        document.getElementById('closeModal')?.addEventListener('click', () => {
+          document.body.removeChild(modal);
+          resolve(null);
+        });
+        
+        document.getElementById('cancelBtn')?.addEventListener('click', () => {
+          document.body.removeChild(modal);
+          resolve(null);
+        });
+        
+        document.getElementById('selectBtn')?.addEventListener('click', () => {
+          document.body.removeChild(modal);
+          resolve(browserPath);
+        });
+        
+        document.getElementById('pathInput')?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const input = e.target as HTMLInputElement;
+            const newPath = input.value.trim();
+            if (newPath) {
+              browserPath = newPath;
+              loadBrowserDir(newPath);
+            }
+          }
+        });
+        
+        document.getElementById('loadPath')?.addEventListener('click', () => {
+          const input = document.getElementById('pathInput') as HTMLInputElement;
+          const newPath = input.value.trim();
+          if (newPath) {
+            browserPath = newPath;
+            loadBrowserDir(newPath);
+          }
+        });
+        
+        document.getElementById('parentDir')?.addEventListener('click', () => {
+          const parentPath = browserPath.substring(0, browserPath.lastIndexOf('/')) || '/';
+          browserPath = parentPath;
+          loadBrowserDir(parentPath);
+        });
+        
+        document.querySelectorAll('.folder-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const folderName = item.getAttribute('data-path');
+            if (folderName) {
+              const newPath = browserPath === '/' ? `/${folderName}` : `${browserPath}/${folderName}`;
+              browserPath = newPath;
+              (document.getElementById('pathInput') as HTMLInputElement).value = newPath;
+              loadBrowserDir(newPath);
+            }
+          });
+        });
+      };
+      
+      // Initialize and show modal
+      document.body.appendChild(modal);
+      loadBrowserDir(browserPath);
+    });
+  };
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -649,6 +842,24 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                   />
                 </>
               )}
+              {isLocal && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem 
+                    label={t('file.open_in_explorer', 'Open in Explorer')} 
+                    icon={<FolderOpen className="w-4 h-4" />}
+                    onClick={async () => {
+                      try {
+                        await invoke('open_path_in_explorer', { path: contextMenu.path });
+                      } catch (error) {
+                        console.error('Failed to open in explorer:', error);
+                        showToast(t('file.open_failed', 'Failed to open'), 'error');
+                      }
+                      setContextMenu(null);
+                    }}
+                  />
+                </>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-0.5 p-1">
@@ -686,11 +897,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           className="flex-1 bg-term-selection/50 text-term-fg text-xs px-2 py-1 rounded border border-term-selection focus:border-term-blue focus:outline-none placeholder-term-fg/40"
         />
         <button
-          onClick={() => loadDir(currentPath)}
+          onClick={handleOpenDirectory}
           className="p-1 hover:bg-term-selection rounded text-term-fg/60 hover:text-term-fg transition-colors flex-shrink-0"
-          title={t('file.refresh', 'Refresh')}
+          title={t('file.open_folder', 'Open Folder')}
         >
-          <RefreshCcw className="w-3.5 h-3.5" />
+          <CornerDownRight className="w-3.5 h-3.5" />
         </button>
         {acOpen && (acLoading || acItems.length > 0) && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-term-bg border border-term-selection rounded shadow-xl max-h-60 overflow-auto z-10">

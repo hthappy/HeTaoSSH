@@ -63,13 +63,27 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    @apply bg-zinc-800/50;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-zinc-700/50 rounded-full;
+    @apply bg-zinc-600 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-zinc-600/80;
+    @apply bg-zinc-500;
+  }
+  
+  /* Tabs Scrollbar - More Visible */
+  .no-scrollbar::-webkit-scrollbar {
+    height: 4px;
+  }
+  .no-scrollbar::-webkit-scrollbar-track {
+    @apply bg-zinc-800/50;
+  }
+  .no-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-zinc-500 rounded-full;
+  }
+  .no-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-400;
   }
 }
 
@@ -78,6 +92,15 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* Tauri Window Drag Region */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
 }
 
 /* Toast 入场动画 */

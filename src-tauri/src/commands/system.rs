@@ -172,3 +172,39 @@ pub async fn local_term_close(
     state.close(&id);
     Ok(())
 }
+
+/// Open folder in system explorer (Windows Explorer, macOS Finder, etc.)
+#[tauri::command]
+pub async fn open_path_in_explorer(path: String) -> Result<()> {
+    use std::process::Command;
+
+    log::info!("Opening path in explorer: {}", path);
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg("/select,")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| SshError::Io(e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| SshError::Io(e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| SshError::Io(e))?;
+    }
+
+    Ok(())
+}

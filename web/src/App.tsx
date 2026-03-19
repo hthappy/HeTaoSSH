@@ -355,24 +355,25 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-2 flex-1 min-w-0">
+              <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar px-2 flex-1 min-w-0">
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'group flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors cursor-pointer border select-none min-w-0 flex-shrink',
+                      'group flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer border select-none flex-shrink min-w-0',
                       activeTabId === tab.id
                         ? 'bg-term-selection text-term-fg border-term-selection'
                         : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
                     )}
+                    style={{ maxWidth: '25%' }}
                   >
                     {tab.type === 'terminal' ? (
-                      <Terminal className="w-4 h-4 text-term-blue flex-shrink-0" />
+                      <Terminal className="w-3.5 h-3.5 text-term-blue flex-shrink-0" />
                     ) : (
-                      <FileCode2 className="w-4 h-4 text-term-yellow flex-shrink-0" />
+                      <FileCode2 className="w-3.5 h-3.5 text-term-yellow flex-shrink-0" />
                     )}
-                    <span className="max-w-none truncate flex-1 min-w-0">{tab.title}</span>
+                    <span className="truncate min-w-0">{tab.title}</span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -381,7 +382,7 @@ function App() {
                       className="flex-shrink-0 ml-1 p-0.5 rounded-sm text-foreground opacity-100 hover:text-white transition-all"
                       style={{ opacity: 1 }}
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ))}
