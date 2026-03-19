@@ -53,21 +53,23 @@ jobs:
       - name: Create Release and Update Notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Processing release for $TAG_NAME..."
           
           # Define release notes with macOS warning
-          NOTES="## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
+          cat > release_notes.md << 'EOF'
+          ## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
           
           > **Note:** This release has not been fully tested on macOS environments.
-          > **注意：** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
-          "
+          > **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
+          EOF
           
           # Create release if it doesn't exist, or update it if it does
           # We force the notes to ensure the warning is visible
-          gh release create $TAG_NAME --title "$TAG_NAME" --notes "$NOTES" --draft=false --prerelease=false || \
-          gh release edit $TAG_NAME --title "$TAG_NAME" --notes "$NOTES"
+          gh release create $TAG_NAME --title "$TAG_NAME" -F release_notes.md --draft=false --prerelease=false || \
+          gh release edit $TAG_NAME --title "$TAG_NAME" -F release_notes.md
 
       - name: Rename macOS Assets
         if: matrix.platform == 'macos-latest'
