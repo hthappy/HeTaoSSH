@@ -49,6 +49,17 @@ jobs:
         with:
           # No tagName means build only, no auto-upload
           args: --verbose
+      
+      - name: Verify Build Output
+        shell: bash
+        run: |
+          echo "=== Build Output ==="
+          echo "Bundle directory contents:"
+          find src-tauri/target/release/bundle -type f -name "*.json" -o -name "*.dmg" -o -name "*.app" 2>/dev/null | head -20 || echo "No files found"
+          
+          echo ""
+          echo "Checking for latest.json:"
+          find src-tauri/target/release/bundle -name "latest.json" -type f
 
       - name: Create Release and Update Notes
         env:
@@ -94,57 +105,12 @@ jobs:
           # Note: .dmg files are now renamed to *-beta.dmg
           find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" \) -exec gh release upload $TAG_NAME {} --clobber \;
           
-          # Find and upload latest.json as latest-${{ matrix.platform }}.json
-          JSON_PATH=$(find src-tauri/target/release/bundle -name "latest.json" -type f | head -n 1)
-          if [ -n "$JSON_PATH" ]; then
-             echo "Found latest.json at $JSON_PATH"
-             cp "$JSON_PATH" "latest-${{ matrix.platform }}.json"
-             gh release upload $TAG_NAME "latest-${{ matrix.platform }}.json" --clobber
-          else
-             echo "Warning: latest.json not found in bundle output"
-          fi
+          echo ""
+          echo "✓ macOS assets uploaded"
+          echo "Note: latest.json for macOS auto-update requires signing key."
+          echo "For now, only Windows supports auto-update via NSIS."
 
-  finalize-release:
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Download all latest-*.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "Downloading jsons for $TAG_NAME..."
-          
-          # Download windows latest.json (uploaded by local script) if exists
-          # We save it as latest-windows.json to avoid overwriting
-          gh release download $TAG_NAME -p "latest.json" -O latest-windows.json || echo "No windows latest.json found"
-          
-          # Download macOS jsons
-          gh release download $TAG_NAME -p "latest-macos-latest.json" || echo "No macos-latest json found"
-          gh release download $TAG_NAME -p "latest-macos-13.json" || echo "No macos-13 json found"
-          
-          ls -l latest*.json
-          
-      - name: Merge JSONs
-        run: |
-          # Use our updated script to merge all available jsons
-          # Inputs that don't exist will be skipped by the script
-          node scripts/merge_latest_json.js latest.json latest-windows.json latest-macos-latest.json latest-macos-13.json
-          
-      - name: Upload merged latest.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          if [ -f "latest.json" ]; then
-            echo "Uploading merged latest.json..."
-            gh release upload $TAG_NAME latest.json --clobber
-          else
-            echo "Error: Merged latest.json not generated"
-            exit 1
-          fi
+  # Note: finalize-release step removed
+  # Windows latest.json is uploaded by local release script
+  # macOS does not support auto-update (DMG requires manual download)
+  # If you need to merge platform-specific latest.json files, re-add this step
