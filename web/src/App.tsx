@@ -355,13 +355,13 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar px-2 flex-1 min-w-0">
+              <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full">
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'group flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer border select-none flex-shrink min-w-0',
+                      'group flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer border select-none flex-shrink min-w-0 no-drag',
                       activeTabId === tab.id
                         ? 'bg-term-selection text-term-fg border-term-selection'
                         : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
@@ -389,7 +389,7 @@ function App() {
                 
                 <button
                   onClick={() => createLocalTerminal().catch(console.error)}
-                  className="p-1.5 ml-1 rounded-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors flex-shrink-0"
+                  className="p-1.5 ml-1 rounded-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors flex-shrink-0 no-drag"
                   title={t('common.new_local_terminal', 'Open Local Terminal')}
                 >
                   <Plus className="w-4 h-4" />

@@ -95,12 +95,16 @@ html, body, #root {
 }
 
 /* Tauri Window Drag Region */
-.drag-region {
+.drag {
   -webkit-app-region: drag;
 }
 
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
 }
 
 /* Toast 入场动画 */

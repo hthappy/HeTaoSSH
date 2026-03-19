@@ -48,30 +48,27 @@ export function TitleBar({ children }: TitleBarProps) {
   return (
     <div 
       data-tauri-drag-region
-      className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none drag-region"
+      className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none drag"
     >
       {/* Left: App Icon + Title */}
       <div 
         data-tauri-drag-region
         onDoubleClick={handleDoubleClick}
-        className="flex items-center gap-2 px-3 h-full flex-shrink-0"
+        className="flex items-center gap-2 px-3 h-full flex-shrink-0 drag"
       >
         <Monitor className="w-4 h-4 text-term-blue flex-shrink-0" />
         <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
       </div>
 
-      {/* Center: Tabs (children) */}
-      <div className="flex-1 min-w-0 px-2 overflow-hidden no-drag">
+      {/* Center: Tabs - Container is draggable, only tab elements are not */}
+      <div className="flex-1 min-w-0 px-2 h-full flex items-center overflow-hidden">
         {children}
       </div>
 
-      {/* Right: Window Controls (Always Visible) */}
+      {/* Right: Window Controls */}
       <div className="flex h-full flex-shrink-0 no-drag">
         {isMac ? (
-          <div 
-            data-tauri-drag-region
-            className="flex items-center gap-1 px-3 h-full"
-          >
+          <div className="flex items-center gap-1 px-3 h-full">
             <button 
               onClick={() => appWindow.minimize()}
               className="w-3 h-3 rounded-full bg-term-yellow hover:bg-yellow-500 transition-colors"
