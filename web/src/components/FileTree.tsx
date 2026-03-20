@@ -174,6 +174,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const [pathInput, setPathInput] = useState('');
   const [showHidden, setShowHidden] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { fileName: string; transferred: number; total: number; percentage: number }>>({});
   
   const isLocal = tabId.startsWith('local-');
 
@@ -222,6 +223,40 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     };
     init();
   }, [tabId, loadDir, isLocal]);
+
+  // Listen for SFTP upload progress updates
+  useEffect(() => {
+    const unlistenPromise = listen('sftp-upload-progress', (event) => {
+      const progressData = event.payload as { id: string; file_name: string; bytes_transferred: number; total_bytes: number; percentage: number };
+      
+      if (progressData.id === tabId || progressData.id === `conn-${tabId.split('-')[1]}`) {
+        const fileKey = `${currentPath}/${progressData.file_name}`;
+        setUploadProgress(prev => ({
+          ...prev,
+          [fileKey]: {
+            fileName: progressData.file_name,
+            transferred: progressData.bytes_transferred,
+            total: progressData.total_bytes,
+            percentage: progressData.percentage
+          }
+        }));
+        
+        if (progressData.percentage >= 100) {
+          setTimeout(() => {
+            setUploadProgress(prev => {
+              const newProgress = { ...prev };
+              delete newProgress[fileKey];
+              return newProgress;
+            });
+          }, 2000);
+        }
+      }
+    });
+
+    return () => {
+      unlistenPromise.then(unlisten => unlisten()).catch(console.error);
+    };
+  }, [tabId, currentPath]);
 
   // Listen for terminal enter key events to refresh file list
   useEffect(() => {
@@ -980,6 +1015,24 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                 onContextMenu={handleContextMenu}
               />
             ))}
+            {/* Upload Progress Section */}
+            {Object.keys(uploadProgress).length > 0 && (
+              <div className="mt-4 border-t border-term-selection pt-2">
+                <div className="px-2 py-1 text-xs text-term-fg/60 uppercase">Uploading</div>
+                {Object.entries(uploadProgress).map(([key, progress]) => (
+                  <div key={key} className="px-2 py-2 flex items-center gap-2">
+                    <span className="text-sm text-term-fg flex-1 truncate">{progress.fileName}</span>
+                    <span className="text-xs text-term-fg/60">{Math.round(progress.percentage)}%</span>
+                    <div className="w-24 h-2 bg-term-selection rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-term-blue transition-all duration-300" 
+                        style={{ width: `${progress.percentage}%` }} 
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

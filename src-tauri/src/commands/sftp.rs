@@ -301,6 +301,22 @@ pub async fn sftp_upload_file(
         .await
 }
 
+/// Upload file from local to remote with progress tracking
+#[tauri::command]
+pub async fn sftp_upload_file_with_progress(
+    tab_id: String,
+    local_path: String,
+    remote_path: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    // 统一路径验证 (validate path)
+    validate_sftp_path(&remote_path)?;
+    
+    state
+        .sftp_upload_file_with_progress(&tab_id, &local_path, &remote_path)
+        .await
+}
+
 /// Get home directory path (remote or local)
 #[tauri::command]
 pub async fn sftp_get_home_dir(
@@ -312,7 +328,7 @@ pub async fn sftp_get_home_dir(
             .map(|p| p.to_string_lossy().replace("\\", "/"))
             .ok_or(SshError::Config("Failed to get home dir".into()));
     }
-    state.sftp_get_home_dir(&tab_id).await
+    state        .sftp_get_home_dir(&tab_id).await
 }
 
 /// List local directory contents

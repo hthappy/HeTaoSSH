@@ -404,7 +404,17 @@ function App() {
                 return (
                   <div
                     key={tab.id}
-                    className={cn("absolute inset-0", !isActive && "hidden")}
+                    className="absolute inset-0"
+                    style={{
+                      opacity: isActive ? 1 : 0,
+                      pointerEvents: isActive ? 'auto' : 'none',
+                      zIndex: isActive ? 10 : 0,
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0
+                    }}
                   >
                     {tab.type === 'terminal' || tab.type === 'local' ? (
                       <TerminalArea

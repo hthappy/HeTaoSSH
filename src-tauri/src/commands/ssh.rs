@@ -86,11 +86,11 @@ pub async fn ssh_connect(
 /// await invoke('ssh_disconnect', { tabId: 'tab-1' });
 /// ```
 #[tauri::command]
-pub async fn ssh_disconnect(
+pub async fn ssh_manual_reconnect(
     tab_id: String,
     state: State<'_, Arc<ConnectionManager>>,
 ) -> Result<()> {
-    state.remove_connection(&tab_id).await
+    state.reconnect(&tab_id).await
 }
 
 /// 发送数据到 SSH 终端
@@ -187,7 +187,39 @@ pub async fn ssh_resize(
     state.resize_terminal(&tab_id, cols, rows).await
 }
 
-/// 测试 SSH 连接（不建立持久连接）
+/// 断开 SSH 连接
+#[tauri::command]
+pub async fn ssh_disconnect(
+    tab_id: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    state.remove_connection(&tab_id).await
+}
+
+/// 手动触发 SSH 连接重连
+///
+/// 当连接处于断开状态（非正常断开），可以通过此命令手动启动重连过程。
+/// 主要用于自动重连尝试失败后，用户主动触发重连的情况。
+///
+/// # 参数
+///
+/// * `tab_id` - 连接标识符
+/// * `state` - ConnectionManager 状态
+/// 
+/// # 返回
+/// 成功时返回 `Ok(())`
+/// 
+/// # 错误
+/// 
+/// - `SshError::Channel`: 连接不存在或 Actor 已停止
+/// - `SshError::ConnectionFailed`: 重新连接失败
+/// 
+/// # 示例
+/// 
+/// ```typescript
+/// // 前端调用
+/// await invoke('ssh_manual_reconnect', { tabId: 'tab-1' });
+/// ```
 ///
 /// 尝试连接到 SSH 服务器并立即断开，用于验证配置是否正确。
 /// 不会创建 Actor 或持久连接。

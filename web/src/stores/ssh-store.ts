@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import type { ServerConfig } from '@/types/config'
 import i18n from '@/i18n'
 import { IPC_DEBOUNCE_MS } from '@/constants/ipc'
@@ -74,6 +75,7 @@ interface SshState {
 
   // Connection Management
   connectServer: (serverId: number) => Promise<void>;
+  reconnectServer: (serverId: number) => Promise<void>; // Added for manual reconnect capability
   createLocalTerminal: () => Promise<void>;
   updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => void;
 
@@ -85,6 +87,7 @@ interface SshState {
 
   // Terminal API
   sendToTerminal: (serverId: number, data: string) => Promise<void>;
+  handleTerminalKeyPress: (serverId: number) => Promise<void>;
   
   // Session Management
   saveSession: () => Promise<void>;
@@ -98,6 +101,9 @@ export const useSshStore = create<SshState>((set, get) => ({
   connections: [],
   workspaceTabs: [],
   activeTabId: null,
+  
+  // We need a separate function to setup the listeners, typically called at app level
+  // This is just the initial store structure
 
   loadServers: async () => {
     set({ loading: true, error: null });
@@ -170,8 +176,21 @@ export const useSshStore = create<SshState>((set, get) => ({
     // Always ensure a Terminal Tab is spawned when a connection starts
     get().openTerminalTab(serverId);
 
+    // Start event listeners for this serverId 
     try {
-      // Backend expects a stable string identifier for the connection
+      // Listen for reconnection events
+      listen('ssh-reconnected', (event) => {
+        const id = event.payload as string;
+        const serverIdFromEvent = parseInt(id.split('-')[1]);
+        get().updateConnectionStatus(serverIdFromEvent, { status: 'connected', error: undefined });
+      });
+      
+      listen('ssh-disconnected', (event) => {
+        const id = event.payload as string;
+        const serverIdFromEvent = parseInt(id.split('-')[1]);
+        get().updateConnectionStatus(serverIdFromEvent, { status: 'disconnected', error: 'Connection lost' });
+      });
+
       await invoke('ssh_connect', { tabId: `conn-${serverId}`, config: server });
       get().updateConnectionStatus(serverId, { status: 'connected' });
     } catch (err) {
@@ -289,6 +308,41 @@ export const useSshStore = create<SshState>((set, get) => ({
       ],
       activeTabId: tabId
     }));
+  },
+
+  // Added function to handle reconnect on keypress
+  handleTerminalKeyPress: async (serverId: number) => {
+    const conn = get().connections.find(c => c.serverId === serverId && !c.isLocal);
+    if (conn && conn.status === 'disconnected') {
+      // Server is in disconnected state, try to reconnect
+      await get().reconnectServer(serverId);
+    }
+  },
+
+  reconnectServer: async (serverId: number) => {
+    const server = get().servers.find(s => s.id === serverId);
+    if (!server) {
+      console.error(i18n.t('store.server_not_found', { id: serverId }));
+      return;
+    }
+    
+    const connectionKey = `conn-${serverId}`;
+    get().updateConnectionStatus(serverId, { status: 'connecting', error: undefined });
+    
+    try {
+      await invoke('ssh_connect', { tabId: connectionKey, config: server });
+      get().updateConnectionStatus(serverId, { status: 'connected', error: undefined });
+      // If we had a terminal tab, make sure it becomes active
+      const existingTerm = get().workspaceTabs.find(t => t.serverId === serverId && t.type === 'terminal');
+      if (existingTerm) {
+        get().setActiveTab(existingTerm.id);
+      }
+    } catch (err) {
+      get().updateConnectionStatus(serverId, { 
+        status: 'disconnected', 
+        error: i18n.t('store.connect_failed', { error: err })
+      });
+    }
   },
 
   updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => {

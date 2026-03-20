@@ -103,19 +103,41 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       requestAnimationFrame(() => {
         try {
           const element = xtermRef.current?.element;
-          if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0) {
+          // CRITICAL: Check clientWidth to prevent 0x0 fit when hidden
+          // This prevents sending wrong dimensions to backend
+          if (fitAddonRef.current && element && element.clientWidth > 0 && element.clientHeight > 0) {
             const currentCols = xtermRef.current?.cols;
             const currentRows = xtermRef.current?.rows;
             fitAddonRef.current.fit();
             
+            // CRITICAL: Only notify backend if dimensions are non-zero
+            // This prevents sending invalid PTY size to remote SSH
             if (onResizeRef.current && xtermRef.current) {
-                if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
-                    onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                const newCols = xtermRef.current.cols;
+                const newRows = xtermRef.current.rows;
+                // ABSOLUTELY prevent zero-dimension updates to backend
+                if (newCols > 0 && newRows > 0 && (newCols !== currentCols || newRows !== currentRows)) {
+                    onResizeRef.current(newCols, newRows);
                 }
             }
+            
+            // CRITICAL: Force scroll to bottom to sync viewport
+            xtermRef.current?.scrollToBottom();
+            
+            // CRITICAL: Force full refresh to redraw entire buffer
+            // This wakes up the renderer after being hidden
+            const rows = xtermRef.current?.rows || 24;
+            xtermRef.current?.refresh(0, rows - 1);
+            
+            // Additional refresh for WebGL renderer recovery
+            setTimeout(() => {
+              if (xtermRef.current) {
+                xtermRef.current.refresh(0, rows - 1);
+              }
+            }, 50);
           }
         } catch (e) {
-          console.warn('Resize fit failed', e);
+          console.warn('Resize fit failed:', e);
         }
       });
     },
@@ -131,24 +153,39 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     if (!isActive && !initializedRef.current) return;
     if (initializedRef.current) {
         if (isActive && xtermRef.current && fitAddonRef.current) {
-            // Fit when becoming active
+            // Use double RAF to ensure DOM is fully rendered
             requestAnimationFrame(() => {
-                try {
-                    const element = xtermRef.current?.element;
-                    if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
-                        const currentCols = xtermRef.current?.cols;
-                        const currentRows = xtermRef.current?.rows;
-                        fitAddonRef.current?.fit();
-                        
-                        if (onResizeRef.current && xtermRef.current) {
-                            if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
-                                onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
-                            }
+                requestAnimationFrame(() => {
+                    try {
+                        const element = xtermRef.current!.element;
+                        // CRITICAL: Verify element is visible with actual dimensions
+                        // This prevents fit() from executing when container is hidden (width=0)
+                        if (element && element.clientWidth > 0 && element.clientHeight > 0) {
+                            fitAddonRef.current!.fit();
+                            onResizeRef.current?.(xtermRef.current!.cols, xtermRef.current!.rows);
+                            
+                            // CRITICAL: Force scroll to bottom to sync viewport
+                            xtermRef.current!.scrollToBottom();
+                            
+                            // CRITICAL: Force full refresh to redraw entire buffer
+                            const rows = xtermRef.current!.rows;
+                            xtermRef.current!.refresh(0, rows - 1);
+                            
+                            // CRITICAL: Wake up renderer with ANSI sequence
+                            // This forces xterm to process render queue
+                            xtermRef.current!.write('\x1b[?25h'); // Show cursor
+                            
+                            // Additional refresh for WebGL renderer recovery
+                            setTimeout(() => {
+                              if (xtermRef.current) {
+                                xtermRef.current.refresh(0, rows - 1);
+                              }
+                            }, 50);
                         }
+                    } catch (e) {
+                        console.warn('Terminal fit/refresh failed:', e);
                     }
-                } catch (e) {
-                    // Ignore
-                }
+                });
             });
         }
         return;

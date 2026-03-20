@@ -107,6 +107,47 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
     };
   }, [serverId, isLocal, tabId, activeConnection, connectionStatus]);
 
+  // Focus terminal when tab becomes active to force refresh
+  useEffect(() => {
+    if (isActive && terminalRef.current) {
+      // Use ResizeObserver to wait until container is actually visible
+      const container = document.getElementById(`terminal-container-${serverId}`);
+      if (!container) return;
+      
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          // Only proceed if container has actual dimensions
+          if (width > 0 && height > 0) {
+            // Double RAF to ensure DOM is fully rendered
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                // Force resize which will trigger fit and refresh
+                terminalRef.current!.resize();
+                
+                // CRITICAL: For remote SSH, send Ctrl+L to force shell redraw
+                // This wakes up the remote PTY and makes it resend the prompt
+                if (!isLocal) {
+                  // Send Form Feed (Ctrl+L) to force shell redraw
+                  sendToTerminal(serverId, '\x0c');
+                }
+                
+                // Force show cursor - this wakes up the renderer
+                terminalRef.current!.write('\x1b[?25h');
+                // Focus to ensure user can type immediately
+                terminalRef.current!.focus();
+              });
+            });
+            // Disconnect after first successful detection
+            resizeObserver.disconnect();
+          }
+        }
+      });
+      
+      resizeObserver.observe(container);
+    }
+  }, [isActive, serverId, isLocal, sendToTerminal]);
+
   if (!activeConnection) {
     return (
       <div className="flex-1 flex items-center justify-center bg-term-bg">
@@ -128,7 +169,7 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
           </div>
         </div>
       ) : activeConnection.status === 'connected' ? (
-        <div className="flex-1 relative w-full h-full overflow-hidden">
+        <div className="flex-1 relative w-full h-full overflow-hidden" id={`terminal-container-${serverId}`}>
         <TerminalComponent
           ref={terminalRef}
           className="absolute inset-0"

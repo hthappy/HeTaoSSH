@@ -5,6 +5,7 @@ use log::{error, info, warn};
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration};
+use tauri::Emitter;
 
 /// SSH 连接超时时间（秒）
 const CONNECTION_TIMEOUT_SECS: u64 = 15;
@@ -18,10 +19,6 @@ const RECONNECT_INTERVAL: Duration = Duration::from_secs(3);
 /// 系统监控数据刷新间隔（秒）- 暂未使用，保留供将来扩展
 #[allow(dead_code)]
 const MONITOR_REFRESH_INTERVAL_SECS: u64 = 2;
-
-/// 空闲超时时间（秒）- 30 分钟，暂未使用，保留供将来扩展
-#[allow(dead_code)]
-const IDLE_TIMEOUT_SECS: u64 = 1800;
 
 /// Actor 命令：发送给连接 Actor 的请求
 ///
@@ -113,6 +110,21 @@ enum ConnCommand {
         local_path: String,
         remote_path: String,
         reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 上传文件（带进度）
+    SftpUploadFileWithProgress {
+        local_path: String,
+        remote_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// 手动重连
+    Reconnect {
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// 检查连接状态
+    #[allow(dead_code)]
+    CheckConnection {
+        reply: oneshot::Sender<bool>,
     },
     /// 远程系统监控
     GetSystemUsage {
@@ -498,6 +510,41 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 上传文件（带进度）
+    pub async fn sftp_upload_file_with_progress(
+        &self,
+        id: &str,
+        local_path: &str,
+        remote_path: &str,
+    ) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpUploadFileWithProgress {
+            local_path: local_path.to_string(),
+            remote_path: remote_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 手动触发重连
+    pub async fn reconnect(&self, id: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::Reconnect { reply: reply_tx })
+            .await
+            .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 远程系统监控
     pub async fn get_remote_system_usage(&self, id: &str) -> Result<crate::monitor::SystemUsage> {
         let tx = self.get_tx(id).await?;
@@ -633,6 +680,27 @@ async fn connection_actor(
                     ConnCommand::SftpUploadFile { local_path, remote_path, reply } => {
                         let _ = reply.send(handle_sftp_upload_file(&conn, &local_path, &remote_path).await);
                     }
+                    ConnCommand::SftpUploadFileWithProgress { local_path, remote_path, reply } => {
+                        let _ = reply.send(handle_sftp_upload_file_with_progress(&conn, app_handle.clone(), &id, &local_path, &remote_path).await);
+                    }
+                    ConnCommand::Reconnect { reply } => {
+                        // 尝试重新连接
+                        match conn.reconnect().await {
+                            Ok(_) => {
+                                reconnect_attempts = 0;
+                                let _ = app_handle.emit("ssh-reconnected", &id);
+                                let _ = reply.send(Ok(()));
+                            }
+                            Err(e) => {
+                                let _ = reply.send(Err(e));
+                            }
+                        }
+                    }
+                    ConnCommand::CheckConnection { reply } => {
+                        // 检查连接是否活跃
+                        let is_connected = conn.is_connected();
+                        let _ = reply.send(is_connected);
+                    }
                     ConnCommand::GetSystemUsage { reply } => {
                         let _ = reply.send(handle_get_system_usage(&conn).await);
                     }
@@ -677,8 +745,89 @@ async fn connection_actor(
                         } else {
                             error!("Max reconnection attempts reached for {}, giving up", id);
                             let _ = app_handle.emit("ssh-disconnected", &id);
-                            let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[SSH Connection Lost]\x1b[0m\r\n".to_vec());
-                            break;
+                            let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[Connection lost. Press any key to reconnect...]\x1b[0m\r\n".to_vec());
+                            // Enter listening mode for reconnection event - the connection is effectively disconnected now
+                            loop {
+                                tokio::select! {
+                                    cmd_opt = rx.recv() => {
+                                        let Some(cmd) = cmd_opt else { 
+                                            info!("Command channel closed for disconnected connection {}", id);
+                                            break; 
+                                        };
+                                        // Handle only the reconnect command, ignore others when disconnected
+                                        match cmd {
+                                            ConnCommand::Reconnect { reply } => {
+                                                info!("Manual reconnection request for connection {}", id);
+                                                match conn.reconnect().await {
+                                                    Ok(_) => {
+                                                        info!("Manual reconnection successful for {}", id);
+                                                        reconnect_attempts = 0;
+                                                        let _ = app_handle.emit("ssh-reconnected", &id);
+                                                        let _ = reply.send(Ok(()));
+                                                        // Return to normal operation after successful reconnect
+                                                        break;
+                                                    }
+                                                    Err(e) => {
+                                                        error!("Manual reconnection failed for {}: {}", id, e);
+                                                        let _ = reply.send(Err(e));
+                                                    }
+                                                }
+                                            }
+                                            ConnCommand::Disconnect { reply } => {
+                                                info!("Disconnect command received for already disconnected connection {}", id);
+                                                let _ = reply.send(Ok(())); // Connection already disconnected
+                                                break; // Close the connection for good
+                                            }
+                                            // Return errors for all other operations since the connection is gone
+                                            ConnCommand::SendData { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::ResizeTerminal { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpListDir { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpReadFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpWriteFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpGetHomeDir { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpRemoveFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpCreateDir { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpDownloadFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpDownloadDir { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpUploadFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpUploadFileWithProgress { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::CheckConnection { reply } => {
+                                                let _ = reply.send(false);
+                                            }
+                                            ConnCommand::GetSystemUsage { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::RecvData { reply, .. } => {
+                                                let _ = reply.send(None);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -694,6 +843,31 @@ struct ReconnectEvent {
     id: String,
     attempt: u32,
     max_attempts: u32,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[allow(dead_code)]
+struct IdleEvent {
+    id: String,
+    idle_seconds: u64,
+    timeout_seconds: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct UploadProgressEvent {
+    id: String,
+    file_name: String,
+    bytes_transferred: u64,
+    total_bytes: u64,
+    percentage: f64,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[allow(dead_code)]
+struct ConnectionStatusEvent {
+    id: String,
+    connected: bool,
+    last_activity: Option<u64>,
 }
 
 // =============================================================================
@@ -945,6 +1119,128 @@ async fn handle_sftp_upload_file(
     tokio::io::copy(&mut local_file, &mut remote_file)
         .await
         .map_err(SshError::Io)?;
+
+    Ok(())
+}
+
+async fn handle_sftp_upload_file_with_progress(
+    conn: &SshConnection,
+    app_handle: tauri::AppHandle,
+    connection_id: &str,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<()> {
+    use std::time::Instant;
+    use tokio::io::AsyncWriteExt;
+
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| {
+            SshError::ConnectionFailed(crate::error::messages::SFTP_NOT_INITIALIZED.to_string())
+        })?;
+
+    // Get total file size for the progress calculation
+    let file_metadata = tokio::fs::metadata(local_path).await.map_err(SshError::Io)?;
+    let file_size = file_metadata.len();
+
+    let mut local_file = tokio::fs::File::open(local_path)
+        .await
+        .map_err(SshError::Io)?;
+
+    let mut remote_file = sftp
+        .create(remote_path)
+        .await
+        .map_err(|e| SshError::ConnectionFailed(format!("create remote file failed: {}", e)))?;
+
+    // We need to create our own copy function that emits progress
+    let mut total_bytes_transferred = 0;
+    let _start_time = Instant::now();
+    let last_emit_time = std::cell::Cell::new(Instant::now());
+
+    let chunk_size = 65536; // 64KB
+    let mut buffer = vec![0u8; chunk_size];
+
+    loop {
+        use tokio::io::AsyncReadExt;
+        
+        let bytes_read = local_file.read(&mut buffer).await.map_err(SshError::Io)?;
+        if bytes_read == 0 {
+            break; // EOF
+        }
+        
+        let chunk = &buffer[..bytes_read]; 
+        
+        // Write chunk to remote file
+        let bytes_written = remote_file.write(chunk).await.map_err(|e| {
+            SshError::ConnectionFailed(format!("write to remote file failed: {}", e))
+        })?;
+        
+        if bytes_written != bytes_read {
+            return Err(SshError::ConnectionFailed(
+                "Could not write all bytes to remote file".to_string(),
+            ));
+        }
+
+        total_bytes_transferred += bytes_written as u64;
+        
+        // Calculate progress percentage
+        let percentage = if file_size > 0 {
+            (total_bytes_transferred as f64 / file_size as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        // Emit progress event, but not too frequently - minimum interval of 100ms
+        let now = Instant::now();
+        if now.duration_since(last_emit_time.get()) >= std::time::Duration::from_millis(100) {
+            let progress_event = UploadProgressEvent {
+                id: connection_id.to_string(),
+                file_name: std::path::Path::new(local_path)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                bytes_transferred: total_bytes_transferred,
+                total_bytes: file_size,
+                percentage,
+            };
+
+            let _ = app_handle.emit("sftp-upload-progress", &progress_event);
+            last_emit_time.set(now);
+        }
+
+        if bytes_read < chunk_size {
+            // This was the last chunk
+            break;
+        }
+    }
+
+    // Final flush to ensure data is written
+    remote_file.flush().await.map_err(|e| {
+        SshError::ConnectionFailed(format!("flush remote file failed: {}", e))
+    })?;
+
+    // Emit final progress event
+    let percentage = if file_size > 0 {
+        (total_bytes_transferred as f64 / file_size as f64) * 100.0
+    } else {
+        100.0
+    };
+    
+    let progress_event = UploadProgressEvent {
+        id: connection_id.to_string(),
+        file_name: std::path::Path::new(local_path)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
+        bytes_transferred: total_bytes_transferred,
+        total_bytes: file_size,
+        percentage,
+    };
+    
+    let _ = app_handle.emit("sftp-upload-progress", &progress_event);
 
     Ok(())
 }
