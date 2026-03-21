@@ -62,13 +62,17 @@ jobs:
             -name "*.dmg" -o \
             -name "*.app" -o \
             -name "*.app.tar.gz" -o \
-            -name "*.zip" -o \
-            -name "*.json" \
+            -name "*.zip" \
           \) 2>/dev/null | head -30 || echo "No files found"
           
           echo ""
-          echo "Checking for latest.json:"
-          find src-tauri/target/release/bundle -name "latest.json" -type f || echo "latest.json not found"
+          echo "Checking for latest.json in project root:"
+          if [ -f "latest.json" ]; then
+            echo "✓ latest.json found in project root"
+            cat latest.json
+          else
+            echo "✗ latest.json not found in project root"
+          fi
 
       - name: Extract Changelog from CHANGELOG.md
         shell: bash
@@ -125,7 +129,9 @@ jobs:
           find src-tauri/target/release/bundle -name "*.dmg" -exec sh -c 'mv "$1" "${1%.dmg}-beta.dmg"' _ {} \;
           
           echo "Patching latest.json to reflect beta filename..."
-          find src-tauri/target/release/bundle -name "latest.json" -exec sed -i '' 's/\.dmg/-beta.dmg/g' {} \;
+          if [ -f "latest.json" ]; then
+            sed -i '' 's/\.dmg/-beta.dmg/g' latest.json
+          fi
 
       - name: Upload All Assets
         shell: bash
@@ -142,9 +148,14 @@ jobs:
             -name "*.msi" -o \
             -name "*.dmg" -o \
             -name "*.app.tar.gz" -o \
-            -name "*.zip" -o \
-            -name "latest.json" \
+            -name "*.zip" \
           \) -exec gh release upload $TAG_NAME {} --clobber \;
+          
+          # Upload latest.json from project root (only from Windows build)
+          if [ "${{ matrix.platform }}" == "windows-latest" ] && [ -f "latest.json" ]; then
+            echo "Uploading latest.json from project root..."
+            gh release upload $TAG_NAME latest.json --clobber
+          fi
           
           echo ""
           echo "✓ Assets uploaded successfully for $PLATFORM"
