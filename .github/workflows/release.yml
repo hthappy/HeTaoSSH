@@ -75,7 +75,12 @@ jobs:
           
           > **Note:** This release has not been fully tested on macOS environments.
           > **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
+          
+          ---
           EOF
+          
+          # Extract the newest version from CHANGELOG.md (from first ## [ to second ## [ or EOF)
+          awk '/^## \[/{count++; if(count==2) exit} count==1' CHANGELOG.md >> release_notes.md
           
           # Create release if it doesn't exist, or update it if it does
           # We force the notes to ensure the warning is visible

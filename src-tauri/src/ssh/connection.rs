@@ -106,9 +106,13 @@ impl SshConnection {
             if !key_path.trim().is_empty() {
                 let passphrase = self.config.passphrase.as_deref();
 
+                log::info!("Attempting to load key from: {}", key_path);
+                log::info!("Key file exists: {}", std::path::Path::new(key_path).exists());
+
                 // Try to load the key, but don't fail the whole connection if it fails (fallback to password)
                 match load_secret_key(key_path, passphrase) {
                     Ok(key) => {
+                        log::info!("Key loaded successfully, type: {:?}", key.algorithm());
                         let best_hash = session
                             .best_supported_rsa_hash()
                             .await
@@ -116,6 +120,8 @@ impl SshConnection {
                                 SshError::ConnectionFailed(format!("Hash alg error: {}", e))
                             })?
                             .flatten();
+
+                        log::info!("Using RSA hash algorithm: {:?}", best_hash);
 
                         match session
                             .authenticate_publickey(
@@ -125,25 +131,27 @@ impl SshConnection {
                             .await
                         {
                             Ok(auth_result) if auth_result.success() => {
-                                info!("Key authentication successful for {}", username);
+                                info!("Key authentication successful for {}@{}", username, &self.config.host);
                                 self.session = Some(session);
                                 return Ok(());
                             }
                             Ok(_) => {
                                 log::warn!(
-                                    "Key authentication failed, falling back to password..."
+                                    "Key authentication failed for {}@{}. Server rejected the key. Falling back to password...",
+                                    username, &self.config.host
                                 );
                             }
                             Err(e) => {
                                 log::warn!(
-                                    "Key authentication error: {}, falling back to password...",
-                                    e
+                                    "Key authentication error for {}@{}: {}. Falling back to password...",
+                                    username, &self.config.host, e
                                 );
                             }
                         }
                     }
                     Err(e) => {
-                        log::warn!("Failed to load private key at '{}': {}. Falling back to password auth...", key_path, e);
+                        log::error!("CRITICAL: Failed to load private key at '{}': {}. Error type: {:?}", key_path, e, e);
+                        log::warn!("Falling back to password auth...");
                     }
                 }
             }
@@ -151,21 +159,37 @@ impl SshConnection {
 
         // Fallback to password authentication
         if let Some(password) = &self.config.password {
+            log::info!("Attempting password authentication for {}@{}", username, &self.config.host);
             let auth_result = session
                 .authenticate_password(username, password)
                 .await
-                .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
+                .map_err(|e| {
+                    log::error!("Password authentication failed for {}@{}: {}", username, &self.config.host, e);
+                    SshError::ConnectionFailed(e.to_string())
+                })?;
 
             if auth_result.success() {
-                info!("Password authentication successful for {}", username);
+                info!("Password authentication successful for {}@{}", username, &self.config.host);
                 self.session = Some(session);
                 return Ok(());
+            } else {
+                log::error!("Password authentication failed for {}@{}: Authentication rejected by server", username, &self.config.host);
             }
         }
 
-        Err(SshError::ConnectionFailed(
-            crate::error::messages::ALL_AUTH_METHODS_FAILED.to_string(),
-        ))
+        // No authentication method succeeded
+        log::error!(
+            "All authentication methods failed for {}@{}. Server: {}. Port: {}",
+            username, &self.config.host, &self.config.host, self.config.port
+        );
+        
+        // Return structured error with connection details (frontend will format user-friendly message)
+        let error_detail = format!(
+            "auth_failed|{}|{}|{}",
+            username, &self.config.host, self.config.port
+        );
+        
+        Err(SshError::ConnectionFailed(error_detail))
     }
 
     /// Connect and open a shell channel

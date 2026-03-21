@@ -213,6 +213,7 @@ export default {
     connect_failed: 'Failed to connect: {{error}}',
     disconnect_failed: 'Failed to disconnect: {{error}}',
     send_data_failed: 'Failed to send data: {{error}}',
+    auth_failed: 'Authentication failed: Username "{{username}}" cannot connect to {{host}}:{{port}}. Please check:\n1. Username is correct\n2. Password or private key is valid\n3. Server allows this authentication method',
   },
   shortcuts: {
     title: 'Keyboard Shortcuts',

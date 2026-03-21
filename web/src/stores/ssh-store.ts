@@ -194,9 +194,33 @@ export const useSshStore = create<SshState>((set, get) => ({
       await invoke('ssh_connect', { tabId: `conn-${serverId}`, config: server });
       get().updateConnectionStatus(serverId, { status: 'connected' });
     } catch (err) {
+      // Extract detailed error message
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      
+      console.error('SSH Connection failed:', {
+        serverId,
+        host: server.host,
+        username: server.username,
+        authMethod: server.private_key_path ? 'key' : 'password',
+        keyPath: server.private_key_path,
+        error: err,
+        errorMessage
+      });
+      
+      // Parse structured error from backend (format: "auth_failed|username|host|port")
+      let userFriendlyError = i18n.t('store.connect_failed', { error: errorMessage });
+      
+      if (errorMessage.startsWith('auth_failed|')) {
+        const parts = errorMessage.split('|');
+        if (parts.length >= 4) {
+          const [, username, host, port] = parts;
+          userFriendlyError = i18n.t('store.auth_failed', { username, host, port });
+        }
+      }
+      
       get().updateConnectionStatus(serverId, { 
         status: 'disconnected', 
-        error: i18n.t('store.connect_failed', { error: err })
+        error: userFriendlyError
       });
     }
   },

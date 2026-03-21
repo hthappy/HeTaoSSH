@@ -34,8 +34,9 @@ impl SshChannelHandler {
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
+        // Request PTY with xterm-256color for better scrollback support
         channel
-            .request_pty(false, "xterm-256color", 80, 24, 0, 0, &[])
+            .request_pty(false, "xterm-256color", 120, 40, 0, 0, &[])
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
 

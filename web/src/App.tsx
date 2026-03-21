@@ -322,17 +322,27 @@ function App() {
                   </div>
                 )
               )}
-              {activeActivity === 'snippets' && (
-                 <CommandSnippets onExecute={(cmd) => {
+                {activeActivity === 'snippets' && (
+                   <CommandSnippets onExecute={(cmd) => {
                     if (activeConnection) {
+                        // Send command without auto-executing (no \r)
+                        // User can review the command and press Enter to execute
                         sendToTerminal(activeConnection.serverId, cmd);
-                        // Maybe focus terminal?
+                        
+                        // Focus terminal after a short delay to ensure command is rendered
+                        setTimeout(() => {
+                            // Find and focus the terminal
+                            const terminalElement = document.querySelector('.xterm') as HTMLElement;
+                            if (terminalElement) {
+                                terminalElement.focus();
+                            }
+                        }, 50);
                     } else {
                         // Show toast?
                         console.warn('No active connection to execute snippet');
                     }
                  }} />
-              )}
+                )}
             </div>
           </div>
             

@@ -3,7 +3,6 @@ import { Plus, Trash2, Edit2, Plug, CheckCircle2, Search } from 'lucide-react';
 import { useSshStore } from '@/stores/ssh-store';
 import type { ServerConfig } from '@/types/config';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/components/Toast';
 import { useTranslation } from 'react-i18next';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
 
@@ -28,16 +27,13 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
     loadServers,
     saveServer,
     deleteServer,
-    testConnection,
   } = useSshStore();
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingServer, setEditingServer] = useState<ServerConfig | null>(null);
   const [deletingServerId, setDeletingServerId] = useState<number | null>(null);
-  const [testingServerId, setTestingServerId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const { showToast } = useToast();
-  
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -56,8 +52,8 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
     loadServers();
   }, [loadServers]);
 
-  const filteredServers = servers.filter(server => 
-    server.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredServers = servers.filter(server =>
+    server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     server.host.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -80,17 +76,6 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
       await deleteServer(deletingServerId);
       setDeletingServerId(null);
     }
-  };
-
-  const handleTestConnection = async (server: ServerConfig) => {
-    setTestingServerId(server.id ?? null);
-    const success = await testConnection(server);
-    if (success) {
-      showToast(t('server.test_success'), 'success');
-    } else {
-      showToast(t('server.test_failed'), 'error');
-    }
-    setTestingServerId(null);
   };
 
   const handleContextMenu = (e: React.MouseEvent, server: ServerConfig) => {
@@ -117,7 +102,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
   };
 
   return (
-    <div 
+    <div
       className="w-full flex-shrink-0 h-full bg-term-bg flex flex-col border-r border-term-selection"
       onContextMenu={handleBackgroundContextMenu}
     >
@@ -137,7 +122,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
           <Plus className="w-4 h-4 text-term-fg/60" />
         </button>
       </div>
-      
+
       {/* Search Input Area */}
       <div className="p-2 border-b border-term-selection flex-shrink-0 bg-term-bg">
         <div className="relative">
@@ -171,7 +156,6 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
               const isConnected = connections.some(
                 (c: { serverId: number; status: string }) => c.serverId === server.id && c.status === 'connected'
               );
-              const isTesting = testingServerId === server.id;
 
               return (
                 <div
@@ -203,22 +187,6 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {isTesting ? (
-                      <div className="w-4 h-4 flex items-center justify-center">
-                        <div className="w-3 h-3 border-2 border-term-fg/40 border-t-transparent rounded-full animate-spin" />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTestConnection(server);
-                        }}
-                        className="p-1 hover:bg-term-selection rounded"
-                        title={t('common.connect')}
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-term-fg/60" />
-                      </button>
-                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -279,22 +247,22 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
         >
           {contextMenu.server ? (
             <div className="flex flex-col gap-0.5 p-1 min-w-[160px]">
-              <ContextMenuItem 
-                label={t('common.connect', 'Connect')} 
+              <ContextMenuItem
+                label={t('common.connect', 'Connect')}
                 icon={<CheckCircle2 className="w-4 h-4" />}
                 onClick={() => handleConnect(contextMenu.server!)}
               />
               <ContextMenuSeparator />
-              <ContextMenuItem 
-                label={t('common.edit', 'Edit')} 
+              <ContextMenuItem
+                label={t('common.edit', 'Edit')}
                 icon={<Edit2 className="w-4 h-4" />}
                 onClick={() => {
                   handleEditServer(contextMenu.server!);
                   setContextMenu(null);
                 }}
               />
-              <ContextMenuItem 
-                label={t('common.delete', 'Delete')} 
+              <ContextMenuItem
+                label={t('common.delete', 'Delete')}
                 icon={<Trash2 className="w-4 h-4" />}
                 danger
                 onClick={() => {
@@ -305,8 +273,8 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
             </div>
           ) : (
             <div className="flex flex-col gap-0.5 p-1 min-w-[160px]">
-              <ContextMenuItem 
-                label={t('server.add', 'Add Server')} 
+              <ContextMenuItem
+                label={t('server.add', 'Add Server')}
                 icon={<Plus className="w-4 h-4" />}
                 onClick={() => {
                   handleAddServer();
