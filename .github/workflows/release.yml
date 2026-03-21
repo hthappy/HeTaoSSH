@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest] # macos-latest (ARM) - macos-13 (Intel) disabled due to runner error
+        platform: [macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -47,7 +47,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # No tagName means build only, no auto-upload
           args: --verbose
       
       - name: Verify Build Output
@@ -61,6 +60,28 @@ jobs:
           echo "Checking for latest.json:"
           find src-tauri/target/release/bundle -name "latest.json" -type f
 
+      - name: Extract Changelog from CHANGELOG.md
+        shell: bash
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Extracting changelog for $TAG_NAME..."
+          
+          # Extract content between first "##" and second "##" from CHANGELOG.md
+          # This gets the latest version's changelog
+          awk 'NR>1 && /^## / {if (found) exit; found=1; next} found' CHANGELOG.md > release_notes.md
+          
+          # Verify extraction
+          if [ ! -s release_notes.md ]; then
+            echo "Warning: No changelog extracted, using default..."
+            echo "## Release $TAG_NAME" > release_notes.md
+            echo "" >> release_notes.md
+            echo "See CHANGELOG.md for details." >> release_notes.md
+          fi
+          
+          echo "=== Extracted Release Notes ==="
+          cat release_notes.md
+          echo "==============================="
+
       - name: Create Release and Update Notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,23 +90,25 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Processing release for $TAG_NAME..."
           
-          # Define release notes with macOS warning
-          cat > release_notes.md << 'EOF'
-          ## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
-          
-          > **Note:** This release has not been fully tested on macOS environments.
-          > **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
-          
-          ---
-          EOF
-          
-          # Extract the newest version from CHANGELOG.md (from first ## [ to second ## [ or EOF)
-          awk '/^## \[/{count++; if(count==2) exit} count==1' CHANGELOG.md >> release_notes.md
+          # Add macOS warning to release notes
+          if [ "${{ matrix.platform }}" == "macos-latest" ]; then
+            cat >> release_notes.md << 'EOF'
+
+---
+## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
+
+> **Note:** This release has not been fully tested on macOS environments.
+> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
+EOF
+          fi
           
           # Create release if it doesn't exist, or update it if it does
-          # We force the notes to ensure the warning is visible
-          gh release create $TAG_NAME --title "$TAG_NAME" -F release_notes.md --draft=false --prerelease=false || \
-          gh release edit $TAG_NAME --title "$TAG_NAME" -F release_notes.md
+          gh release create $TAG_NAME \
+            --title "HeTaoSSH $TAG_NAME" \
+            --notes-file release_notes.md \
+            --draft=false \
+            --prerelease=false || \
+          gh release edit $TAG_NAME --title "HeTaoSSH $TAG_NAME" --notes-file release_notes.md
 
       - name: Rename macOS Assets
         if: matrix.platform == 'macos-latest'
@@ -105,10 +128,8 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Uploading assets for $TAG_NAME..."
           
-          # Upload DMG/App/Zip/MSI/EXE
-          # Using find to locate artifacts in bundle directory
-          # Note: .dmg files are now renamed to *-beta.dmg
-          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" -o -name "*.msi" -o -name "*.exe" \) -exec gh release upload $TAG_NAME {} --clobber \;
+          # Upload DMG/App/Zip
+          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" \) -exec gh release upload $TAG_NAME {} --clobber \;
           
           echo ""
           echo "✓ macOS assets uploaded"
@@ -118,4 +139,3 @@ jobs:
   # Note: finalize-release step removed
   # Windows latest.json is uploaded by local release script
   # macOS does not support auto-update (DMG requires manual download)
-  # If you need to merge platform-specific latest.json files, re-add this step
