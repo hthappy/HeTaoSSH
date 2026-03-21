@@ -55,5 +55,3 @@ scripts/*.key
 scripts/*.key.txt
 scripts/release_pipeline.js
 scripts/build_local.ps1
-
-latest.json

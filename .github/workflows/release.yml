@@ -6,14 +6,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  release-macos:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -41,7 +37,7 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           fi
 
-      - name: Build App
+      - name: Build macOS App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,109 +49,35 @@ jobs:
       - name: Verify Build Output
         shell: bash
         run: |
-          echo "=== Build Output ==="
-          echo "Platform: ${{ matrix.platform }}"
+          echo "=== macOS Build Output ==="
           echo "Bundle directory contents:"
           find src-tauri/target/release/bundle -type f \( \
-            -name "*.exe" -o \
-            -name "*.msi" -o \
             -name "*.dmg" -o \
             -name "*.app" -o \
-            -name "*.app.tar.gz" -o \
-            -name "*.zip" \
-          \) 2>/dev/null | head -30 || echo "No files found"
-          
-          echo ""
-          echo "Checking for latest.json in project root:"
-          if [ -f "latest.json" ]; then
-            echo "✓ latest.json found in project root"
-            cat latest.json
-          else
-            echo "✗ latest.json not found in project root"
-          fi
+            -name "*.app.tar.gz" \
+          \) 2>/dev/null | head -20 || echo "No files found"
 
-      - name: Extract Changelog from CHANGELOG.md
-        shell: bash
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "Extracting changelog for $TAG_NAME..."
-          
-          # Extract content between first "##" and second "##" from CHANGELOG.md
-          awk 'NR>1 && /^## / {if (found) exit; found=1; next} found' CHANGELOG.md > release_notes.md
-          
-          # Verify extraction
-          if [ ! -s release_notes.md ]; then
-            echo "Warning: No changelog extracted, using default..."
-            echo "## Release $TAG_NAME" > release_notes.md
-            echo "" >> release_notes.md
-            echo "See CHANGELOG.md for details." >> release_notes.md
-          fi
-          
-          echo "=== Extracted Release Notes ==="
-          cat release_notes.md
-          echo "==============================="
-
-      - name: Add macOS Warning to Release Notes
-        if: matrix.platform == 'macos-latest'
-        shell: bash
-        run: |
-          echo "" >> release_notes.md
-          echo "---" >> release_notes.md
-          echo "## ⚠️ macOS Compatibility Notice / macOS 兼容性提示" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "> **Note:** This release has not been fully tested on macOS environments." >> release_notes.md
-          echo "> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。" >> release_notes.md
-
-      - name: Create Release and Update Notes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "Processing release for $TAG_NAME..."
-          
-          # Create release if it doesn't exist, or update it if it does
-          gh release create $TAG_NAME \
-            --title "HeTaoSSH $TAG_NAME" \
-            --notes-file release_notes.md \
-            --draft=false \
-            --prerelease=false || \
-          gh release edit $TAG_NAME --title "HeTaoSSH $TAG_NAME" --notes-file release_notes.md
-
-      - name: Rename macOS Assets (macOS only)
-        if: matrix.platform == 'macos-latest'
+      - name: Rename macOS Assets
         run: |
           echo "Renaming .dmg files to include -beta..."
           find src-tauri/target/release/bundle -name "*.dmg" -exec sh -c 'mv "$1" "${1%.dmg}-beta.dmg"' _ {} \;
           
           echo "Patching latest.json to reflect beta filename..."
-          if [ -f "latest.json" ]; then
-            sed -i '' 's/\.dmg/-beta.dmg/g' latest.json
-          fi
+          find src-tauri/target/release/bundle -name "latest.json" -exec sed -i '' 's/\.dmg/-beta.dmg/g' {} \;
 
-      - name: Upload All Assets
+      - name: Upload macOS Assets
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          PLATFORM="${{ matrix.platform }}"
-          echo "Uploading assets for $TAG_NAME ($PLATFORM)..."
+          echo "Uploading macOS assets for $TAG_NAME..."
           
-          # Upload ALL bundle files (Windows: exe, msi / macOS: dmg, app.tar.gz)
+          # Upload macOS bundles
           find src-tauri/target/release/bundle -type f \( \
-            -name "*.exe" -o \
-            -name "*.msi" -o \
             -name "*.dmg" -o \
-            -name "*.app.tar.gz" -o \
-            -name "*.zip" \
+            -name "*.app.tar.gz" \
           \) -exec gh release upload $TAG_NAME {} --clobber \;
           
-          # Upload latest.json from project root (only from Windows build)
-          if [ "${{ matrix.platform }}" == "windows-latest" ] && [ -f "latest.json" ]; then
-            echo "Uploading latest.json from project root..."
-            gh release upload $TAG_NAME latest.json --clobber
-          fi
-          
           echo ""
-          echo "✓ Assets uploaded successfully for $PLATFORM"
+          echo "✓ macOS assets uploaded successfully"
