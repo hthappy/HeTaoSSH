@@ -41,10 +41,11 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           fi
 
-      - name: Build (No Release)
+      - name: Build App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --verbose
@@ -53,12 +54,21 @@ jobs:
         shell: bash
         run: |
           echo "=== Build Output ==="
+          echo "Platform: ${{ matrix.platform }}"
           echo "Bundle directory contents:"
-          find src-tauri/target/release/bundle -type f -name "*.json" -o -name "*.dmg" -o -name "*.app" 2>/dev/null | head -20 || echo "No files found"
+          find src-tauri/target/release/bundle -type f \( \
+            -name "*.exe" -o \
+            -name "*.msi" -o \
+            -name "*.dmg" -o \
+            -name "*.app" -o \
+            -name "*.app.tar.gz" -o \
+            -name "*.zip" -o \
+            -name "*.json" \
+          \) 2>/dev/null | head -30 || echo "No files found"
           
           echo ""
           echo "Checking for latest.json:"
-          find src-tauri/target/release/bundle -name "latest.json" -type f
+          find src-tauri/target/release/bundle -name "latest.json" -type f || echo "latest.json not found"
 
       - name: Extract Changelog from CHANGELOG.md
         shell: bash
@@ -108,7 +118,7 @@ jobs:
             --prerelease=false || \
           gh release edit $TAG_NAME --title "HeTaoSSH $TAG_NAME" --notes-file release_notes.md
 
-      - name: Rename macOS Assets
+      - name: Rename macOS Assets (macOS only)
         if: matrix.platform == 'macos-latest'
         run: |
           echo "Renaming .dmg files to include -beta..."
@@ -117,22 +127,24 @@ jobs:
           echo "Patching latest.json to reflect beta filename..."
           find src-tauri/target/release/bundle -name "latest.json" -exec sed -i '' 's/\.dmg/-beta.dmg/g' {} \;
 
-      - name: Upload Assets
+      - name: Upload All Assets
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "Uploading assets for $TAG_NAME..."
+          PLATFORM="${{ matrix.platform }}"
+          echo "Uploading assets for $TAG_NAME ($PLATFORM)..."
           
-          # Upload DMG/App/Zip
-          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" \) -exec gh release upload $TAG_NAME {} --clobber \;
+          # Upload ALL bundle files (Windows: exe, msi / macOS: dmg, app.tar.gz)
+          find src-tauri/target/release/bundle -type f \( \
+            -name "*.exe" -o \
+            -name "*.msi" -o \
+            -name "*.dmg" -o \
+            -name "*.app.tar.gz" -o \
+            -name "*.zip" -o \
+            -name "latest.json" \
+          \) -exec gh release upload $TAG_NAME {} --clobber \;
           
           echo ""
-          echo "✓ macOS assets uploaded"
-          echo "Note: latest.json for macOS auto-update requires signing key."
-          echo "For now, only Windows supports auto-update via NSIS."
-
-  # Note: finalize-release step removed
-  # Windows latest.json is uploaded by local release script
-  # macOS does not support auto-update (DMG requires manual download)
+          echo "✓ Assets uploaded successfully for $PLATFORM"
