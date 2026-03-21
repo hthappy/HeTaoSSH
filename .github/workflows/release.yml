@@ -105,10 +105,10 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Uploading assets for $TAG_NAME..."
           
-          # Upload DMG/App/Zip/MSI/EXE/SIG
+          # Upload DMG/App/Zip/MSI/EXE
           # Using find to locate artifacts in bundle directory
           # Note: .dmg files are now renamed to *-beta.dmg
-          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" -o -name "*.msi" -o -name "*.exe" -o -name "*.sig" \) -exec gh release upload $TAG_NAME {} --clobber \;
+          find src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.zip" -o -name "*.msi" -o -name "*.exe" \) -exec gh release upload $TAG_NAME {} --clobber \;
           
           echo ""
           echo "✓ macOS assets uploaded"

@@ -2,9 +2,9 @@
 
 | File / 文件 | Description / 说明 |
 |---|---|
-| `HeTaoSSH_1.1.1_x64-setup.exe` | **Windows Installer (Recommended)** / Windows 标准安装包（推荐） |
-| `HeTaoSSH_1.1.1_x64.msi` | Windows MSI Installer / Windows MSI 安装包（企业部署） |
-| `HeTaoSSH_1.1.1_aarch64.dmg` | macOS Apple Silicon Installer / macOS M1/M2/M3 安装包 |
+| `HeTaoSSH_1.1.2_x64-setup.exe` | **Windows Installer (Recommended)** / Windows 标准安装包（推荐） |
+| `HeTaoSSH_1.1.2_x64.msi` | Windows MSI Installer / Windows MSI 安装包（企业部署） |
+| `HeTaoSSH_1.1.2_aarch64.dmg` | macOS Apple Silicon Installer / macOS M1/M2/M3 安装包 |
 | `latest.json` | Auto-update metadata (Do not download) / 自动更新元数据（无需下载） |
 
 ### Installation Guide / 安装指南
