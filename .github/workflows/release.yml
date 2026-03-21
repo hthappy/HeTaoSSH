@@ -67,7 +67,6 @@ jobs:
           echo "Extracting changelog for $TAG_NAME..."
           
           # Extract content between first "##" and second "##" from CHANGELOG.md
-          # This gets only the latest version's changelog (no USER_GUIDE.md)
           awk 'NR>1 && /^## / {if (found) exit; found=1; next} found' CHANGELOG.md > release_notes.md
           
           # Verify extraction
@@ -86,14 +85,12 @@ jobs:
         if: matrix.platform == 'macos-latest'
         shell: bash
         run: |
-          cat >> release_notes.md << 'MACOS_WARNING'
-
----
-## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
-
-> **Note:** This release has not been fully tested on macOS environments.
-> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
-MACOS_WARNING
+          echo "" >> release_notes.md
+          echo "---" >> release_notes.md
+          echo "## ⚠️ macOS Compatibility Notice / macOS 兼容性提示" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "> **Note:** This release has not been fully tested on macOS environments." >> release_notes.md
+          echo "> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。" >> release_notes.md
 
       - name: Create Release and Update Notes
         env:
