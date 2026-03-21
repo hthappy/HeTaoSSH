@@ -67,7 +67,7 @@ jobs:
           echo "Extracting changelog for $TAG_NAME..."
           
           # Extract content between first "##" and second "##" from CHANGELOG.md
-          # This gets the latest version's changelog
+          # This gets only the latest version's changelog (no USER_GUIDE.md)
           awk 'NR>1 && /^## / {if (found) exit; found=1; next} found' CHANGELOG.md > release_notes.md
           
           # Verify extraction
@@ -82,6 +82,19 @@ jobs:
           cat release_notes.md
           echo "==============================="
 
+      - name: Add macOS Warning to Release Notes
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          cat >> release_notes.md << 'MACOS_WARNING'
+
+---
+## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
+
+> **Note:** This release has not been fully tested on macOS environments.
+> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
+MACOS_WARNING
+
       - name: Create Release and Update Notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,18 +102,6 @@ jobs:
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Processing release for $TAG_NAME..."
-          
-          # Add macOS warning to release notes
-          if [ "${{ matrix.platform }}" == "macos-latest" ]; then
-            cat >> release_notes.md << 'EOF'
-
----
-## ⚠️ macOS Compatibility Notice / macOS 兼容性提示
-
-> **Note:** This release has not been fully tested on macOS environments.
-> **注意:** 此版本尚未在 macOS 环境下进行充分测试，请谨慎使用。
-EOF
-          fi
           
           # Create release if it doesn't exist, or update it if it does
           gh release create $TAG_NAME \
@@ -117,7 +118,6 @@ EOF
           find src-tauri/target/release/bundle -name "*.dmg" -exec sh -c 'mv "$1" "${1%.dmg}-beta.dmg"' _ {} \;
           
           echo "Patching latest.json to reflect beta filename..."
-          # macOS sed requires empty string argument for -i
           find src-tauri/target/release/bundle -name "latest.json" -exec sed -i '' 's/\.dmg/-beta.dmg/g' {} \;
 
       - name: Upload Assets
