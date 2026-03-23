@@ -407,23 +407,27 @@ function App() {
               </div>
             </TitleBar>
 
-            {/* Tab Content */}
+            {/* Tab Content - Each tab has its own Terminal instance */}
             <div className="flex-1 relative bg-term-bg">
               {workspaceTabs.map(tab => {
                 const isActive = tab.id === activeTabId;
                 return (
                   <div
                     key={tab.id}
-                    className="absolute inset-0"
                     style={{
-                      opacity: isActive ? 1 : 0,
-                      pointerEvents: isActive ? 'auto' : 'none',
-                      zIndex: isActive ? 10 : 0,
-                      position: 'absolute',
+                      // CRITICAL: Use visibility instead of display:none
+                      // display:none removes Canvas from render tree, breaking xterm.js
+                      // visibility:hidden keeps Canvas in render tree but hides it
+                      visibility: isActive ? 'visible' : 'hidden',
+                      position: isActive ? 'relative' : 'absolute',
                       top: 0,
                       left: 0,
-                      right: 0,
-                      bottom: 0
+                      width: '100%',
+                      height: '100%',
+                      // Prevent interaction with hidden tabs
+                      pointerEvents: isActive ? 'auto' : 'none',
+                      // Optimize rendering for hidden tabs
+                      opacity: isActive ? 1 : 0
                     }}
                   >
                     {tab.type === 'terminal' || tab.type === 'local' ? (

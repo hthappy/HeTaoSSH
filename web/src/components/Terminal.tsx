@@ -133,27 +133,65 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     }
   }));
 
+  // Force terminal redraw when tab becomes active
+  // CRITICAL FIX: DOM renderer needs special handling for visibility changes
+  useEffect(() => {
+    if (!isActive || !xtermRef.current || !fitAddonRef.current) return;
+    
+    const term = xtermRef.current;
+    const fitAddon = fitAddonRef.current;
+    
+    // Wait for DOM to be fully visible before any operations
+    const forceRedraw = () => {
+      if (!term || !fitAddon) return;
+      
+      const element = term.element;
+      if (!element || element.clientWidth === 0 || element.clientHeight === 0) {
+        // Retry after a short delay
+        setTimeout(forceRedraw, 50);
+        return;
+      }
+      
+      try {
+        // Step 1: Force a write to wake up the renderer
+        // This is critical for DOM renderer - it needs a write to initialize properly
+        term.write('');
+        
+        // Step 2: Force fit after write
+        setTimeout(() => {
+          try {
+            fitAddon.fit();
+            
+            // Step 3: Force full refresh
+            term.refresh(0, term.rows - 1);
+            
+            // Step 4: Scroll to bottom
+            term.scrollToBottom();
+            
+            // Step 5: Focus terminal
+            term.focus();
+          } catch (e) {
+            console.error('[Terminal] Fit/refresh failed:', e);
+          }
+        }, 10);
+        
+      } catch (e) {
+        console.error('[Terminal] Redraw failed:', e);
+      }
+    };
+    
+    // Use RAF to ensure DOM is ready, then execute
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        forceRedraw();
+      });
+    });
+  }, [isActive]);
+
+  // Initial terminal setup
   useEffect(() => {
     if (!terminalRef.current) return;
-    if (!isActive && !initializedRef.current) return;
-    if (initializedRef.current) {
-        if (isActive && xtermRef.current && fitAddonRef.current) {
-            const element = xtermRef.current.element;
-            // Check if element is visible and has dimensions
-            if (element && element.clientWidth > 0 && element.clientHeight > 0) {
-                try {
-                    fitAddonRef.current.fit();
-                    onResizeRef.current?.(xtermRef.current.cols, xtermRef.current.rows);
-                    xtermRef.current.scrollToBottom();
-                    xtermRef.current.refresh(0, xtermRef.current.rows - 1);
-                    xtermRef.current.write('\x1b[?25h');
-                } catch (e) {
-                    console.warn('Terminal fit/refresh failed:', e);
-                }
-            }
-        }
-        return;
-    }
+    if (initializedRef.current) return;
 
     initializedRef.current = true;
     let isUnmounted = false;
@@ -165,29 +203,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       fontSize,
       lineHeight,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: theme || {
-        background: '#09090b',
-        foreground: '#e4e4e7',
-        cursor: '#e4e4e7',
-        cursorAccent: '#09090b',
-        black: '#09090b',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#a855f7',
-        cyan: '#06b6d4',
-        white: '#e4e4e7',
-        brightBlack: '#71717a',
-        brightRed: '#f87171',
-        brightGreen: '#4ade80',
-        brightYellow: '#facc15',
-        brightBlue: '#60a5fa',
-        brightMagenta: '#c084fc',
-        brightCyan: '#22d3ee',
-        brightWhite: '#ffffff',
-      },
-      scrollback: 100000, // Increased from 10000 to 100000 for better history (especially for tail -f logs)
+      scrollback: 10000,
       tabStopWidth: 4,
       drawBoldTextInBrightColors: true,
       allowProposedApi: true,
@@ -341,7 +357,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [isActive, theme, fontSize, lineHeight]); // Add initial props as dependencies for creation if it mounts active later
+  }, [theme, fontSize, lineHeight]); // Removed isActive - terminal should only be created once
 
   // Handle theme changes
   useEffect(() => {

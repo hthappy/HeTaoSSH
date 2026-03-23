@@ -10,7 +10,35 @@ import { IPC_DEBOUNCE_MS } from '@/constants/ipc'
 const inputBuffers: Record<number, string> = {};
 const inputTimers: Record<number, NodeJS.Timeout> = {};
 
+// Control characters that should be sent immediately without buffering
+const CONTROL_CHARS = [
+  '\x03', // Ctrl+C (ETX - End of Text)
+  '\x04', // Ctrl+D (EOT - End of Transmission)
+  '\x1a', // Ctrl+Z (SUB - Suspend)
+  '\x1c', // Ctrl+\ (FS - Quit)
+];
+
 const sendBuffered = (serverId: number, data: string) => {
+  // CRITICAL: Control characters must be sent immediately
+  // Buffering Ctrl+C causes delays that prevent interrupting commands
+  if (CONTROL_CHARS.includes(data)) {
+    // Flush any pending buffer first
+    if (inputTimers[serverId]) {
+      clearTimeout(inputTimers[serverId]);
+      delete inputTimers[serverId];
+    }
+    
+    const bufferedData = inputBuffers[serverId] || '';
+    inputBuffers[serverId] = '';
+    
+    // Send buffered data + control char immediately
+    const payload = bufferedData + data;
+    invoke('ssh_send', { tabId: `conn-${serverId}`, data: payload }).catch(err => {
+      console.error(i18n.t('store.send_data_failed', { error: err }));
+    });
+    return;
+  }
+  
   // If buffer doesn't exist, init it
   if (!inputBuffers[serverId]) {
     inputBuffers[serverId] = '';

@@ -1,9 +1,16 @@
-# Changelog
+## [1.1.3] - 2026-03-23
 
-All notable changes to HeTaoSSH will be documented in this file.
+### 🐛 Bug 修复
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- 修复终端标签页切换后显示黑屏的问题
+- 修复 `docker logs -f` 无法使用 Ctrl+C 中断的问题
+
+### ⚡ 优化
+
+- 优化终端标签切换响应速度
+- 优化高频率日志输出的处理性能
+
+---
 
 ## [1.1.2] - 2026-03-21
 

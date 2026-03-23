@@ -31,6 +31,11 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   }, [serverId, sendToTerminal]);
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
+    // Only resize if dimensions are valid
+    if (cols <= 0 || rows <= 0) {
+      return;
+    }
+    
     if (isLocal) {
       if (!localTermCreated.current) {
         localTermCreated.current = true;
@@ -41,8 +46,9 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
           .catch(err => console.error('Failed to resize terminal:', err));
       }
     } else {
+      // For SSH, ensure tabId is correct format
       invoke('ssh_resize', { tabId, cols, rows })
-        .catch(err => console.error('Failed to resize terminal:', err));
+        .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
   }, [tabId, isLocal, serverId]);
 
@@ -55,16 +61,19 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   }, [tabId]);
 
   useEffect(() => {
-    if (!activeConnection || activeConnection.status !== 'connected') return;
+    if (!activeConnection || activeConnection.status !== 'connected') {
+      return;
+    }
     
     let unlisten: (() => void) | undefined;
     let isMounted = true;
 
     const setupListener = async () => {
       const eventName = isLocal ? `terminal-data-${serverId}` : `ssh-data-${tabId}`;
+      
       const unlistenFn = await listen<number[]>(eventName, (event) => {
         if (terminalRef.current) {
-          // Xterm accepts Uint8Array directly, avoiding JS UTF-8 string conversion issues
+          // Always write directly, don't buffer
           terminalRef.current.write(new Uint8Array(event.payload));
         }
       });
@@ -73,9 +82,6 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
       let unlistenExit: (() => void) | undefined;
       if (isLocal) {
           unlistenExit = await listen(`terminal-exit-${serverId}`, () => {
-              // Handle exit? Maybe close tab?
-              // For now just print
-              console.log('Local terminal exited');
               if (terminalRef.current) {
                   terminalRef.current.write('\r\n[Process exited]\r\n');
               }
@@ -100,40 +106,17 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
       if (unlisten) {
         unlisten();
       }
-      // If local, maybe close backend?
-      if (isLocal) {
-          invoke('local_term_close', { id: serverId.toString() }).catch(console.error);
-      }
+      // CRITICAL: Only close backend on actual unmount, NOT on tab switch
+      // Don't close based on isActive - that would kill the connection
     };
-  }, [serverId, isLocal, tabId, activeConnection, connectionStatus]);
+  }, [serverId, isLocal, tabId, activeConnection, connectionStatus]);  // Removed isActive from deps
 
-  // Focus terminal when tab becomes active to force refresh
+  // Focus terminal when tab becomes active
   useEffect(() => {
-    if (isActive && terminalRef.current) {
-      // For already-initialized terminals, use ResizeObserver
-      const container = document.getElementById(`terminal-container-${serverId}`);
-      if (!container) return;
-      
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const { width, height } = entry.contentRect;
-          if (width > 0 && height > 0) {
-            requestAnimationFrame(() => {
-              terminalRef.current!.resize();
-              if (!isLocal) {
-                sendToTerminal(serverId, '\x0c');
-              }
-              terminalRef.current!.write('\x1b[?25h');
-              terminalRef.current!.focus();
-            });
-            resizeObserver.disconnect();
-          }
-        }
-      });
-      
-      resizeObserver.observe(container);
-    }
-  }, [isActive, serverId, isLocal, sendToTerminal]);
+    if (!isActive || !terminalRef.current) return;
+    const timer = setTimeout(() => terminalRef.current!.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [isActive, serverId]);
 
   if (!activeConnection) {
     return (
@@ -157,20 +140,20 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
         </div>
       ) : activeConnection.status === 'connected' ? (
         <div className="flex-1 relative w-full h-full overflow-hidden" id={`terminal-container-${serverId}`}>
-        <TerminalComponent
-          ref={terminalRef}
-          className="absolute inset-0"
-          onData={handleTerminalData}
-          onResize={handleTerminalResize}
-          onEnter={handleTerminalEnter}
-          disconnected={activeConnection?.status !== 'connected'}
-          theme={theme}
-          fontSize={fontSize}
-          lineHeight={lineHeight}
-          rightClickBehavior={rightClickBehavior}
-          isActive={isActive}
-        />
-      </div>
+          <TerminalComponent
+            ref={terminalRef}
+            className="absolute inset-0"
+            onData={handleTerminalData}
+            onResize={handleTerminalResize}
+            onEnter={handleTerminalEnter}
+            disconnected={activeConnection?.status !== 'connected'}
+            theme={theme}
+            fontSize={fontSize}
+            lineHeight={lineHeight}
+            rightClickBehavior={rightClickBehavior}
+            isActive={isActive}
+          />
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
           <div className="text-center">
@@ -179,7 +162,6 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -35,8 +35,27 @@ impl SshChannelHandler {
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
         // Request PTY with xterm-256color for better scrollback support
+        // Use minimal terminal modes to avoid conflicts with docker logs and other programs
+        // Only set what's absolutely necessary for Ctrl+C to work
+        
+        use russh::Pty;
+        
+        // Build terminal modes array - MINIMAL configuration
+        let terminal_modes = vec![
+            // Control characters - only the essential ones
+            (Pty::VINTR, 3),      // Ctrl+C = ASCII 3 (Interrupt)
+            (Pty::VEOF, 4),       // Ctrl+D = ASCII 4 (EOF)
+            (Pty::VSUSP, 26),     // Ctrl+Z = ASCII 26 (Suspend)
+            
+            // CRITICAL: Enable signal processing for Ctrl+C
+            (Pty::ISIG, 1),       // Enable signals
+            
+            // Use default for everything else - let the remote system decide
+            // This matches what local terminal does (no explicit mode setting)
+        ];
+        
         channel
-            .request_pty(false, "xterm-256color", 120, 40, 0, 0, &[])
+            .request_pty(false, "xterm-256color", 120, 40, 0, 0, &terminal_modes)
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
@@ -52,7 +71,10 @@ impl SshChannelHandler {
         let (mut read_half, mut write_half) = tokio::io::split(stream);
 
         // Setup channels for data flow
-        let (output_tx, output_rx) = mpsc::channel(1024);
+        // CRITICAL: Large buffer to prevent blocking when docker logs outputs rapidly
+        // If buffer is too small (1024), it fills up quickly and blocks the reader
+        // This causes docker logs to stop outputting
+        let (output_tx, output_rx) = mpsc::channel(10240); // Increased from 1024 to 10240
         let (channel_tx, mut channel_rx) = mpsc::channel::<ChannelMessage>(1024);
 
         self.output_rx = Arc::new(Mutex::new(output_rx));
@@ -64,12 +86,13 @@ impl SshChannelHandler {
             loop {
                 match read_half.read(&mut buf).await {
                     Ok(0) => {
-                        info!("SSH channel reader EOF");
+                        info!("SSH channel reader EOF - connection closed");
                         break;
                     }
                     Ok(n) => {
                         if output_tx.send(buf[..n].to_vec()).await.is_err() {
-                            break; // Receiver dropped
+                            error!("SSH channel reader: output channel closed");
+                            break;
                         }
                     }
                     Err(e) => {
@@ -89,12 +112,13 @@ impl SshChannelHandler {
                             error!("SSH channel write error: {}", e);
                             break;
                         }
-                        let _ = write_half.flush().await; // Ensure data is flushed to the PTY
+                        if let Err(e) = write_half.flush().await {
+                            error!("SSH channel flush error: {}", e);
+                            break;
+                        }
                     }
                     ChannelMessage::Resize { cols: _, rows: _ } => {
-                        // Resizing a raw stream isn't supported directly through AsyncWrite
-                        // In actual russh, window resizing requires the russh::Channel Handle
-                        // For now this handles data piping correctly
+                        // Resize is handled at a higher level in the connection manager
                     }
                     ChannelMessage::Disconnect => {
                         break;
