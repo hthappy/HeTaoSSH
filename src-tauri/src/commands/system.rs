@@ -182,9 +182,17 @@ pub async fn open_path_in_explorer(path: String) -> Result<()> {
 
     #[cfg(target_os = "windows")]
     {
+        // Convert Unix-style path to Windows-style path
+        let win_path = path.replace("/", "\\");
+        log::info!("Windows path: {}", win_path);
+        
+        // Windows: use explorer command
+        // For folders: explorer "C:\path\to\folder"
+        // For files with selection: explorer /select,"C:\path\to\file"
+        let select_arg = format!("/select,{}", win_path);
+        
         Command::new("explorer")
-            .arg("/select,")
-            .arg(&path)
+            .arg(&select_arg)
             .spawn()
             .map_err(|e| SshError::Io(e))?;
     }

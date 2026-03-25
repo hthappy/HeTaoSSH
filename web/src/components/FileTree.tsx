@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2, Download, Trash2, Copy, RefreshCcw, Eye, EyeOff, CornerDownRight } from 'lucide-react';
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, Loader2, Download, Trash2, Copy, RefreshCcw, Eye, EyeOff, CornerDownRight, FilePlus, FolderPlus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { save, open } from '@tauri-apps/plugin-dialog';
@@ -8,6 +8,7 @@ import type { SftpEntry } from '@/types/sftp';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
 import { useToast } from '@/components/Toast';
+import { useSshStore } from '@/stores/ssh-store';
 
 // Helper to get file icon color based on extension
 const getFileIconColor = (filename: string) => {
@@ -37,6 +38,44 @@ interface FileTreeProps {
   onFileSelect?: (path: string) => void;
 }
 
+// Global state to track which folder is being hovered during drag
+// This is needed because Tauri's drag-drop event doesn't provide per-element info
+let currentDragOverFolder: string | null = null;
+
+// Helper to extract serverId from tabId 
+// Formats: conn-123, local-456, term-xxx-123 (terminal tab)
+const getServerIdFromTabId = (tabId: string): number | null => {
+  if (tabId.startsWith('conn-')) {
+    const id = parseInt(tabId.slice(5), 10);
+    return isNaN(id) ? null : id;
+  }
+  if (tabId.startsWith('local-')) {
+    const id = parseInt(tabId.slice(6), 10);
+    return isNaN(id) ? null : id;
+  }
+  // Terminal tab format: term-{timestamp}-{serverId}
+  if (tabId.startsWith('term-')) {
+    const parts = tabId.split('-');
+    if (parts.length >= 3) {
+      const id = parseInt(parts[parts.length - 1], 10);
+      return isNaN(id) ? null : id;
+    }
+  }
+  return null;
+};
+
+// Convert tabId to connection tabId for SFTP operations
+const toConnectionTabId = (tabId: string): string => {
+  if (tabId.startsWith('conn-') || tabId.startsWith('local-')) {
+    return tabId;
+  }
+  const serverId = getServerIdFromTabId(tabId);
+  if (serverId !== null) {
+    return `conn-${serverId}`;
+  }
+  return tabId;
+};
+
 interface FileTreeNodeProps {
   entry: SftpEntry;
   path: string;
@@ -45,13 +84,21 @@ interface FileTreeNodeProps {
   showHidden: boolean;
   onFileSelect?: (path: string) => void;
   onContextMenu: (e: React.MouseEvent, entry: SftpEntry, path: string) => void;
+  onDropToFolder?: (folderPath: string, files: { localPath: string; fileName: string }[], isMove?: boolean) => void;
+  onDragStart?: (entry: SftpEntry, path: string) => void;
+  onDragEnd?: () => void;
 }
 
-function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onContextMenu }: FileTreeNodeProps) {
+// Global state for drag-move within the file tree
+let draggedEntry: { entry: SftpEntry; path: string } | null = null;
+
+function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onContextMenu, onDropToFolder, onDragStart, onDragEnd }: FileTreeNodeProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [children, setChildren] = useState<SftpEntry[] | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const isLocal = tabId.startsWith('local-');
+  const connTabId = toConnectionTabId(tabId);
 
   // Listen for terminal enter key events to refresh children if expanded
   useEffect(() => {
@@ -62,7 +109,7 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
       if (customEvent.detail?.tabId === tabId) {
         // Refresh children silently (no loading state to avoid flicker)
         const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
-        const args = isLocal ? { path } : { tabId, path };
+        const args = isLocal ? { path } : { tabId: connTabId, path };
         invoke<SftpEntry[]>(cmd, args)
           .then(setChildren)
           .catch(console.error);
@@ -73,7 +120,7 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
     return () => {
       window.removeEventListener('ssh-terminal-enter', handleTerminalEnter);
     };
-  }, [tabId, path, isExpanded, entry.is_dir, isLocal]);
+  }, [tabId, connTabId, path, isExpanded, entry.is_dir, isLocal]);
 
   const handleToggle = async () => {
     if (entry.is_dir) {
@@ -81,7 +128,7 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
         setIsLoading(true);
         try {
           const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
-          const args = isLocal ? { path } : { tabId, path };
+          const args = isLocal ? { path } : { tabId: connTabId, path };
           const entries = await invoke<SftpEntry[]>(cmd, args);
           setChildren(entries);
         } catch (error) {
@@ -96,16 +143,89 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
     }
   };
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Allow drop on directories
+    if (entry.is_dir && onDropToFolder) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(true);
+      // Track which folder is being hovered for Tauri's global drag-drop
+      currentDragOverFolder = path;
+    }
+  }, [entry.is_dir, onDropToFolder, path]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    // Clear the tracked folder when leaving
+    currentDragOverFolder = null;
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    currentDragOverFolder = null;
+
+    if (!entry.is_dir || !onDropToFolder) return;
+
+    // Check if this is an internal drag-move (file from the tree)
+    if (draggedEntry && draggedEntry.path !== path) {
+      // Moving a file/folder within the tree
+      const fileName = draggedEntry.entry.filename;
+      onDropToFolder(path, [{ localPath: '', fileName }], true);
+      return;
+    }
+
+    // External file drop (from local filesystem)
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    const fileInfos = files.map(file => ({
+      // @ts-expect-error file.path exists in Tauri environment
+      localPath: file.path as string,
+      fileName: file.name,
+    })).filter(f => f.localPath);
+
+    if (fileInfos.length > 0) {
+      onDropToFolder(path, fileInfos, false);
+    }
+  }, [entry.is_dir, onDropToFolder, path]);
+
+  // Drag start handler for files (to enable drag-move)
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    if (!entry.is_dir) {
+      e.dataTransfer.effectAllowed = 'move';
+      draggedEntry = { entry, path };
+      onDragStart?.(entry, path);
+    }
+  }, [entry, path, onDragStart]);
+
+  const handleDragEnd = useCallback(() => {
+    draggedEntry = null;
+    onDragEnd?.();
+  }, [onDragEnd]);
+
   return (
     <div>
       <div
         className={cn(
           'flex items-center gap-1 py-1 px-2 hover:bg-term-selection cursor-pointer rounded',
-          !entry.is_dir && 'cursor-pointer hover:bg-term-blue/20'
+          !entry.is_dir && 'cursor-pointer hover:bg-term-blue/20',
+          isDragOver && 'bg-term-blue/30 ring-2 ring-term-blue'
         )}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleToggle}
         onContextMenu={(e) => onContextMenu(e, entry, path)}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        draggable={!entry.is_dir}
+        data-folder-path={entry.is_dir ? path : undefined}
+        data-file-path={!entry.is_dir ? path : undefined}
       >
         {entry.is_dir ? (
           <>
@@ -149,6 +269,9 @@ function FileTreeNode({ entry, path, depth, tabId, showHidden, onFileSelect, onC
               showHidden={showHidden}
               onFileSelect={onFileSelect}
               onContextMenu={onContextMenu}
+              onDropToFolder={onDropToFolder}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
             />
           ))}
         </div>
@@ -167,6 +290,7 @@ function formatSize(bytes: number): string {
 export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { setSftpPath, getSftpPath } = useSshStore();
   const [entries, setEntries] = useState<SftpEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +300,18 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [uploadProgress, setUploadProgress] = useState<Record<string, { fileName: string; transferred: number; total: number; percentage: number }>>({});
   
+  // VSCode-style inline input state
+  const [inlineInput, setInlineInput] = useState<{
+    type: 'file' | 'folder';
+    targetPath: string;
+    value: string;
+  } | null>(null);
+  const inlineInputRef = useRef<HTMLInputElement>(null);
+  
   const isLocal = tabId.startsWith('local-');
+  const serverId = getServerIdFromTabId(tabId);
+  // Convert tabId to connection tabId for SFTP operations
+  const connTabId = toConnectionTabId(tabId);
 
   const normalizePath = useCallback((p: string) => {
     let s = p.trim();
@@ -196,24 +331,38 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     try {
       const normalized = normalizePath(dirPath);
       const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
-      const args = isLocal ? { path: normalized } : { tabId, path: normalized };
+      const args = isLocal ? { path: normalized } : { tabId: connTabId, path: normalized };
       const result = await invoke<SftpEntry[]>(cmd, args);
       setEntries(result);
       setCurrentPath(normalized);
       setPathInput('');
+      // Save path to store for persistence across tab switches
+      if (serverId !== null) {
+        setSftpPath(serverId, normalized);
+      }
     } catch (err) {
       setError(t('file_tree.load_error', { error: `${err}` }));
     } finally {
       setIsLoading(false);
     }
-  }, [tabId, normalizePath, t, isLocal]);
+  }, [connTabId, normalizePath, t, isLocal, serverId, setSftpPath]);
 
-  // 自动加载用户主目录
+  // 自动加载用户主目录或恢复之前保存的路径
   useEffect(() => {
     const init = async () => {
+      // Check if we have a persisted path for this server
+      if (serverId !== null) {
+        const savedPath = getSftpPath(serverId);
+        if (savedPath) {
+          loadDir(savedPath);
+          return;
+        }
+      }
+      
+      // No saved path, load home directory
       try {
         const cmd = isLocal ? 'local_get_home_dir' : 'sftp_get_home_dir';
-        const args = isLocal ? {} : { tabId };
+        const args = isLocal ? {} : { tabId: connTabId };
         const home = await invoke<string>(cmd, args);
         loadDir(home || '/');
       } catch (error) {
@@ -222,14 +371,14 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       }
     };
     init();
-  }, [tabId, loadDir, isLocal]);
+  }, [connTabId, loadDir, isLocal, serverId, getSftpPath]);
 
   // Listen for SFTP upload progress updates
   useEffect(() => {
     const unlistenPromise = listen('sftp-upload-progress', (event) => {
       const progressData = event.payload as { id: string; file_name: string; bytes_transferred: number; total_bytes: number; percentage: number };
       
-      if (progressData.id === tabId || progressData.id === `conn-${tabId.split('-')[1]}`) {
+      if (progressData.id === connTabId) {
         const fileKey = `${currentPath}/${progressData.file_name}`;
         setUploadProgress(prev => ({
           ...prev,
@@ -338,7 +487,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           setContextMenu(null);
 
           await invoke('sftp_download_dir', {
-            tabId,
+            tabId: connTabId,
             remotePath: contextMenu.path,
             localPath,
           });
@@ -364,7 +513,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         showToast(t('file.download_started', 'Download started...'), 'info');
         setContextMenu(null);
         await invoke('sftp_download_file', {
-          tabId,
+          tabId: connTabId,
           remotePath: contextMenu.path,
           localPath
         });
@@ -388,7 +537,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     if (!contextMenu) return;
     
     try {
-      await invoke('sftp_remove_file', { tabId, path: contextMenu.path });
+      await invoke('sftp_remove_file', { tabId: connTabId, path: contextMenu.path });
       showToast(t('file.delete_success', 'File deleted successfully'), 'success');
       // Refresh parent directory
       // We need to know parent path.
@@ -421,7 +570,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     setAcLoading(true);
     try {
       const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
-      const args = isLocal ? { path: parent } : { tabId, path: parent };
+      const args = isLocal ? { path: parent } : { tabId: connTabId, path: parent };
       const list = await invoke<SftpEntry[]>(cmd, args);
       if (seq !== acRequestSeq.current) return;
       const filtered = list
@@ -583,7 +732,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         renderModal();
         try {
           const cmd = isLocal ? 'local_list_dir' : 'sftp_list_dir';
-          const args = isLocal ? { path } : { tabId, path };
+          const args = isLocal ? { path } : { tabId: connTabId, path };
           browserEntries = await invoke<SftpEntry[]>(cmd, args);
         } catch (error) {
           console.error('Failed to load directory:', error);
@@ -735,11 +884,149 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     e.stopPropagation();
   }, []);
 
+  // Handle dropping files to a specific folder (from FileTreeNode)
+  const handleDropToFolder = useCallback(async (folderPath: string, files: { localPath: string; fileName: string }[], isMove: boolean = false) => {
+    if (!tabId) return;
+
+    if (isMove) {
+      // Moving a file within the tree
+      const sourcePath = draggedEntry?.path;
+      if (!sourcePath) return;
+      
+      const destPath = folderPath === '/' ? `/${files[0].fileName}` : `${folderPath}/${files[0].fileName}`;
+      
+      // Don't move to same location
+      if (sourcePath === destPath) return;
+      
+      try {
+        showToast(t('file.moving', { name: files[0].fileName }), 'info');
+        await invoke('sftp_rename', {
+          tabId: connTabId,
+          oldPath: sourcePath,
+          newPath: destPath
+        });
+        showToast(t('file.move_success', { name: files[0].fileName }), 'success');
+        // Refresh both source and destination
+        loadDir(currentPath);
+      } catch (error) {
+        console.error('Move failed:', error);
+        showToast(t('file.move_failed', { name: files[0].fileName, error: `${error}` }), 'error');
+      }
+      draggedEntry = null;
+      return;
+    }
+
+    // Upload from local filesystem
+    if (isLocal) return;
+    
+    for (const file of files) {
+      const remotePath = folderPath === '/' ? `/${file.fileName}` : `${folderPath}/${file.fileName}`;
+      
+      try {
+        showToast(t('file.uploading', { name: file.fileName }), 'info');
+        await invoke('sftp_upload_file_with_progress', {
+          tabId: connTabId,
+          localPath: file.localPath,
+          remotePath
+        });
+        showToast(t('file.upload_success', { name: file.fileName }), 'success');
+      } catch (error) {
+        console.error('Upload failed:', error);
+        showToast(t('file.upload_failed', { name: file.fileName, error: `${error}` }), 'error');
+      }
+    }
+    
+    // Refresh the target folder if it's the current path
+    if (folderPath === currentPath) {
+      loadDir(currentPath);
+    }
+  }, [connTabId, isLocal, currentPath, t, showToast, loadDir]);
+
+  // Focus inline input when it appears
+  useEffect(() => {
+    if (inlineInput && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+    }
+  }, [inlineInput?.type, inlineInput?.targetPath]); // Only run when type/path changes, not value
+
+  // Handle inline input key events - use ref to avoid dependency on inlineInput value
+  const handleInlineInputKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setInlineInput(null);
+      setContextMenu(null);
+      return;
+    }
+    
+    if (e.key === 'Enter') {
+      const input = e.currentTarget;
+      const name = input.value.trim();
+      if (!name) {
+        setInlineInput(null);
+        setContextMenu(null);
+        return;
+      }
+      
+      // Get targetPath from data attribute
+      const basePath = input.dataset.targetPath || currentPath;
+      const type = input.dataset.type as 'file' | 'folder';
+      const fullPath = basePath === '/' ? `/${name}` : `${basePath}/${name}`;
+      
+      try {
+        if (type === 'file') {
+          await invoke('sftp_create_file', { tabId: connTabId, path: fullPath });
+          showToast(t('file.create_file_success', 'File created'), 'success');
+        } else {
+          await invoke('sftp_create_dir', { tabId: connTabId, path: fullPath });
+          showToast(t('file.create_folder_success', 'Folder created'), 'success');
+        }
+        // Refresh the directory
+        loadDir(currentPath);
+      } catch (error) {
+        console.error('Create failed:', error);
+        showToast(type === 'file' 
+          ? t('file.create_file_failed', 'Failed to create file')
+          : t('file.create_folder_failed', 'Failed to create folder'), 'error');
+      }
+      
+      setInlineInput(null);
+      setContextMenu(null);
+    }
+  }, [currentPath, connTabId, t, showToast, loadDir]);
+
+  // Start inline input for new file/folder
+  const startNewFile = useCallback((targetPath?: string) => {
+    setInlineInput({
+      type: 'file',
+      targetPath: targetPath || currentPath,
+      value: ''
+    });
+    setContextMenu(null);
+  }, [currentPath]);
+
+  const startNewFolder = useCallback((targetPath?: string) => {
+    setInlineInput({
+      type: 'folder',
+      targetPath: targetPath || currentPath,
+      value: ''
+    });
+    setContextMenu(null);
+  }, [currentPath]);
+
+  // Create new file
+  const handleNewFile = useCallback((targetPath?: string) => {
+    startNewFile(targetPath);
+  }, [startNewFile]);
+
+  // Create new folder
+  const handleNewFolder = useCallback((targetPath?: string) => {
+    startNewFolder(targetPath);
+  }, [startNewFolder]);
+
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!tabId) return;
+    if (!connTabId) return;
     if (isLocal) return;
 
     const files = Array.from(e.dataTransfer.files);
@@ -758,8 +1045,8 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       
       try {
         showToast(t('file.uploading', { name: file.name }), 'info');
-        await invoke('sftp_upload_file', {
-          tabId,
+        await invoke('sftp_upload_file_with_progress', {
+          tabId: connTabId,
           localPath,
           remotePath
         });
@@ -771,11 +1058,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     }
     
     loadDir(currentPath);
-  }, [tabId, currentPath, t, showToast, loadDir, isLocal]);
+  }, [connTabId, currentPath, t, showToast, loadDir, isLocal]);
 
   // Listen for Tauri global drag-drop event (fallback for missing file paths)
   useEffect(() => {
-    if (!tabId) return;
+    if (!connTabId) return;
 
     const unlisten = listen('tauri://drag-drop', (event) => {
       const payload = event.payload as { paths: string[]; position: { x: number; y: number } };
@@ -799,17 +1086,36 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         const files = payload.paths;
         if (!files || files.length === 0) return;
 
+        // Try to find the target folder from the hovered element
+        // First check if we tracked a folder via dragOver events
+        let targetFolder = currentDragOverFolder;
+        
+        // If not, try to find it using elementsFromPoint
+        if (!targetFolder) {
+          const elements = document.elementsFromPoint(x, y);
+          for (const el of elements) {
+            const folderPath = el.getAttribute('data-folder-path');
+            if (folderPath) {
+              targetFolder = folderPath;
+              break;
+            }
+          }
+        }
+        
+        // Fall back to currentPath if no target folder found
+        const uploadPath = targetFolder || currentPath;
+
         files.forEach(async (localPath) => {
           // Normalize path separators to forward slash for consistency if needed, 
           // but backend handles local path as is usually.
           // Extract filename safely
           const fileName = localPath.split(/[\\/]/).pop() || 'unknown';
-          const remotePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
+          const remotePath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
           
           try {
             showToast(t('file.uploading', { name: fileName }), 'info');
-            await invoke('sftp_upload_file', {
-              tabId,
+            await invoke('sftp_upload_file_with_progress', {
+              tabId: connTabId,
               localPath,
               remotePath
             });
@@ -821,7 +1127,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         });
         
         // Refresh directory after short delay
-        setTimeout(() => loadDir(currentPath), 1000);
+        const refreshPath = targetFolder || currentPath;
+        setTimeout(() => loadDir(refreshPath), 1000);
+        
+        // Clear the tracked folder
+        currentDragOverFolder = null;
       }
     });
 
@@ -834,6 +1144,14 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     <div 
       ref={containerRef}
       className="h-full w-full flex flex-col overflow-hidden"
+      onClick={(e) => {
+        // Close inline input when clicking elsewhere
+        // Check if click is inside the inline input container
+        const target = e.target as HTMLElement;
+        if (inlineInput && !target.closest('.inline-input-container')) {
+          setInlineInput(null);
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         setContextMenu({
@@ -853,6 +1171,21 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         >
           {contextMenu.entry && contextMenu.path ? (
             <div className="flex flex-col gap-0.5 p-1">
+              {!isLocal && contextMenu.entry.is_dir && (
+                <>
+                  <ContextMenuItem 
+                    label={t('file.new_file', 'New File')} 
+                    icon={<FilePlus className="w-4 h-4" />}
+                    onClick={() => handleNewFile(contextMenu.path)}
+                  />
+                  <ContextMenuItem 
+                    label={t('file.new_folder', 'New Folder')} 
+                    icon={<FolderPlus className="w-4 h-4" />}
+                    onClick={() => handleNewFolder(contextMenu.path)}
+                  />
+                  <ContextMenuSeparator />
+                </>
+              )}
               <ContextMenuItem 
                 label={t('file.copy_path', 'Copy Path')} 
                 icon={<Copy className="w-4 h-4" />}
@@ -898,6 +1231,35 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
             </div>
           ) : (
             <div className="flex flex-col gap-0.5 p-1">
+              {!isLocal && (
+                <>
+                  <ContextMenuItem 
+                    label={t('file.new_file', 'New File')} 
+                    icon={<FilePlus className="w-4 h-4" />}
+                    onClick={handleNewFile}
+                  />
+                  <ContextMenuItem 
+                    label={t('file.new_folder', 'New Folder')} 
+                    icon={<FolderPlus className="w-4 h-4" />}
+                    onClick={handleNewFolder}
+                  />
+                  <ContextMenuSeparator />
+                </>
+              )}
+              <ContextMenuItem 
+                label={t('file.copy_path', 'Copy Path')} 
+                icon={<Copy className="w-4 h-4" />}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(currentPath);
+                    showToast(t('common.copied_to_clipboard', 'Copied to clipboard'), 'success');
+                  } catch (err) {
+                    console.error('Failed to copy path:', err);
+                  }
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuSeparator />
               <ContextMenuItem 
                 label={t('file.refresh')} 
                 icon={<RefreshCcw className="w-4 h-4" />}
@@ -1001,6 +1363,33 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           <div className="p-4 text-term-fg/40 text-sm">{t('file_tree.connecting')}</div>
         ) : (
           <div className="py-1">
+            {/* Inline input for new file/folder - VSCode style */}
+            {inlineInput && (
+              <div 
+                className="inline-input-container flex items-center gap-1 py-1 px-2 bg-term-selection/30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {inlineInput.type === 'folder' ? (
+                  <Folder className="w-4 h-4 text-term-blue flex-shrink-0" />
+                ) : (
+                  <File className="w-4 h-4 text-term-fg/60 flex-shrink-0" />
+                )}
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  value={inlineInput.value}
+                  onChange={(e) => setInlineInput(prev => prev ? { ...prev, value: e.target.value } : null)}
+                  onKeyDown={handleInlineInputKeyDown}
+                  data-type={inlineInput.type}
+                  data-target-path={inlineInput.targetPath}
+                  placeholder={inlineInput.type === 'folder' 
+                    ? t('file.new_folder_name', 'Enter folder name:') 
+                    : t('file.new_file_name', 'Enter file name:')}
+                  className="flex-1 bg-transparent text-term-fg text-sm outline-none border-b border-term-blue"
+                  autoFocus
+                />
+              </div>
+            )}
             {entries
               .filter(entry => showHidden || !entry.filename.startsWith('.'))
               .map((entry, index) => (
@@ -1013,6 +1402,9 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                 showHidden={showHidden}
                 onFileSelect={onFileSelect}
                 onContextMenu={handleContextMenu}
+                onDropToFolder={handleDropToFolder}
+                onDragStart={() => {}}
+                onDragEnd={() => {}}
               />
             ))}
             {/* Upload Progress Section */}

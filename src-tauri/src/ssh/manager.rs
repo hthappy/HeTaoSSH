@@ -117,6 +117,17 @@ enum ConnCommand {
         remote_path: String,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// SFTP: 重命名/移动文件或目录
+    SftpRename {
+        old_path: String,
+        new_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// SFTP: 创建空文件
+    SftpCreateFile {
+        path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
     /// 手动重连
     Reconnect {
         reply: oneshot::Sender<Result<()>>,
@@ -532,6 +543,39 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 重命名/移动文件或目录
+    pub async fn sftp_rename(&self, id: &str, old_path: &str, new_path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpRename {
+            old_path: old_path.to_string(),
+            new_path: new_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
+    /// 创建空文件
+    pub async fn sftp_create_file(&self, id: &str, path: &str) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpCreateFile {
+            path: path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 手动触发重连
     pub async fn reconnect(&self, id: &str) -> Result<()> {
         let tx = self.get_tx(id).await?;
@@ -683,6 +727,12 @@ async fn connection_actor(
                     ConnCommand::SftpUploadFileWithProgress { local_path, remote_path, reply } => {
                         let _ = reply.send(handle_sftp_upload_file_with_progress(&conn, app_handle.clone(), &id, &local_path, &remote_path).await);
                     }
+                    ConnCommand::SftpRename { old_path, new_path, reply } => {
+                        let _ = reply.send(handle_sftp_rename(&conn, &old_path, &new_path).await);
+                    }
+                    ConnCommand::SftpCreateFile { path, reply } => {
+                        let _ = reply.send(handle_sftp_create_file(&conn, &path).await);
+                    }
                     ConnCommand::Reconnect { reply } => {
                         // 尝试重新连接
                         match conn.reconnect().await {
@@ -813,6 +863,12 @@ async fn connection_actor(
                                                 let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
                                             }
                                             ConnCommand::SftpUploadFileWithProgress { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpRename { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::SftpCreateFile { reply, .. } => {
                                                 let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
                                             }
                                             ConnCommand::CheckConnection { reply } => {
@@ -973,6 +1029,42 @@ async fn handle_sftp_create_dir(conn: &SshConnection, path: &str) -> Result<()> 
     sftp.create_dir(path)
         .await
         .map_err(|e| SshError::ConnectionFailed(format!("create_dir failed: {}", e)))
+}
+
+async fn handle_sftp_rename(conn: &SshConnection, old_path: &str, new_path: &str) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| {
+            SshError::ConnectionFailed(crate::error::messages::SFTP_NOT_INITIALIZED.to_string())
+        })?;
+
+    sftp.rename(old_path, new_path)
+        .await
+        .map_err(|e| SshError::ConnectionFailed(format!("rename failed: {}", e)))
+}
+
+async fn handle_sftp_create_file(conn: &SshConnection, path: &str) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| {
+            SshError::ConnectionFailed(crate::error::messages::SFTP_NOT_INITIALIZED.to_string())
+        })?;
+
+    // Use sftp.create() which creates a new file for writing
+    let mut file = sftp.create(path)
+        .await
+        .map_err(|e| SshError::ConnectionFailed(format!("create file failed: {}", e)))?;
+    
+    // Flush and close the file (creates an empty file)
+    file.flush().await.map_err(|e| {
+        SshError::ConnectionFailed(format!("flush file failed: {}", e))
+    })?;
+    
+    Ok(())
 }
 
 async fn handle_sftp_download_file(

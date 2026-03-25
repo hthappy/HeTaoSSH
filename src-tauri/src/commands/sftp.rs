@@ -331,6 +331,44 @@ pub async fn sftp_get_home_dir(
     state        .sftp_get_home_dir(&tab_id).await
 }
 
+/// Rename/Move file or directory (remote or local)
+#[tauri::command]
+pub async fn sftp_rename(
+    tab_id: String,
+    old_path: String,
+    new_path: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    // Validate both paths
+    validate_sftp_path(&old_path)?;
+    validate_sftp_path(&new_path)?;
+
+    if tab_id.starts_with("local-") {
+        return std::fs::rename(&old_path, &new_path).map_err(SshError::Io);
+    }
+
+    state.sftp_rename(&tab_id, &old_path, &new_path).await
+}
+
+/// Create empty file (remote or local)
+#[tauri::command]
+pub async fn sftp_create_file(
+    tab_id: String,
+    path: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    // Validate path
+    validate_sftp_path(&path)?;
+
+    if tab_id.starts_with("local-") {
+        return std::fs::File::create(&path)
+            .map(|_| ())
+            .map_err(SshError::Io);
+    }
+
+    state.sftp_create_file(&tab_id, &path).await
+}
+
 /// List local directory contents
 #[tauri::command]
 pub async fn local_list_dir(path: String) -> Result<Vec<crate::ssh::SftpEntry>> {

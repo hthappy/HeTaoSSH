@@ -95,6 +95,9 @@ interface SshState {
   // UI IDE Workspace Tabs
   workspaceTabs: WorkspaceTab[];
   activeTabId: string | null;
+  
+  // File manager paths per connection (keyed by serverId, negative for local)
+  sftpPaths: Record<number, string>;
 
   loadServers: () => Promise<void>;
   saveServer: (config: ServerConfig) => Promise<void>;
@@ -112,6 +115,10 @@ interface SshState {
   openFileTab: (serverId: number, filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
+  
+  // SFTP Path Management
+  setSftpPath: (serverId: number, path: string) => void;
+  getSftpPath: (serverId: number) => string | undefined;
 
   // Terminal API
   sendToTerminal: (serverId: number, data: string) => Promise<void>;
@@ -129,6 +136,7 @@ export const useSshStore = create<SshState>((set, get) => ({
   connections: [],
   workspaceTabs: [],
   activeTabId: null,
+  sftpPaths: {},
   
   // We need a separate function to setup the listeners, typically called at app level
   // This is just the initial store structure
@@ -332,6 +340,16 @@ export const useSshStore = create<SshState>((set, get) => ({
 
   setActiveTab: (tabId: string) => {
     set({ activeTabId: tabId });
+  },
+
+  setSftpPath: (serverId: number, path: string) => {
+    set((state) => ({
+      sftpPaths: { ...state.sftpPaths, [serverId]: path }
+    }));
+  },
+
+  getSftpPath: (serverId: number) => {
+    return get().sftpPaths[serverId];
   },
 
   createLocalTerminal: async () => {
