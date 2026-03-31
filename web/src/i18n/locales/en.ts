@@ -9,6 +9,7 @@ export default {
     error: 'Error',
     delete: 'Delete',
     edit: 'Edit',
+    reset: 'Reset',
     connect: 'Connect',
     disconnect: 'Disconnect',
     confirm: 'Confirm',
@@ -32,6 +33,8 @@ export default {
     minimize: 'Minimize',
     maximize: 'Maximize',
     restore: 'Restore',
+    export: 'Export',
+    exported: 'Exported!',
   },
   update: {
     title: 'Update Available',
@@ -64,7 +67,7 @@ export default {
     auth_method: 'Auth Method',
     auth_password: 'Password',
     auth_private_key: 'Private Key',
-    browse: 'Browse...',
+browse: 'Browse...',
   },
   terminal: {
     welcome: 'Welcome to HeTaoSSH',
@@ -73,6 +76,12 @@ export default {
     connecting: 'Connecting to server...',
     show_panel: 'Show panel',
     hide_panel: 'Hide panel',
+    search_placeholder: 'Search in terminal...',
+    search_previous: 'Previous match',
+    search_next: 'Next match',  
+    match_found: 'Match',
+    matches_found: '{{current}}/{{total}} matches',
+    no_match: 'No match',
   },
   snippets: {
     title: 'Snippets',
@@ -98,8 +107,8 @@ export default {
     execute: 'Execute',
     close: 'Close',
     optional: '(Optional)',
-  },
-file: {
+},
+  file: {
     explorer: 'Explorer',
     no_file_selected: 'No file selected',
     select_tip: 'Select a file from the tree to edit',
@@ -234,5 +243,11 @@ file: {
     new_local_terminal: 'New Local Terminal',
     settings: 'Settings',
     terminal_search: 'Terminal Search',
+    split_horizontal: 'Split Horizontal',
+    split_vertical: 'Split Vertical',
+    close_pane: 'Close Pane',
+    press_keys: 'Press keys...',
+    reset_all: 'Reset all shortcuts to defaults',
+     editor_save: 'Save File',
   },
 };

@@ -9,6 +9,7 @@ export default {
     error: '错误',
     delete: '删除',
     edit: '编辑',
+    reset: '重置',
     connect: '连接',
     disconnect: '断开连接',
     confirm: '确认',
@@ -32,6 +33,8 @@ export default {
     minimize: '最小化',
     maximize: '最大化',
     restore: '恢复',
+    export: '导出',
+    exported: '已导出！',
   },
   update: {
     title: '发现新版本',
@@ -73,6 +76,12 @@ export default {
     connecting: '连接服务器中...',
     show_panel: '显示面板',
     hide_panel: '隐藏面板',
+    search_placeholder: '在终端中搜索...',
+    search_previous: '上一个匹配项',
+    search_next: '下一个匹配项',
+    match_found: '匹配',
+    matches_found: '{{current}}/{{total}} 个匹配',
+    no_match: '无匹配',
   },
   snippets: {
     title: '代码片段',
@@ -99,7 +108,7 @@ export default {
     close: '关闭',
     optional: '（可选）',
   },
-file: {
+  file: {
     explorer: '文件管理器',
     no_file_selected: '未选择文件',
     select_tip: '从文件树中选择一个文件进行编辑',
@@ -245,5 +254,11 @@ file: {
     new_local_terminal: '新建本地终端',
     settings: '设置',
     terminal_search: '终端搜索',
+    split_horizontal: '水平分屏',
+    split_vertical: '垂直分屏',
+    close_pane: '关闭分屏',
+    press_keys: '按下快捷键...',
+    reset_all: '重置所有快捷键为默认值',
+    editor_save: '保存文件',
   },
 };

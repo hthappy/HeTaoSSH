@@ -16,7 +16,7 @@ use error::Result;
 use local_term::LocalTerminalManager;
 use log::info;
 use monitor::LocalMonitor;
-use ssh::ConnectionManager;
+use ssh::{ConnectionManager, TunnelManager};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
     let config_manager = Arc::new(ConfigManager::new().await?);
     let snippet_manager = Arc::new(snippets::SnippetManager::new().await?);
     let ssh_manager = Arc::new(ConnectionManager::new());
+    let tunnel_manager = Arc::new(TunnelManager::new());
     let local_term_manager = Arc::new(LocalTerminalManager::new());
     let local_monitor = Arc::new(LocalMonitor::new());
 
@@ -40,6 +41,7 @@ async fn main() -> Result<()> {
         .manage(config_manager)
         .manage(snippet_manager)
         .manage(ssh_manager)
+        .manage(tunnel_manager)
         .manage(local_term_manager)
         .manage(local_monitor)
         .invoke_handler(tauri::generate_handler![
@@ -73,6 +75,7 @@ async fn main() -> Result<()> {
             commands::ssh_recv,
             commands::ssh_resize,
             commands::ssh_manual_reconnect,
+            commands::get_latency,
             commands::parse_theme,
             commands::fetch_url,
             commands::open_local_terminal,
@@ -85,6 +88,10 @@ async fn main() -> Result<()> {
             // Session management
             commands::save_session,
             commands::get_session,
+            // Tunnel management
+            commands::start_tunnel,
+            commands::stop_tunnel,
+            commands::list_tunnels,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

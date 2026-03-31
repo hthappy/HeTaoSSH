@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/Toast';
 import { ITheme } from 'xterm';
 import { X } from 'lucide-react';
+import { useShortcutsStore } from '@/stores/shortcuts-store';
+import { matchesShortcut } from '@/stores/shortcuts-store';
 
 interface FileEditorProps {
   tabId: string;
@@ -151,7 +153,9 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      // 获取编辑器保存快捷键设置（使用统一的快捷键获取API）
+      const saveKeys = useShortcutsStore.getState().getKeys('editor-save');
+      if (saveKeys && matchesShortcut(e, saveKeys)) {
         e.preventDefault();
         if (hasChanges && filePath) {
           saveFile();

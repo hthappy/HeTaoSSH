@@ -196,6 +196,37 @@ pub async fn ssh_disconnect(
     state.remove_connection(&tab_id).await
 }
 
+/// 测量 SSH 连接延迟
+///
+/// 通过发送 SSH keepalive 请求并测量往返时间来检测连接延迟。
+///
+/// # 参数
+///
+/// * `tab_id` - 连接标识符
+/// * `state` - ConnectionManager 状态
+///
+/// # 返回
+///
+/// 成功时返回延迟时间（毫秒）
+///
+/// # 错误
+///
+/// - `SshError::Channel`: 连接不存在或 Actor 已停止
+///
+/// # 示例
+///
+/// ```typescript
+/// const latency = await invoke<number>('get_latency', { tabId: 'tab-1' });
+/// console.log(`延迟: ${latency}ms`);
+/// ```
+#[tauri::command]
+pub async fn get_latency(
+    tab_id: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<u128> {
+    state.measure_latency(&tab_id).await
+}
+
 /// 手动触发 SSH 连接重连
 ///
 /// 当连接处于断开状态（非正常断开），可以通过此命令手动启动重连过程。

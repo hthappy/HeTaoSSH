@@ -7,8 +7,8 @@ import { IPC_DEBOUNCE_MS } from '@/constants/ipc'
 
 // Input buffering to prevent IPC flooding and key loss
 // Accumulates keystrokes for a short window before sending
-const inputBuffers: Record<number, string> = {};
-const inputTimers: Record<number, NodeJS.Timeout> = {};
+const inputBuffers: Record<string, string> = {};
+const inputTimers: Record<string, NodeJS.Timeout> = {};
 
 // Control characters that should be sent immediately without buffering
 const CONTROL_CHARS = [
@@ -18,54 +18,57 @@ const CONTROL_CHARS = [
   '\x1c', // Ctrl+\ (FS - Quit)
 ];
 
-const sendBuffered = (serverId: number, data: string) => {
-  // CRITICAL: Control characters must be sent immediately
-  // Buffering Ctrl+C causes delays that prevent interrupting commands
+const sendBufferedBackend = (backendId: string, data: string) => {
   if (CONTROL_CHARS.includes(data)) {
-    // Flush any pending buffer first
-    if (inputTimers[serverId]) {
-      clearTimeout(inputTimers[serverId]);
-      delete inputTimers[serverId];
+    if (inputTimers[backendId]) {
+      clearTimeout(inputTimers[backendId]);
+      delete inputTimers[backendId];
     }
-    
-    const bufferedData = inputBuffers[serverId] || '';
-    inputBuffers[serverId] = '';
-    
-    // Send buffered data + control char immediately
+    const bufferedData = inputBuffers[backendId] || '';
+    inputBuffers[backendId] = '';
     const payload = bufferedData + data;
-    invoke('ssh_send', { tabId: `conn-${serverId}`, data: payload }).catch(err => {
+    invoke('ssh_send', { tabId: backendId, data: payload }).catch(err => {
       console.error(i18n.t('store.send_data_failed', { error: err }));
     });
     return;
   }
   
-  // If buffer doesn't exist, init it
-  if (!inputBuffers[serverId]) {
-    inputBuffers[serverId] = '';
+  if (!inputBuffers[backendId]) {
+    inputBuffers[backendId] = '';
   }
-  
-  inputBuffers[serverId] += data;
+  inputBuffers[backendId] += data;
 
-  // If timer already running, just return (data is added to buffer)
-  if (inputTimers[serverId]) {
+  if (inputTimers[backendId]) {
     return;
   }
 
-  // Start a new timer
-  inputTimers[serverId] = setTimeout(async () => {
-    const payload = inputBuffers[serverId];
-    // Clear buffer and timer immediately
-    inputBuffers[serverId] = '';
-    delete inputTimers[serverId];
+  inputTimers[backendId] = setTimeout(async () => {
+    const payload = inputBuffers[backendId];
+    inputBuffers[backendId] = '';
+    delete inputTimers[backendId];
     
     if (!payload) return;
 
     try {
-      await invoke('ssh_send', { tabId: `conn-${serverId}`, data: payload });
+      await invoke('ssh_send', { tabId: backendId, data: payload });
     } catch (err) {
       console.error(i18n.t('store.send_data_failed', { error: err }));
     }
   }, IPC_DEBOUNCE_MS);
+};
+
+// Helper functions for pane tree operations
+const findPaneInGroup = (group: PaneGroup, paneId: string): TerminalPane | null => {
+  for (const pane of group.panes) {
+    if ('serverId' in pane && pane.id === paneId) {
+      return pane;
+    }
+    if ('direction' in pane) {
+      const found = findPaneInGroup(pane, paneId);
+      if (found) return found;
+    }
+  }
+  return null;
 };
 
 export interface WorkspaceTab {
@@ -75,6 +78,23 @@ export interface WorkspaceTab {
   title: string;
   filePath?: string; // Only valid if type === 'file'
   isLocal?: boolean;
+}
+
+// Split pane types
+export type SplitDirection = 'horizontal' | 'vertical';
+
+export interface TerminalPane {
+  id: string;
+  serverId: number;
+  isLocal?: boolean;
+  backendId: string;
+}
+
+export interface PaneGroup {
+  id: string;
+  direction: SplitDirection;
+  panes: (TerminalPane | PaneGroup)[];
+  activePaneId: string | null;
 }
 
 export interface ConnectionStatus {
@@ -96,6 +116,9 @@ interface SshState {
   workspaceTabs: WorkspaceTab[];
   activeTabId: string | null;
   
+  // Split panes per tab (keyed by tabId)
+  paneGroups: Record<string, PaneGroup>;
+  
   // File manager paths per connection (keyed by serverId, negative for local)
   sftpPaths: Record<number, string>;
 
@@ -116,12 +139,20 @@ interface SshState {
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
   
+  // Pane Management
+  splitPane: (tabId: string, direction: SplitDirection) => Promise<void>;
+  closePane: (tabId: string, paneId: string) => void;
+  setActivePane: (tabId: string, paneId: string) => void;
+  getActivePaneId: (tabId: string) => string | null;
+  getPaneGroup: (tabId: string) => PaneGroup | null;
+  
   // SFTP Path Management
   setSftpPath: (serverId: number, path: string) => void;
   getSftpPath: (serverId: number) => string | undefined;
 
   // Terminal API
   sendToTerminal: (serverId: number, data: string) => Promise<void>;
+  sendToTerminalBackend: (backendId: string, isLocal: boolean, data: string) => Promise<void>;
   handleTerminalKeyPress: (serverId: number) => Promise<void>;
   
   // Session Management
@@ -136,6 +167,7 @@ export const useSshStore = create<SshState>((set, get) => ({
   connections: [],
   workspaceTabs: [],
   activeTabId: null,
+  paneGroups: {},
   sftpPaths: {},
   
   // We need a separate function to setup the listeners, typically called at app level
@@ -228,6 +260,13 @@ export const useSshStore = create<SshState>((set, get) => ({
       });
 
       await invoke('ssh_connect', { tabId: `conn-${serverId}`, config: server });
+      // Update single default pane's backendId when connected (for tracking)
+      const tabs = get().workspaceTabs;
+      for (const tab of tabs) {
+        if (tab.serverId === serverId && tab.type === 'terminal') {
+           // TerminalArea initializes with 'conn-{serverId}' implicitly before splitting
+        }
+      }
       get().updateConnectionStatus(serverId, { status: 'connected' });
     } catch (err) {
       // Extract detailed error message
@@ -342,6 +381,205 @@ export const useSshStore = create<SshState>((set, get) => ({
     set({ activeTabId: tabId });
   },
 
+  // Get pane group for a tab
+  getPaneGroup: (tabId: string) => {
+    return get().paneGroups[tabId] || null;
+  },
+
+  // Get active pane ID for a tab
+  getActivePaneId: (tabId: string) => {
+    const group = get().paneGroups[tabId];
+    return group?.activePaneId || null;
+  },
+
+  // Set active pane
+  setActivePane: (tabId: string, paneId: string) => {
+    set((state) => {
+      const group = state.paneGroups[tabId];
+      if (!group) return state;
+      
+      const updateActivePane = (g: PaneGroup): PaneGroup => ({
+        ...g,
+        activePaneId: g.panes.some(p => 
+          ('id' in p && p.id === paneId) || 
+          ('direction' in p && findPaneInGroup(p, paneId))
+        ) ? paneId : g.activePaneId,
+        panes: g.panes.map(p => 
+          'direction' in p ? updateActivePane(p) : p
+        )
+      });
+      
+      return {
+        paneGroups: {
+          ...state.paneGroups,
+          [tabId]: updateActivePane(group)
+        }
+      };
+    });
+  },
+
+  // Split pane - add a new terminal pane to the active tab
+  splitPane: async (tabId: string, direction: SplitDirection) => {
+    const tab = get().workspaceTabs.find(t => t.id === tabId);
+    if (!tab || (tab.type !== 'terminal' && tab.type !== 'local')) return;
+    
+    const existingGroup = get().paneGroups[tabId];
+    const newPaneId = `pane-${Date.now()}`;
+    const newBackendId = tab.type === 'local' ? `local-pane-${Date.now()}` : `conn-pane-${Date.now()}`;
+    
+    const newPane: TerminalPane = {
+      id: newPaneId,
+      serverId: tab.serverId!,
+      isLocal: tab.type === 'local',
+      backendId: newBackendId
+    };
+
+    // Before updating state, if it's not local, we need to connect!
+    if (!tab.isLocal && tab.type !== 'local') {
+      const server = get().servers.find(s => s.id === tab.serverId);
+      if (server) {
+        try {
+          await invoke('ssh_connect', { tabId: newBackendId, config: server });
+        } catch (err) {
+          console.error('Failed to connect new pane:', err);
+        }
+      }
+    } else {
+       // Local terminal: we need to create a new local terminal
+       try {
+           await invoke('open_local_terminal', { id: newBackendId, rows: 24, cols: 80 });
+       } catch (err) {
+           console.error('Failed to open local terminal:', err);
+       }
+    }
+    
+    if (!existingGroup) {
+      // Create initial group with the existing terminal and new one
+      const existingPaneId = `pane-${Date.now() - 1}`;
+      const existingPane: TerminalPane = {
+        id: existingPaneId,
+        serverId: tab.serverId!,
+        isLocal: tab.type === 'local',
+        backendId: tab.type === 'local' ? tab.serverId!.toString() : `conn-${tab.serverId}`
+      };
+      
+      const newGroup: PaneGroup = {
+        id: `group-${Date.now()}`,
+        direction,
+        panes: [existingPane, newPane],
+        activePaneId: newPaneId
+      };
+      
+      set((state) => ({
+        paneGroups: {
+          ...state.paneGroups,
+          [tabId]: newGroup
+        }
+      }));
+    } else {
+      // Add new pane to existing group
+      const addPaneToGroup = (group: PaneGroup): PaneGroup => {
+        // If this is the active group and has room, add here
+        if (group.direction === direction) {
+          return {
+            ...group,
+            panes: [...group.panes, newPane],
+            activePaneId: newPaneId
+          };
+        }
+        // Otherwise, wrap in new group with correct direction
+        return {
+          id: `group-${Date.now()}`,
+          direction,
+          panes: [group, newPane],
+          activePaneId: newPaneId
+        };
+      };
+      
+      set((state) => ({
+        paneGroups: {
+          ...state.paneGroups,
+          [tabId]: addPaneToGroup(existingGroup)
+        }
+      }));
+    }
+    
+    // Focus the new pane
+    get().setActivePane(tabId, newPaneId);
+  },
+
+  // Close a pane
+  closePane: (tabId: string, paneId: string) => {
+    const group = get().paneGroups[tabId];
+    const tab = get().workspaceTabs.find(t => t.id === tabId);
+    if (!group || !tab) return;
+    
+    const removePaneFromGroup = (g: PaneGroup): PaneGroup | null => {
+      const newPanes: (TerminalPane | PaneGroup)[] = [];
+      
+      for (const pane of g.panes) {
+        if ('id' in pane && pane.id === paneId) {
+          // Found the pane to disconnect
+          const backendId = (pane as TerminalPane).backendId;
+          const isPrimary = backendId === `conn-${tab.serverId}` || backendId === tab.serverId!.toString();
+          // Don't kill primary connection via closePane, handled by closeTab
+          if (!isPrimary && tab.type !== 'local') {
+             invoke('ssh_disconnect', { tabId: backendId }).catch(console.error);
+          } else if (tab.type === 'local' && !isPrimary) {
+             invoke('local_term_close', { id: backendId }).catch(console.error);
+          }
+          continue; // Remove this pane
+        }
+        if ('direction' in pane) {
+          const subGroup = removePaneFromGroup(pane);
+          if (subGroup) {
+            newPanes.push(subGroup);
+          }
+        } else {
+          newPanes.push(pane);
+        }
+      }
+      
+      if (newPanes.length === 0) {
+        return null;
+      }
+      
+      if (newPanes.length === 1 && 'serverId' in newPanes[0]) {
+        // Only one terminal left, flatten
+        return {
+          ...g,
+          panes: newPanes,
+          activePaneId: newPanes[0].id
+        };
+      }
+      
+      return {
+        ...g,
+        panes: newPanes,
+        activePaneId: g.activePaneId === paneId 
+          ? (newPanes.find(p => 'id' in p) as TerminalPane)?.id || null
+          : g.activePaneId
+      };
+    };
+    
+    const newGroup = removePaneFromGroup(group);
+    
+    if (newGroup) {
+      set((state) => ({
+        paneGroups: {
+          ...state.paneGroups,
+          [tabId]: newGroup!
+        }
+      }));
+    } else {
+      // No panes left, remove the group
+      set((state) => {
+        const { [tabId]: _, ...rest } = state.paneGroups;
+        return { paneGroups: rest };
+      });
+    }
+  },
+
   setSftpPath: (serverId: number, path: string) => {
     set((state) => ({
       sftpPaths: { ...state.sftpPaths, [serverId]: path }
@@ -432,7 +670,22 @@ export const useSshStore = create<SshState>((set, get) => ({
          console.error('Failed to write to local terminal', err);
        }
     } else {
-      sendBuffered(serverId, data);
+      sendBufferedBackend(`conn-${serverId}`, data);
+    }
+  },
+  
+  // Expose backend sending for explicit pane IDs
+  sendToTerminalBackend: async (backendId: string, isLocal: boolean, data: string) => {
+    if (isLocal) {
+       try {
+         const encoder = new TextEncoder();
+         const bytes = Array.from(encoder.encode(data));
+         await invoke('local_term_write', { id: backendId, data: bytes });
+       } catch (err) {
+         console.error('Failed to write to local terminal', err);
+       }
+    } else {
+       sendBufferedBackend(backendId, data);
     }
   },
   

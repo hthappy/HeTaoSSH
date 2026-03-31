@@ -12,6 +12,7 @@ import { TerminalSearchBar } from './TerminalSearchBar';
 import { addToHistory, getHistory } from '@/lib/commandHistory';
 import { useToast } from '@/components/Toast';
 import { useTerminalFit } from '@/hooks/useTerminalFit';
+import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
@@ -52,9 +53,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   const initializedRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showSearch, setShowSearch] = useState(false);
-  const [currentCommand, setCurrentCommand] = useState('');
-  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
-  const commandHistoryRef = useRef<Array<{ command: string; timestamp: number }>>([]);
+  // Use refs instead of state to avoid re-renders on every keystroke
+  const currentCommandRef = useRef('');
+  const historyIndexRef = useRef<number | null>(null);
+  const commandHistoryRef = useRef<{ command: string; timestamp: number }[]>([]);
 
   // Update refs
   useEffect(() => {
@@ -70,6 +72,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     disconnectedRef.current = disconnected;
   }, [disconnected]);
 
+  // Subscribe to dynamic shortcuts
+  const terminalSearchKeys = useShortcutsStore(state => state.shortcuts.find(s => s.id === 'terminal-search')?.keys || 'Ctrl+F');
+
   useEffect(() => {
     if (isActive && serverId !== undefined) {
       commandHistoryRef.current = getHistory(serverId);
@@ -78,14 +83,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isActive && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      if (isActive && matchesShortcut(e, terminalSearchKeys)) {
         e.preventDefault();
         setShowSearch(true);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isActive, terminalSearchKeys]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -270,14 +275,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const onDataDisposable = term.onData((data) => {
       if (!disconnectedRef.current && onDataRef.current) {
         if (data === '\r' && serverId !== undefined) {
-          if (currentCommand.trim()) {
-            addToHistory(serverId, currentCommand);
+          if (currentCommandRef.current.trim()) {
+            addToHistory(serverId, currentCommandRef.current);
             commandHistoryRef.current = getHistory(serverId);
           }
-          setCurrentCommand('');
-          setHistoryIndex(null);
+          currentCommandRef.current = '';
+          historyIndexRef.current = null;
         } else if (data !== '\x7f' && data !== '\b') {
-          setCurrentCommand(prev => prev + data);
+          currentCommandRef.current += data;
         }
         onDataRef.current(data);
       }
@@ -288,23 +293,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         onEnterRef.current();
       }
       
+      // Up arrow - navigate history backwards (older commands)
       if (domEvent.keyCode === 38 && serverId !== undefined && onDataRef.current) {
         domEvent.preventDefault();
         const history = commandHistoryRef.current;
         if (history.length > 0) {
-          const newIndex = historyIndex === null ? 0 : Math.min(historyIndex + 1, history.length - 1);
-          setHistoryIndex(newIndex);
+          const newIndex = historyIndexRef.current === null ? 0 : Math.min(historyIndexRef.current + 1, history.length - 1);
+          historyIndexRef.current = newIndex;
           const cmd = history[newIndex]?.command || '';
           onDataRef.current('\x15' + cmd);
         }
       }
       
+      // Down arrow - navigate history forwards (newer commands)
       if (domEvent.keyCode === 40 && serverId !== undefined && onDataRef.current) {
         domEvent.preventDefault();
         const history = commandHistoryRef.current;
-        if (historyIndex !== null && history.length > 0) {
-          const newIndex = Math.max(historyIndex - 1, -1);
-          setHistoryIndex(newIndex);
+        if (historyIndexRef.current !== null && history.length > 0) {
+          const newIndex = Math.max(historyIndexRef.current - 1, -1);
+          historyIndexRef.current = newIndex;
           if (newIndex === -1) {
             onDataRef.current('\x15');
           } else {
@@ -528,7 +535,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       />
       {showSearch && (
         <TerminalSearchBar
-          terminalRef={xtermRef}
+          searchAddonRef={searchAddonRef}
           onClose={() => setShowSearch(false)}
         />
       )}

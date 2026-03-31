@@ -1,6 +1,10 @@
 export interface TunnelInfo {
+  id: string;
+  mode: TunnelMode;
   local_port: number;
-  mode: string;
+  remote_host?: string;
+  remote_port?: number;
+  server_id: number;
 }
 
 export type TunnelMode = 'local' | 'dynamic';

@@ -128,6 +128,10 @@ enum ConnCommand {
         path: String,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// 测量连接延迟
+    MeasureLatency {
+        reply: oneshot::Sender<Result<u128>>,
+    },
     /// 手动重连
     Reconnect {
         reply: oneshot::Sender<Result<()>>,
@@ -576,6 +580,19 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 测量连接延迟
+    pub async fn measure_latency(&self, id: &str) -> Result<u128> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::MeasureLatency { reply: reply_tx })
+            .await
+            .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 手动触发重连
     pub async fn reconnect(&self, id: &str) -> Result<()> {
         let tx = self.get_tx(id).await?;
@@ -733,6 +750,9 @@ async fn connection_actor(
                     ConnCommand::SftpCreateFile { path, reply } => {
                         let _ = reply.send(handle_sftp_create_file(&conn, &path).await);
                     }
+                    ConnCommand::MeasureLatency { reply } => {
+                        let _ = reply.send(conn.measure_latency().await);
+                    }
                     ConnCommand::Reconnect { reply } => {
                         // 尝试重新连接
                         match conn.reconnect().await {
@@ -869,6 +889,9 @@ async fn connection_actor(
                                                 let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
                                             }
                                             ConnCommand::SftpCreateFile { reply, .. } => {
+                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                            }
+                                            ConnCommand::MeasureLatency { reply, .. } => {
                                                 let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
                                             }
                                             ConnCommand::CheckConnection { reply } => {

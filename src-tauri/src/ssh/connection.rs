@@ -298,4 +298,37 @@ impl SshConnection {
         // Re-establish connection
         self.connect_with_shell().await
     }
+
+    /// Measure SSH connection latency using a quick exec command
+    pub async fn measure_latency(&self) -> Result<u128> {
+        use std::time::Instant;
+        use tokio::io::AsyncReadExt;
+
+        if let Some(ref session) = self.session {
+            let start = Instant::now();
+            
+            // Open a new session channel for latency measurement
+            let channel = session
+                .channel_open_session()
+                .await
+                .map_err(|e| SshError::Channel(format!("Failed to open channel: {}", e)))?;
+            
+            // Execute a quick echo command
+            channel
+                .exec(true, "echo")
+                .await
+                .map_err(|e| SshError::Channel(format!("Exec failed: {}", e)))?;
+            
+            // Read response (small data)
+            let mut buf = [0u8; 64];
+            let stream = channel.into_stream();
+            let (mut reader, _writer) = tokio::io::split(stream);
+            let _ = reader.read(&mut buf).await;
+            
+            let elapsed = start.elapsed();
+            Ok(elapsed.as_millis())
+        } else {
+            Err(SshError::Channel("Not connected".to_string()))
+        }
+    }
 }

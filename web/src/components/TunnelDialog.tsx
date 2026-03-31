@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Activity } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import type { TunnelInfo, TunnelConfig, TunnelMode } from '@/types/tunnel';
+import type { TunnelInfo, TunnelMode } from '@/types/tunnel';
 
 interface TunnelDialogProps {
   isOpen: boolean;
@@ -26,26 +26,23 @@ export function TunnelDialog({ isOpen, onClose, serverId }: TunnelDialogProps) {
     setError(null);
     
     try {
-      const config: TunnelConfig = {
+      const tunnelId = await invoke<string>('start_tunnel', {
         mode,
-        local_port: localPort,
-        server_id: serverId,
-      };
-      
-      if (mode === 'local') {
-        config.remote_host = remoteHost;
-        config.remote_port = remotePort;
-      }
-      
-      const port = await invoke<number>('start_tunnel', {
-        mode: config.mode,
-        localPort: config.local_port,
-        remoteHost: config.remote_host,
-        remotePort: config.remote_port,
-        serverId: config.server_id,
+        localPort: localPort,
+        remoteHost: mode === 'local' ? remoteHost : null,
+        remotePort: mode === 'local' ? remotePort : null,
+        serverId: serverId,
       });
       
-      setTunnels(prev => [...prev, { local_port: port, mode: config.mode }]);
+      // Add to local list
+      setTunnels(prev => [...prev, { 
+        id: tunnelId,
+        local_port: localPort, 
+        mode,
+        remote_host: mode === 'local' ? remoteHost : undefined,
+        remote_port: mode === 'local' ? remotePort : undefined,
+        server_id: serverId
+      }]);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -53,10 +50,10 @@ export function TunnelDialog({ isOpen, onClose, serverId }: TunnelDialogProps) {
     }
   }, [mode, localPort, remoteHost, remotePort, serverId]);
 
-  const handleStopTunnel = useCallback(async (localPort: number) => {
+  const handleStopTunnel = useCallback(async (tunnelId: string) => {
     try {
-      await invoke('stop_tunnel', { localPort });
-      setTunnels(prev => prev.filter(t => t.local_port !== localPort));
+      await invoke('stop_tunnel', { tunnelId });
+      setTunnels(prev => prev.filter(t => t.id !== tunnelId));
     } catch (err) {
       setError(String(err));
     }
@@ -206,19 +203,19 @@ export function TunnelDialog({ isOpen, onClose, serverId }: TunnelDialogProps) {
               <div className="space-y-2">
                 {tunnels.map((tunnel) => (
                   <div
-                    key={tunnel.local_port}
+                    key={tunnel.id}
                     className="flex items-center justify-between p-3 bg-term-bg border border-term-selection rounded"
                   >
                     <div className="flex items-center gap-2">
                       <Activity className="w-4 h-4 text-term-green" />
                       <span className="text-sm text-term-fg">
                         {tunnel.mode === 'local'
-                          ? `127.0.0.1:${tunnel.local_port}`
-                          : `SOCKS 127.0.0.1:${tunnel.local_port}`}
+                          ? `127.0.0.1:${tunnel.local_port} → ${tunnel.remote_host}:${tunnel.remote_port}`
+                          : `SOCKS5 127.0.0.1:${tunnel.local_port}`}
                       </span>
                     </div>
                     <button
-                      onClick={() => handleStopTunnel(tunnel.local_port)}
+                      onClick={() => handleStopTunnel(tunnel.id)}
                       className="p-1 rounded hover:bg-red-500/20 text-term-fg/60 hover:text-red-400"
                     >
                       <Trash2 className="w-4 h-4" />

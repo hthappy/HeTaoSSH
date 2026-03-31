@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Edit2, Save, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Edit2, Save, X, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useShortcutsStore } from '@/stores/shortcuts-store';
 
 export interface ShortcutConfig {
   id: string;
@@ -11,74 +12,96 @@ export interface ShortcutConfig {
 }
 
 interface ShortcutsSettingsProps {
-  shortcuts: ShortcutConfig[];
-  onSave: (shortcuts: ShortcutConfig[]) => void;
+  shortcuts?: ShortcutConfig[];
+  onSave?: (shortcuts: ShortcutConfig[]) => void;
 }
 
-export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps) {
+export function ShortcutsSettings({ shortcuts: propShortcuts, onSave }: ShortcutsSettingsProps) {
   const { t } = useTranslation();
+  const { shortcuts: storeShortcuts, saveShortcut, resetShortcut, resetAll } = useShortcutsStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempKeys, setTempKeys] = useState('');
-  const [localShortcuts, setLocalShortcuts] = useState<ShortcutConfig[]>([]);
 
-  useEffect(() => {
-    if (shortcuts && shortcuts.length > 0) {
-      setLocalShortcuts(shortcuts);
-    } else {
-      setLocalShortcuts(getDefaultShortcuts());
-    }
-  }, [shortcuts]);
-
-  const getDefaultShortcuts = (): ShortcutConfig[] => [
-    { id: 'new-connection', label: t('shortcuts.new_connection', 'New Connection'), defaultKeys: 'Ctrl+N', keys: 'Ctrl+N', category: 'global' },
-    { id: 'toggle-sidebar', label: t('shortcuts.toggle_sidebar', 'Toggle Sidebar'), defaultKeys: 'Ctrl+B', keys: 'Ctrl+B', category: 'global' },
-    { id: 'close-tab', label: t('shortcuts.close_tab', 'Close Tab'), defaultKeys: 'Ctrl+W', keys: 'Ctrl+W', category: 'global' },
-    { id: 'new-local-terminal', label: t('shortcuts.new_local_terminal', 'New Local Terminal'), defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
-    { id: 'settings', label: t('shortcuts.settings', 'Settings'), defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
-    { id: 'terminal-search', label: t('shortcuts.terminal_search', 'Terminal Search'), defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
-  ];
+  // Use store shortcuts or prop shortcuts
+  const shortcuts = propShortcuts || storeShortcuts;
 
   const parseKeys = (keys: string): string[] => {
     return keys.split('+').map(k => k.trim());
   };
 
-  const saveShortcut = (shortcut: ShortcutConfig) => {
-    const updated = localShortcuts.map(s =>
-      s.id === shortcut.id ? { ...s, keys: tempKeys } : s
-    );
-    setLocalShortcuts(updated);
-    onSave(updated);
+  const saveShortcutLocal = (shortcut: ShortcutConfig) => {
+    if (onSave) {
+      const updated = shortcuts.map(s =>
+        s.id === shortcut.id ? { ...s, keys: tempKeys } : s
+      );
+      onSave(updated as ShortcutConfig[]);
+    } else {
+      saveShortcut(shortcut.id, tempKeys);
+    }
     setEditingId(null);
     setTempKeys('');
   };
 
-  const resetShortcut = (shortcut: ShortcutConfig) => {
-    const updated = localShortcuts.map(s =>
-      s.id === shortcut.id ? { ...s, keys: s.defaultKeys } : s
-    );
-    setLocalShortcuts(updated);
-    onSave(updated);
+  const resetShortcutLocal = (shortcut: ShortcutConfig) => {
+    if (onSave) {
+      const updated = shortcuts.map(s =>
+        s.id === shortcut.id ? { ...s, keys: s.defaultKeys } : s
+      );
+      onSave(updated as ShortcutConfig[]);
+    } else {
+      resetShortcut(shortcut.id);
+    }
   };
+
+  // Handle keyboard input for shortcut recording
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!editingId) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const parts: string[] = [];
+    if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+    
+    // Add the key (but not modifier keys)
+    const key = e.key.toLowerCase();
+    if (!['control', 'shift', 'alt', 'meta'].includes(key)) {
+      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    }
+    
+    if (parts.length > 0) {
+      setTempKeys(parts.join('+'));
+    }
+  }, [editingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      window.addEventListener('keydown', handleKeyDown, true);
+      return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }
+  }, [editingId, handleKeyDown]);
 
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        {localShortcuts.map((shortcut) => (
+        {shortcuts.map((shortcut) => (
           <div
             key={shortcut.id}
             className="flex items-center justify-between p-2 bg-term-selection/10 rounded-sm border border-term-selection/30"
           >
             <div className="flex-1">
-              <div className="text-xs text-term-fg font-medium">{shortcut.label}</div>
+              <div className="text-xs text-term-fg font-medium">{t(shortcut.label)}</div>
             </div>
 
             {editingId === shortcut.id ? (
               <div className="flex items-center gap-1.5">
                 <div className="px-2 py-1 bg-term-selection/30 border border-term-blue rounded-sm text-[10px] text-term-fg min-w-[80px] text-center">
-                  {tempKeys || t('settings.shortcuts.press_keys', 'Press keys...')}
+                  {tempKeys || t('shortcuts.press_keys', 'Press keys...')}
                 </div>
                 <button
-                  onClick={() => saveShortcut(shortcut)}
+                  onClick={() => saveShortcutLocal(shortcut)}
                   className="p-1 rounded-sm hover:bg-term-blue/20 text-term-blue"
                   title={t('common.save', 'Save')}
                 >
@@ -119,11 +142,11 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
                 </button>
                 {shortcut.keys !== shortcut.defaultKeys && (
                   <button
-                    onClick={() => resetShortcut(shortcut)}
+                    onClick={() => resetShortcutLocal(shortcut)}
                     className="p-1 rounded-sm hover:bg-term-yellow/20 text-term-yellow"
                     title={t('common.reset', 'Reset')}
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
@@ -132,6 +155,17 @@ export function ShortcutsSettings({ shortcuts, onSave }: ShortcutsSettingsProps)
         ))}
       </div>
 
+      {/* Reset All Button */}
+      <div className="pt-2 border-t border-term-selection/30">
+        <button
+          onClick={() => {
+            resetAll();
+          }}
+          className="text-xs text-term-fg/50 hover:text-term-fg transition-colors"
+        >
+          {t('shortcuts.reset_all', 'Reset all shortcuts to defaults')}
+        </button>
+      </div>
     </div>
   );
 }

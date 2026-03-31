@@ -8,6 +8,7 @@ import { SettingsDialog, type AppSettings } from '@/components/SettingsDialog';
 import { ActivityBar, type Activity } from '@/components/ActivityBar';
 import { CommandSnippets } from '@/components/CommandSnippets';
 import { useSshStore } from '@/stores/ssh-store';
+import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 import { Terminal, X, FileCode2, Plus, Loader2 } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -27,6 +28,7 @@ import { ThemeSchema } from '@/types/theme';
 
 function App() {
   const { t, i18n } = useTranslation();
+  const { getKeys } = useShortcutsStore();
   const { 
     servers,
     connectServer, 
@@ -37,7 +39,10 @@ function App() {
     connections,
     openFileTab,
     sendToTerminal,
-    createLocalTerminal
+    createLocalTerminal,
+    splitPane,
+    closePane,
+    getActivePaneId
   } = useSshStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -144,8 +149,9 @@ function App() {
         return;
       }
 
-      // Ctrl+W: Close Tab - handle in capture phase
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
+      // Close Tab
+      const closeTabKeys = getKeys('close-tab');
+      if (closeTabKeys && matchesShortcut(e, closeTabKeys)) {
         e.preventDefault();
         e.stopPropagation();
         if (activeTabId) {
@@ -154,36 +160,88 @@ function App() {
         return;
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+      // Toggle Sidebar
+      const toggleSidebarKeys = getKeys('toggle-sidebar');
+      if (toggleSidebarKeys && matchesShortcut(e, toggleSidebarKeys)) {
         e.preventDefault();
         setIsSidebarOpen(prev => !prev);
         return;
       }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') {
+      // New Local Terminal
+      const newTerminalKeys = getKeys('new-local-terminal');
+      if (newTerminalKeys && matchesShortcut(e, newTerminalKeys)) {
         e.preventDefault();
         createLocalTerminal().catch(console.error);
         return;
       }
 
-      // Ctrl+N: New Connection
-      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+      // New Connection
+      const newConnectionKeys = getKeys('new-connection');
+      if (newConnectionKeys && matchesShortcut(e, newConnectionKeys)) {
         e.preventDefault();
         setActiveActivity('hosts');
         setIsSidebarOpen(true);
         setTimeout(() => serverListRef.current?.openAddDialog(), 50);
+        return;
       }
-      // Ctrl+,: Settings
-      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+
+      // Settings
+      const settingsKeys = getKeys('settings');
+      if (settingsKeys && matchesShortcut(e, settingsKeys)) {
         e.preventDefault();
         setShowSettings(true);
+        return;
+      }
+
+      // Terminal Search
+      const searchKeys = getKeys('terminal-search');
+      if (searchKeys && matchesShortcut(e, searchKeys)) {
+        e.preventDefault();
+        // Terminal search is handled by Terminal component
+        return;
+      }
+
+      // Split Horizontal
+      const splitHKeys = getKeys('split-horizontal');
+      if (splitHKeys && matchesShortcut(e, splitHKeys)) {
+        e.preventDefault();
+        if (activeTabId) {
+          splitPane(activeTabId, 'horizontal');
+        }
+        return;
+      }
+
+      // Split Vertical
+      const splitVKeys = getKeys('split-vertical');
+      if (splitVKeys && matchesShortcut(e, splitVKeys)) {
+        e.preventDefault();
+        if (activeTabId) {
+          splitPane(activeTabId, 'vertical');
+        }
+        return;
+      }
+
+      // Close Pane
+      const closePaneKeys = getKeys('close-pane');
+      if (closePaneKeys && matchesShortcut(e, closePaneKeys)) {
+        e.preventDefault();
+        if (activeTabId) {
+          const activePaneId = getActivePaneId(activeTabId);
+          if (activePaneId) {
+            closePane(activeTabId, activePaneId);
+          } else {
+            closeTab(activeTabId);
+          }
+        }
+        return;
       }
     };
 
     // Use capture phase to intercept before terminal handles it
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeTabId, closeTab]);
+  }, [activeTabId, closeTab, splitPane, closePane, getActivePaneId, getKeys, createLocalTerminal]);
 
   // Resolve current theme object
   const currentTheme = useMemo(() => {
@@ -291,6 +349,7 @@ function App() {
                     <div className="flex-1 overflow-auto">
                       {activeConnection.status === 'connected' ? (
                         <FileTree
+                          key={activeConnection.serverId}
                           tabId={activeConnection.isLocal 
                             ? `local-${activeConnection.serverId}` 
                             : `conn-${activeConnection.serverId}`}
@@ -432,6 +491,7 @@ function App() {
                   >
                     {tab.type === 'terminal' || tab.type === 'local' ? (
                       <TerminalArea
+                        tabId={tab.id}
                         serverId={tab.serverId!}
                         theme={xtermTheme}
                         fontSize={settings.terminalFontSize}
@@ -482,7 +542,6 @@ function App() {
           isConnected={!!activeConnection && activeConnection.status === 'connected'}
           serverName={displayServerName}
           tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
-          latency={0}
         />
 
           <UpdateDialog

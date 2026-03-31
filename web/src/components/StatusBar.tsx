@@ -5,7 +5,6 @@ import { Activity, Cpu, HardDrive, MemoryStick, Network, Wifi, Clock, Server, Lo
 import { useTranslation } from 'react-i18next';
 
 interface StatusBarProps {
-  latency?: number;
   serverName?: string;
   isConnected?: boolean;
   tabId?: string;
@@ -66,20 +65,20 @@ const ProgressBar = ({ value, colorClass }: { value: number, colorClass: string 
   </div>
 );
 
+function getLatencyColor(ms: number): string {
+  if (ms < 50) return 'text-[var(--term-green)]';
+  if (ms < 100) return 'text-[var(--term-yellow)]';
+  return 'text-[var(--term-red)]';
+}
+
 export function StatusBar({
-  latency = 45,
   serverName,
   isConnected = false,
   tabId,
 }: StatusBarProps) {
   const { t } = useTranslation();
 
-  const getLatencyColor = (ms: number) => {
-    if (ms < 50) return 'text-[var(--term-green)]';
-    if (ms < 100) return 'text-[var(--term-yellow)]';
-    return 'text-[var(--term-red)]';
-  };
-
+  const [latency, setLatency] = useState<number>(0);
   const [usage, setUsage] = useState<SystemUsage | null>(null);
   const [networkSpeed, setNetworkSpeed] = useState<{ rx: number; tx: number }>({ rx: 0, tx: 0 });
   const [usageError, setUsageError] = useState<string | null>(null);
@@ -117,7 +116,22 @@ export function StatusBar({
     lastUsageRef.current = null;
     setNetworkSpeed({ rx: 0, tx: 0 });
     setReconnectInfo(null);
+    setLatency(0);
   }, [tabId]);
+
+  // Fetch latency
+  const fetchLatency = useCallback(async () => {
+    if (!tabId || !isConnected) return;
+    
+    try {
+      const ms = await invoke<number>('get_latency', { tabId });
+      if (currentTabIdRef.current === tabId) {
+        setLatency(ms);
+      }
+    } catch {
+      // Ignore latency errors - not critical
+    }
+  }, [isConnected, tabId]);
 
   const fetchUsage = useCallback(async () => {
     if (!tabId || !isConnected) return;
@@ -159,12 +173,18 @@ export function StatusBar({
       lastUsageRef.current = null;
       setNetworkSpeed({ rx: 0, tx: 0 });
       setReconnectInfo(null);
+      setLatency(0);
       return;
     }
     fetchUsage();
-    const interval = window.setInterval(fetchUsage, 3000);
-    return () => window.clearInterval(interval);
-  }, [fetchUsage, isConnected, tabId]);
+    fetchLatency();
+    const usageInterval = window.setInterval(fetchUsage, 3000);
+    const latencyInterval = window.setInterval(fetchLatency, 5000);
+    return () => {
+      window.clearInterval(usageInterval);
+      window.clearInterval(latencyInterval);
+    };
+  }, [fetchUsage, fetchLatency, isConnected, tabId]);
 
   const rootDisk = useMemo(() => {
     if (!usage?.disk_usage?.length) return null;

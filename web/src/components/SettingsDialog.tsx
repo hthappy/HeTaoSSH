@@ -7,7 +7,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { presets } from '../themes/presets';
 import { ThemeSchema } from '../types/theme';
-import { ShortcutsSettings, type ShortcutConfig } from './ShortcutsSettings';
+import { ShortcutsSettings } from './ShortcutsSettings';
 import { cn } from '@/lib/utils';
 
 export interface AppSettings {
@@ -20,7 +20,6 @@ export interface AppSettings {
   editorMinimap: boolean;
   editorWordWrap: boolean;
   rightClickBehavior: 'menu' | 'paste';
-  shortcuts?: ShortcutConfig[];
 }
 
 interface SettingsDialogProps {
@@ -465,13 +464,10 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                 <div className="p-1.5 bg-term-selection/30 rounded-md">
                   <Keyboard className="w-4 h-4 text-term-fg/70" />
                 </div>
-                <label className="text-sm font-medium text-term-fg">{t('settings.shortcuts.title', 'Keyboard Shortcuts')}</label>
+                <label className="text-sm font-medium text-term-fg">{t('shortcuts.title', 'Keyboard Shortcuts')}</label>
               </div>
               <div className="mt-3 pl-7">
-                <ShortcutsSettings
-                  shortcuts={localSettings.shortcuts || []}
-                  onSave={(shortcuts) => setLocalSettings({ ...localSettings, shortcuts })}
-                />
+                <ShortcutsSettings />
               </div>
             </div>
           </div>

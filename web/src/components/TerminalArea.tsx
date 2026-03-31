@@ -1,91 +1,96 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ITheme } from 'xterm';
 import { Terminal as TerminalComponent, type TerminalHandle } from '@/components/Terminal';
-import { useSshStore } from '@/stores/ssh-store';
+import { SplitPane } from '@/components/SplitPane';
+import { useSshStore, type PaneGroup, type TerminalPane } from '@/stores/ssh-store';
 import { useTranslation } from 'react-i18next';
 
-interface TerminalAreaProps {
-  serverId: number;
+interface SingleTerminalProps {
+  pane: TerminalPane;
   theme?: ITheme;
   fontSize?: number;
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
-  isActive?: boolean;
+  isPaneActive: boolean;
+  onPaneClick: () => void;
 }
 
-export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClickBehavior, isActive = false }: TerminalAreaProps) {
+// Single terminal instance component
+const SingleTerminal = memo(function SingleTerminal({
+  pane,
+  theme,
+  fontSize,
+  lineHeight,
+  rightClickBehavior,
+  isPaneActive,
+  onPaneClick,
+}: SingleTerminalProps) {
   const { t } = useTranslation();
-  const { connections, sendToTerminal } = useSshStore();
+  const { connections, sendToTerminalBackend } = useSshStore();
   const terminalRef = useRef<TerminalHandle | null>(null);
   const localTermCreated = useRef(false);
 
+  const serverId = pane.serverId;
+  const backendId = pane.backendId;
+  const isLocal = pane.isLocal;
   const activeConnection = connections.find((c) => c.serverId === serverId);
-  const isLocal = activeConnection?.isLocal;
   const connectionStatus = activeConnection?.status;
-  const tabId = isLocal ? serverId.toString() : `conn-${serverId}`;
 
   const handleTerminalData = useCallback((data: string) => {
-    sendToTerminal(serverId, data);
-  }, [serverId, sendToTerminal]);
+    // Only send data if this pane is active
+    if (isPaneActive) {
+      sendToTerminalBackend(backendId, !!isLocal, data);
+    }
+  }, [backendId, isLocal, sendToTerminalBackend, isPaneActive, pane.id]);
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
-    // Only resize if dimensions are valid
-    if (cols <= 0 || rows <= 0) {
-      return;
-    }
+    if (cols <= 0 || rows <= 0) return;
     
     if (isLocal) {
       if (!localTermCreated.current) {
         localTermCreated.current = true;
-        invoke('open_local_terminal', { id: serverId.toString(), rows, cols })
+        invoke('open_local_terminal', { id: backendId, rows, cols })
           .catch(err => console.error('Failed to start local terminal:', err));
       } else {
-        invoke('local_term_resize', { id: serverId.toString(), cols, rows })
+        invoke('local_term_resize', { id: backendId, cols, rows })
           .catch(err => console.error('Failed to resize terminal:', err));
       }
     } else {
-      // For SSH, ensure tabId is correct format
-      invoke('ssh_resize', { tabId, cols, rows })
+      invoke('ssh_resize', { tabId: backendId, cols, rows })
         .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
-  }, [tabId, isLocal, serverId]);
+  }, [backendId, isLocal]);
 
   const handleTerminalEnter = useCallback(() => {
-    // Dispatch event for FileTree to pick up
-    // We use window dispatch for simplicity across components
     window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 
-        detail: { tabId } 
+      detail: { tabId: backendId } 
     }));
-  }, [tabId]);
+  }, [backendId]);
 
   useEffect(() => {
-    if (!activeConnection || activeConnection.status !== 'connected') {
-      return;
-    }
+    if (!activeConnection || activeConnection.status !== 'connected') return;
     
     let unlisten: (() => void) | undefined;
     let isMounted = true;
 
     const setupListener = async () => {
-      const eventName = isLocal ? `terminal-data-${serverId}` : `ssh-data-${tabId}`;
+      const eventName = isLocal ? `terminal-data-${backendId}` : `ssh-data-${backendId}`;
       
       const unlistenFn = await listen<number[]>(eventName, (event) => {
         if (terminalRef.current) {
-          // Always write directly, don't buffer
           terminalRef.current.write(new Uint8Array(event.payload));
         }
       });
       
-      // Also listen for exit if local
       let unlistenExit: (() => void) | undefined;
       if (isLocal) {
-          unlistenExit = await listen(`terminal-exit-${serverId}`, () => {
-              if (terminalRef.current) {
-                  terminalRef.current.write('\r\n[Process exited]\r\n');
-              }
-          });
+        unlistenExit = await listen(`terminal-exit-${backendId}`, () => {
+          if (terminalRef.current) {
+            terminalRef.current.write('\r\n[Process exited]\r\n');
+          }
+        });
       }
 
       if (!isMounted) {
@@ -93,8 +98,8 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
         if (unlistenExit) unlistenExit();
       } else {
         unlisten = () => {
-            unlistenFn();
-            if (unlistenExit) unlistenExit();
+          unlistenFn();
+          if (unlistenExit) unlistenExit();
         };
       }
     };
@@ -103,20 +108,167 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
 
     return () => {
       isMounted = false;
-      if (unlisten) {
-        unlisten();
-      }
-      // CRITICAL: Only close backend on actual unmount, NOT on tab switch
-      // Don't close based on isActive - that would kill the connection
+      if (unlisten) unlisten();
     };
-  }, [serverId, isLocal, tabId, activeConnection, connectionStatus]);  // Removed isActive from deps
+  }, [backendId, isLocal, activeConnection, connectionStatus]);
 
-  // Focus terminal when tab becomes active
   useEffect(() => {
-    if (!isActive || !terminalRef.current) return;
+    if (!isPaneActive || !terminalRef.current) return;
     const timer = setTimeout(() => terminalRef.current!.focus(), 50);
     return () => clearTimeout(timer);
-  }, [isActive, serverId]);
+  }, [isPaneActive, backendId]);
+
+  if (!activeConnection) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-term-bg">
+        <div className="text-center text-term-fg opacity-50">
+          <p className="text-sm">{t('terminal.disconnected')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="w-full h-full flex flex-col overflow-hidden bg-term-bg relative"
+      style={{ backgroundColor: theme?.background }}
+      onClick={onPaneClick}
+    >
+      {activeConnection.status === 'connecting' ? (
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-term-fg/30 border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
+            <p>{t('terminal.connecting')}</p>
+          </div>
+        </div>
+      ) : activeConnection.status === 'connected' ? (
+        <div className="flex-1 relative w-full h-full overflow-hidden">
+          <TerminalComponent
+            ref={terminalRef}
+            className="absolute inset-0"
+            onData={handleTerminalData}
+            onResize={handleTerminalResize}
+            onEnter={handleTerminalEnter}
+            disconnected={activeConnection?.status !== 'connected'}
+            theme={theme}
+            fontSize={fontSize}
+            lineHeight={lineHeight}
+            rightClickBehavior={rightClickBehavior}
+            isActive={isPaneActive}
+            serverId={serverId}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
+          <div className="text-center">
+            <p className="text-lg mb-2 text-term-red">{t('server.test_failed')}</p>
+            <p className="text-sm">{activeConnection.error}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// Recursive pane renderer
+interface PaneRendererProps {
+  group: PaneGroup;
+  theme?: ITheme;
+  fontSize?: number;
+  lineHeight?: number;
+  rightClickBehavior?: 'menu' | 'paste';
+  activePaneId: string | null;
+  onPaneClick: (paneId: string) => void;
+}
+
+function PaneRenderer({ group, theme, fontSize, lineHeight, rightClickBehavior, activePaneId, onPaneClick }: PaneRendererProps) {
+  const children = group.panes.map((pane) => {
+    if ('serverId' in pane) {
+      // TerminalPane
+      return (
+        <SingleTerminal
+          key={pane.id}
+          pane={pane}
+          theme={theme}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          rightClickBehavior={rightClickBehavior}
+          isPaneActive={activePaneId === pane.id}
+          onPaneClick={() => onPaneClick(pane.id)}
+        />
+      );
+    } else {
+      // Nested PaneGroup
+      return (
+        <PaneRenderer
+          key={pane.id}
+          group={pane}
+          theme={theme}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          rightClickBehavior={rightClickBehavior}
+          activePaneId={activePaneId}
+          onPaneClick={onPaneClick}
+        />
+      );
+    }
+  });
+
+  return (
+    <SplitPane direction={group.direction}>
+      {children}
+    </SplitPane>
+  );
+}
+
+interface TerminalAreaProps {
+  tabId: string;
+  serverId: number;
+  theme?: ITheme;
+  fontSize?: number;
+  lineHeight?: number;
+  rightClickBehavior?: 'menu' | 'paste';
+  isActive?: boolean;
+}
+
+export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rightClickBehavior, isActive = false }: TerminalAreaProps) {
+  const { t } = useTranslation();
+  const { connections, paneGroups, setActivePane, getActivePaneId } = useSshStore();
+  
+  const paneGroup = paneGroups[tabId];
+  const activePaneId = getActivePaneId(tabId);
+  
+  const activeConnection = connections.find((c) => c.serverId === serverId);
+  const isLocal = activeConnection?.isLocal;
+
+  const handlePaneClick = useCallback((paneId: string) => {
+    setActivePane(tabId, paneId);
+  }, [tabId, setActivePane]);
+
+  // If we have a pane group, render split panes
+  if (paneGroup) {
+    return (
+      <div className="w-full h-full flex flex-col overflow-hidden bg-term-bg">
+        <PaneRenderer
+          group={paneGroup}
+          theme={theme}
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          rightClickBehavior={rightClickBehavior}
+          activePaneId={activePaneId}
+          onPaneClick={handlePaneClick}
+        />
+      </div>
+    );
+  }
+
+  // Single pane (no split)
+  const singlePane: TerminalPane = {
+    id: `pane-single-${serverId}`,
+    serverId,
+    isLocal,
+    backendId: isLocal ? serverId.toString() : `conn-${serverId}`
+  };
 
   if (!activeConnection) {
     return (
@@ -130,38 +282,14 @@ export function TerminalArea({ serverId, theme, fontSize, lineHeight, rightClick
   }
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden bg-term-bg" style={{ backgroundColor: theme?.background }}>
-      {activeConnection.status === 'connecting' ? (
-        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
-          <div className="text-center">
-            <div className="w-8 h-8 border-4 border-term-fg/30 border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
-            <p>{t('terminal.connecting')}</p>
-          </div>
-        </div>
-      ) : activeConnection.status === 'connected' ? (
-        <div className="flex-1 relative w-full h-full overflow-hidden" id={`terminal-container-${serverId}`}>
-          <TerminalComponent
-            ref={terminalRef}
-            className="absolute inset-0"
-            onData={handleTerminalData}
-            onResize={handleTerminalResize}
-            onEnter={handleTerminalEnter}
-            disconnected={activeConnection?.status !== 'connected'}
-            theme={theme}
-            fontSize={fontSize}
-            lineHeight={lineHeight}
-            rightClickBehavior={rightClickBehavior}
-            isActive={isActive}
-          />
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
-          <div className="text-center">
-            <p className="text-lg mb-2 text-term-red">{t('server.test_failed')}</p>
-            <p>{activeConnection.error}</p>
-          </div>
-        </div>
-      )}
-    </div>
+    <SingleTerminal
+      pane={singlePane}
+      theme={theme}
+      fontSize={fontSize}
+      lineHeight={lineHeight}
+      rightClickBehavior={rightClickBehavior}
+      isPaneActive={isActive}
+      onPaneClick={() => {}}
+    />
   );
 }
