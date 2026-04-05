@@ -55,7 +55,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   const [showSearch, setShowSearch] = useState(false);
   // Use refs instead of state to avoid re-renders on every keystroke
   const currentCommandRef = useRef('');
-  const historyIndexRef = useRef<number | null>(null);
   const commandHistoryRef = useRef<{ command: string; timestamp: number }[]>([]);
 
   // Update refs
@@ -274,14 +273,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Handle data (user input)
     const onDataDisposable = term.onData((data) => {
       if (!disconnectedRef.current && onDataRef.current) {
+        // Track current command for history saving on Enter
         if (data === '\r' && serverId !== undefined) {
           if (currentCommandRef.current.trim()) {
             addToHistory(serverId, currentCommandRef.current);
             commandHistoryRef.current = getHistory(serverId);
           }
           currentCommandRef.current = '';
-          historyIndexRef.current = null;
-        } else if (data !== '\x7f' && data !== '\b') {
+        } else if (data !== '\x7f' && data !== '\b' && !data.startsWith('\x1b')) {
+          // Only track printable chars, skip escape sequences (arrow keys etc.)
           currentCommandRef.current += data;
         }
         onDataRef.current(data);
@@ -292,34 +292,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       if (domEvent.keyCode === 13 && onEnterRef.current) {
         onEnterRef.current();
       }
-      
-      // Up arrow - navigate history backwards (older commands)
-      if (domEvent.keyCode === 38 && serverId !== undefined && onDataRef.current) {
-        domEvent.preventDefault();
-        const history = commandHistoryRef.current;
-        if (history.length > 0) {
-          const newIndex = historyIndexRef.current === null ? 0 : Math.min(historyIndexRef.current + 1, history.length - 1);
-          historyIndexRef.current = newIndex;
-          const cmd = history[newIndex]?.command || '';
-          onDataRef.current('\x15' + cmd);
-        }
-      }
-      
-      // Down arrow - navigate history forwards (newer commands)
-      if (domEvent.keyCode === 40 && serverId !== undefined && onDataRef.current) {
-        domEvent.preventDefault();
-        const history = commandHistoryRef.current;
-        if (historyIndexRef.current !== null && history.length > 0) {
-          const newIndex = Math.max(historyIndexRef.current - 1, -1);
-          historyIndexRef.current = newIndex;
-          if (newIndex === -1) {
-            onDataRef.current('\x15');
-          } else {
-            const cmd = history[newIndex]?.command || '';
-            onDataRef.current('\x15' + cmd);
-          }
-        }
-      }
+      // History navigation is handled by the shell (bash/zsh) via arrow key escape sequences.
+      // Do NOT intercept arrow keys here - the shell receives \x1b[A / \x1b[B and handles history itself.
     });
 
     // Handle resize with debounce/raf to prevent "dimensions undefined" errors

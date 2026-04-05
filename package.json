@@ -1,6 +1,6 @@
 {
   "name": "HeTaoSSH",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "description": "A modern, high-performance SSH client & SFTP tool built with Tauri 2.0, Rust, and React.",
   "private": true,
   "workspaces": [
