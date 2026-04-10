@@ -1,11 +1,11 @@
 {
-  "version": "1.1.13",
-  "notes": "See https://github.com/hthappy/HeTaoSSH/releases/tag/v1.1.13 for details.",
-  "pub_date": "2026-04-10T04:21:04.951Z",
+  "version": "1.1.14",
+  "notes": "See https://github.com/hthappy/HeTaoSSH/releases/tag/v1.1.14 for details.",
+  "pub_date": "2026-04-10T06:32:34.141Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTcndVQ3BNdlpFOHNXcFR5SmtzUlVubnQvdzNDbmV3TjZLc2M0dklNT2M1NkQ3d01DWnN1aVdydkZ3TVhGQVNlOWdhc3RISmVqNU44T2FDelc0N1dLRjV2dE5pczZzaXdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1Nzk0ODY0CWZpbGU6SGVUYW9TU0hfMS4xLjEzX3g2NC1zZXR1cC5leGUKU3RhdSthODZONUkzY2s4T2Y0N2V6WDZrR1F1bTRLRVlDdWRkQ3pRZHpJVmNZS2NyQzJObkVSOFhnVHFVWmdoZVZrOFR6Y3V4aWxxUnkzTDgxSUdhQ0E9PQo=",
-      "url": "https://github.com/hthappy/HeTaoSSH/releases/download/v1.1.13/HeTaoSSH_1.1.13_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTcndVQ3BNdlpFOHZveFJTNWU3aEZMR1V6ZWlDUU9CcS9nQ2crcUptNTRZc0lWemFKdW5GWFVqaEN5RloybC9mTUJlSFFndmRTTnIwLzBudjdNK1ZkRnd2bUVuUndNMmdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODAyNzUzCWZpbGU6SGVUYW9TU0hfMS4xLjE0X3g2NC1zZXR1cC5leGUKU1M5SjFIby9PTVJweng3SVplTFF4WGlZekRjbTdDRXJRcTJ2akpFQ0Z3K3dIZVBHSXQ4SWt3ZmdNL1FnK0t1czdCRk9RNzZ4V0U2QzI3RFgxeVlOQXc9PQo=",
+      "url": "https://github.com/hthappy/HeTaoSSH/releases/download/v1.1.14/HeTaoSSH_1.1.14_x64-setup.exe"
     }
   }
 }

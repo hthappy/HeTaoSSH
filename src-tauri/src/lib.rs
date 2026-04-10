@@ -11,6 +11,7 @@ pub mod security;
 pub mod snippets;
 pub mod ssh;
 pub mod theme;
+pub mod window_state;
 
 pub use commands::*;
 pub use config::ConfigManager;
@@ -18,3 +19,4 @@ pub use error::{Result, SshError};
 pub use monitor::SystemUsage;
 pub use security::{contains_traversal_pattern, validate_and_normalize_path};
 pub use snippets::{CommandSnippet, SnippetManager};
+pub use window_state::{reset_window_state, restore_window_state, save_window_state};

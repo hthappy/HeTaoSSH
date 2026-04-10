@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, ReactNode } from 'react';
+import { useState, useCallback, useRef, useEffect, ReactNode, Fragment } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface SplitPaneProps {
@@ -94,26 +94,19 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
       style={{ backgroundColor: 'var(--term-bg)' }}
     >
       {children.map((child, index) => (
-        <div 
-          key={`pane-wrapper-${index}`}
-          className={cn(
-            'flex',
-            isHorizontal ? 'flex-row' : 'flex-col'
-          )}
-          style={{
-            flexBasis: sizes[index] ? `${sizes[index]}%` : undefined,
-            flexGrow: 0,
-            flexShrink: 0,
-            backgroundColor: 'var(--term-bg)'
-          }}
-        >
-          {/* Pane */}
+        <Fragment key={index}>
+          {/* Pane - apply flex styles directly to child wrapper */}
           <div
             className={cn(
               'flex-1 overflow-hidden h-full w-full',
               isDragging && dragIndex !== index && dragIndex !== index - 1 && 'pointer-events-none'
             )}
-            style={{ backgroundColor: 'var(--term-bg)' }}
+            style={{
+              flexBasis: sizes[index] ? `${sizes[index]}%` : undefined,
+              flexGrow: 0,
+              flexShrink: 0,
+              backgroundColor: 'var(--term-bg)'
+            }}
           >
             {child}
           </div>
@@ -151,7 +144,7 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
               </div>
             </div>
           )}
-        </div>
+        </Fragment>
       ))}
     </div>
   );

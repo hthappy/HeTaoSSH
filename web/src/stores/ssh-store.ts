@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import type { ServerConfig } from '@/types/config'
 import i18n from '@/i18n'
 import { IPC_DEBOUNCE_MS } from '@/constants/ipc'
+import { terminalPool } from '@/lib/terminalPool'
 
 // Input buffering to prevent IPC flooding and key loss
 // Accumulates keystrokes for a short window before sending
@@ -344,6 +345,26 @@ export const useSshStore = create<SshState>((set, get) => ({
   closeTab: (tabId: string) => {
     const tab = get().workspaceTabs.find(t => t.id === tabId);
     
+    // Dispose all terminal instances for this tab
+    const paneGroup = get().paneGroups[tabId];
+    if (paneGroup) {
+      const disposePanes = (group: PaneGroup) => {
+        for (const pane of group.panes) {
+          if ('serverId' in pane) {
+            // Dispose terminal instance from pool
+            terminalPool.dispose(pane.id);
+          } else if ('direction' in pane) {
+            disposePanes(pane);
+          }
+        }
+      };
+      disposePanes(paneGroup);
+    } else if (tab) {
+      // Single pane (no split) - dispose using the single pane ID
+      const singlePaneId = `pane-single-${tab.serverId}`;
+      terminalPool.dispose(singlePaneId);
+    }
+    
     // If closing terminal tab or local terminal tab, disconnect
     if (tab?.type === 'terminal' || tab?.type === 'local') {
       const serverId = tab.serverId!;
@@ -455,7 +476,8 @@ export const useSshStore = create<SshState>((set, get) => ({
     
     if (!existingGroup) {
       // Create initial group with the existing terminal and new one
-      const existingPaneId = `pane-${Date.now() - 1}`;
+      // CRITICAL: Use the same paneId as single pane mode to preserve terminal instance
+      const existingPaneId = `pane-single-${tab.serverId}`;
       const existingPane: TerminalPane = {
         id: existingPaneId,
         serverId: tab.serverId!,
@@ -522,6 +544,10 @@ export const useSshStore = create<SshState>((set, get) => ({
           // Found the pane to disconnect
           const backendId = (pane as TerminalPane).backendId;
           const isPrimary = backendId === `conn-${tab.serverId}` || backendId === tab.serverId!.toString();
+          
+          // Dispose terminal instance from pool
+          terminalPool.dispose(paneId);
+          
           // Don't kill primary connection via closePane, handled by closeTab
           if (!isPrimary && tab.type !== 'local') {
              invoke('ssh_disconnect', { tabId: backendId }).catch(console.error);

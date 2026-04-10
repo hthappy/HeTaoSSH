@@ -130,8 +130,11 @@ const SingleTerminal = memo(function SingleTerminal({
 
   return (
     <div 
-      className="w-full h-full flex flex-col overflow-hidden relative"
-      style={{ backgroundColor: 'var(--term-bg)' }}
+      className="w-full h-full flex flex-col overflow-hidden relative transition-opacity duration-200"
+      style={{ 
+        backgroundColor: 'var(--term-bg)',
+        opacity: isPaneActive ? 1 : 0.6,
+      }}
       onClick={onPaneClick}
     >
       {activeConnection.status === 'connecting' ? (
@@ -146,6 +149,7 @@ const SingleTerminal = memo(function SingleTerminal({
           <TerminalComponent
             ref={terminalRef}
             className="absolute inset-0"
+            paneId={pane.id}
             onData={handleTerminalData}
             onResize={handleTerminalResize}
             onEnter={handleTerminalEnter}

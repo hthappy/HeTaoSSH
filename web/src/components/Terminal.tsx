@@ -1,7 +1,8 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
-import { Terminal as XTerm, ITheme } from 'xterm';
+import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
+import { ITheme } from 'xterm';
 import { useTranslation } from 'react-i18next';
 import { Clipboard, Copy } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -11,8 +12,8 @@ import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
 import { TerminalSearchBar } from './TerminalSearchBar';
 import { addToHistory, getHistory } from '@/lib/commandHistory';
 import { useToast } from '@/components/Toast';
-import { useTerminalFit } from '@/hooks/useTerminalFit';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
+import { terminalPool } from '@/lib/terminalPool';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
@@ -23,6 +24,7 @@ export type TerminalHandle = {
 
 interface TerminalProps {
   className?: string;
+  paneId: string; // REQUIRED for terminalPool lookup
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
   onEnter?: () => void;
@@ -38,21 +40,28 @@ interface TerminalProps {
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   function Terminal(
-    { className, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
+    { className, paneId, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
     ref
   ) {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const { xtermRef, fitAddonRef } = useTerminalFit();
+  
+  // CRITICAL: This is just a placeholder div, NOT the actual terminal container
+  const placeholderRef = useRef<HTMLDivElement>(null);
+  
+  // Store refs to the terminal instance from the pool
+  const termRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  
   const onEnterRef = useRef(onEnter);
   const onDataRef = useRef(onData);
   const onResizeRef = useRef(onResize);
   const disconnectedRef = useRef(disconnected);
-  const initializedRef = useRef(false);
+  
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showSearch, setShowSearch] = useState(false);
+  
   // Use refs instead of state to avoid re-renders on every keystroke
   const currentCommandRef = useRef('');
   const commandHistoryRef = useRef<{ command: string; timestamp: number }[]>([]);
@@ -94,37 +103,34 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     write: (data: string | Uint8Array) => {
-      if (xtermRef.current) {
-        xtermRef.current.write(data);
+      if (termRef.current) {
+        termRef.current.write(data);
       }
     },
     focus: () => {
-      if (xtermRef.current) {
-        xtermRef.current.focus();
+      if (termRef.current) {
+        termRef.current.focus();
       }
     },
     resize: () => {
       try {
-        const element = xtermRef.current?.element;
-        // CRITICAL: Check clientWidth to prevent 0x0 fit when hidden
+        const element = termRef.current?.element;
         if (fitAddonRef.current && element && element.clientWidth > 0 && element.clientHeight > 0) {
-          const currentCols = xtermRef.current?.cols;
-          const currentRows = xtermRef.current?.rows;
+          const currentCols = termRef.current?.cols;
+          const currentRows = termRef.current?.rows;
           fitAddonRef.current.fit();
           
-          // CRITICAL: Only notify backend if dimensions are non-zero
-          if (onResizeRef.current && xtermRef.current) {
-              const newCols = xtermRef.current.cols;
-              const newRows = xtermRef.current.rows;
+          if (onResizeRef.current && termRef.current) {
+              const newCols = termRef.current.cols;
+              const newRows = termRef.current.rows;
               if (newCols > 0 && newRows > 0 && (newCols !== currentCols || newRows !== currentRows)) {
                   onResizeRef.current(newCols, newRows);
               }
           }
           
-          // Force scroll and refresh
-          xtermRef.current?.scrollToBottom();
-          const rows = xtermRef.current?.rows || 24;
-          xtermRef.current?.refresh(0, rows - 1);
+          termRef.current?.scrollToBottom();
+          const rows = termRef.current?.rows || 24;
+          termRef.current?.refresh(0, rows - 1);
         }
       } catch (e) {
         console.warn('Resize fit failed:', e);
@@ -138,41 +144,29 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   }));
 
   // Force terminal redraw when tab becomes active
-  // CRITICAL FIX: DOM renderer needs special handling for visibility changes
   useEffect(() => {
-    if (!isActive || !xtermRef.current || !fitAddonRef.current) return;
+    if (!isActive || !termRef.current || !fitAddonRef.current) return;
     
-    const term = xtermRef.current;
+    const term = termRef.current;
     const fitAddon = fitAddonRef.current;
     
-    // Wait for DOM to be fully visible before any operations
     const forceRedraw = () => {
       if (!term || !fitAddon) return;
       
       const element = term.element;
       if (!element || element.clientWidth === 0 || element.clientHeight === 0) {
-        // Retry after a short delay
         setTimeout(forceRedraw, 50);
         return;
       }
       
       try {
-        // Step 1: Force a write to wake up the renderer
-        // This is critical for DOM renderer - it needs a write to initialize properly
         term.write('');
         
-        // Step 2: Force fit after write
         setTimeout(() => {
           try {
             fitAddon.fit();
-            
-            // Step 3: Force full refresh
             term.refresh(0, term.rows - 1);
-            
-            // Step 4: Scroll to bottom
             term.scrollToBottom();
-            
-            // Step 5: Focus terminal
             term.focus();
           } catch (e) {
             console.error('[Terminal] Fit/refresh failed:', e);
@@ -184,7 +178,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       }
     };
     
-    // Use RAF to ensure DOM is ready, then execute
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         forceRedraw();
@@ -192,115 +185,68 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     });
   }, [isActive]);
 
-  // Initial terminal setup
+  // DOM REPARENTING: Attach/detach terminal container
   useEffect(() => {
-    if (!terminalRef.current) return;
-    if (initializedRef.current) return;
+    if (!placeholderRef.current) return;
 
-    initializedRef.current = true;
-    let isUnmounted = false;
-
-    // Initialize xterm
-    const term = new XTerm({
-      cursorBlink: true,
-      cursorStyle: 'block',
-      fontSize,
-      lineHeight,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      scrollback: 10000,
-      tabStopWidth: 4,
-      drawBoldTextInBrightColors: true,
-      allowProposedApi: true,
-    });
-
-    // Add fit addon
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    fitAddonRef.current = fitAddon;
-
-    const searchAddon = new SearchAddon();
-    term.loadAddon(searchAddon);
-    searchAddonRef.current = searchAddon;
-
-    // Open terminal
-    term.open(terminalRef.current);
-    xtermRef.current = term;
+    console.log('[Terminal] DOM Reparenting: Attaching terminal for pane:', paneId);
     
-    // CRITICAL: Remove hardcoded background-color from xterm.js internal elements
-    // xterm.js sets inline styles that override CSS variables
-    const removeInlineBackgrounds = () => {
-      const element = term.element;
-      if (element) {
-        const viewport = element.querySelector('.xterm-viewport') as HTMLElement;
-        if (viewport) {
-          viewport.style.backgroundColor = '';
-        }
-        const screen = element.querySelector('.xterm-screen') as HTMLElement;
-        if (screen) {
-          screen.style.backgroundColor = '';
-        }
-      }
-    };
+    // Get or create terminal instance from pool
+    const instance = terminalPool.getOrCreate(paneId, { fontSize, lineHeight });
     
-    // CRITICAL: Wait for DOM renderer to be fully initialized before any operations
-    // DOM renderer needs time to set up its internal state
-    const waitForRenderer = new Promise<void>((resolve) => {
-      // Check if renderer is ready
-      const checkRenderer = () => {
-        try {
-          // Try to access renderer - if it throws, it's not ready
-          const element = term.element;
-          if (element && element.querySelector('.xterm-rows')) {
-            // DOM renderer is ready
-            removeInlineBackgrounds(); // Remove inline backgrounds after renderer is ready
-            resolve();
-          } else {
-            // Not ready yet, check again
-            setTimeout(checkRenderer, 10);
+    // Store refs
+    termRef.current = instance.term;
+    fitAddonRef.current = instance.fitAddon;
+    searchAddonRef.current = instance.searchAddon;
+    
+    // CRITICAL: Use native DOM API to attach the container
+    placeholderRef.current.appendChild(instance.container);
+    
+    // Setup event handlers
+    const onDataDisposable = instance.term.onData((data) => {
+      if (!disconnectedRef.current && onDataRef.current) {
+        if (data === '\r' && serverId !== undefined) {
+          if (currentCommandRef.current.trim()) {
+            addToHistory(serverId, currentCommandRef.current);
+            commandHistoryRef.current = getHistory(serverId);
           }
-        } catch (e) {
-          // Error accessing renderer, try again
-          setTimeout(checkRenderer, 10);
+          currentCommandRef.current = '';
+        } else if (data !== '\x7f' && data !== '\b' && !data.startsWith('\x1b')) {
+          currentCommandRef.current += data;
         }
-      };
-      checkRenderer();
-    });
-    
-    // Wait for renderer before continuing with fit operations
-    waitForRenderer.then(() => {
-      // Renderer is ready, safe to proceed with fit
+        onDataRef.current(data);
+      }
     });
 
-    // Safe fit helper
+    const onKeyDisposable = instance.term.onKey(({ domEvent }) => {
+      if (domEvent.keyCode === 13 && onEnterRef.current) {
+        onEnterRef.current();
+      }
+    });
+
+    // Fit terminal after attachment
     const fitTerminal = () => {
-      if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
+      if (!termRef.current || !fitAddonRef.current) return;
       
-      // CRITICAL: Check if DOM renderer is ready before any fit operations
-      const element = xtermRef.current.element;
+      const element = termRef.current.element;
       if (!element || !element.querySelector('.xterm-rows')) {
-        // DOM renderer not ready yet, retry after a short delay
         setTimeout(fitTerminal, 50);
         return;
       }
       
-      // Use requestAnimationFrame to avoid layout thrashing and ensure DOM is ready
       requestAnimationFrame(() => {
-        if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
+        if (!termRef.current || !fitAddonRef.current) return;
         try {
-          const element = xtermRef.current.element;
-          // Check if element is visible and has dimensions
-          // Only fit if the element is visible in the DOM
+          const element = termRef.current.element;
           if (element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
-            // Check proposed dimensions first
             const dims = fitAddonRef.current.proposeDimensions();
             if (dims && dims.cols > 0 && dims.rows > 0) {
-                const currentCols = xtermRef.current.cols;
-                const currentRows = xtermRef.current.rows;
+                const currentCols = termRef.current.cols;
+                const currentRows = termRef.current.rows;
                 fitAddonRef.current.fit();
                 
-                // Only notify backend if dimensions actually changed
-                if (onResizeRef.current && (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows)) {
-                    onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+                if (onResizeRef.current && (termRef.current.cols !== currentCols || termRef.current.rows !== currentRows)) {
+                    onResizeRef.current(termRef.current.cols, termRef.current.rows);
                 }
             }
           }
@@ -310,105 +256,69 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       });
     };
 
-    // Fit terminal after a delay to ensure DOM dimensions are computed
     const initialFitTimeout = setTimeout(() => {
-      if (isUnmounted) return;
       fitTerminal();
-      // Wait for fit to complete (2 frames), then send initial size
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (!isUnmounted && xtermRef.current && onResizeRef.current) {
-            onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+          if (termRef.current && onResizeRef.current) {
+            onResizeRef.current(termRef.current.cols, termRef.current.rows);
           }
         });
       });
     }, 100);
 
-    // Handle data (user input)
-    const onDataDisposable = term.onData((data) => {
-      if (!disconnectedRef.current && onDataRef.current) {
-        // Track current command for history saving on Enter
-        if (data === '\r' && serverId !== undefined) {
-          if (currentCommandRef.current.trim()) {
-            addToHistory(serverId, currentCommandRef.current);
-            commandHistoryRef.current = getHistory(serverId);
-          }
-          currentCommandRef.current = '';
-        } else if (data !== '\x7f' && data !== '\b' && !data.startsWith('\x1b')) {
-          // Only track printable chars, skip escape sequences (arrow keys etc.)
-          currentCommandRef.current += data;
-        }
-        onDataRef.current(data);
-      }
-    });
-
-    const onKeyDisposable = term.onKey(({ domEvent }) => {
-      if (domEvent.keyCode === 13 && onEnterRef.current) {
-        onEnterRef.current();
-      }
-      // History navigation is handled by the shell (bash/zsh) via arrow key escape sequences.
-      // Do NOT intercept arrow keys here - the shell receives \x1b[A / \x1b[B and handles history itself.
-    });
-
-    // Handle resize with debounce/raf to prevent "dimensions undefined" errors
+    // Resize observer
     let resizeTimeout: ReturnType<typeof setTimeout>;
     const handleResize = () => {
-      if (isUnmounted) return;
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        if (isUnmounted) return;
         fitTerminal();
       }, 50);
     };
 
-    // Resize observer
     const resizeObserver = new ResizeObserver(() => {
-        // Only trigger resize if the element is visible
-        if (terminalRef.current && terminalRef.current.offsetParent) {
-            // Use requestAnimationFrame to debounce and align with render cycle
+        if (placeholderRef.current && placeholderRef.current.offsetParent) {
             requestAnimationFrame(() => handleResize());
         }
     });
-    if (terminalRef.current) {
-      resizeObserver.observe(terminalRef.current);
+    if (placeholderRef.current) {
+      resizeObserver.observe(placeholderRef.current);
     }
 
-    // Initial focus
-    term.focus();
+    // Focus terminal
+    instance.term.focus();
 
+    // Cleanup: DETACH container (NOT dispose)
     return () => {
-      isUnmounted = true;
-      initializedRef.current = false;
+      console.log('[Terminal] DOM Reparenting: Detaching terminal for pane:', paneId);
+      
       clearTimeout(initialFitTimeout);
       clearTimeout(resizeTimeout);
       resizeObserver.disconnect();
       onDataDisposable.dispose();
       onKeyDisposable.dispose();
-      try {
-        term.dispose();
-      } catch (e) {
-        console.error('Error disposing terminal', e);
+      
+      // CRITICAL: Only remove from DOM, do NOT dispose the terminal
+      if (placeholderRef.current && instance.container.parentNode === placeholderRef.current) {
+        placeholderRef.current.removeChild(instance.container);
       }
-      xtermRef.current = null;
+      
+      termRef.current = null;
       fitAddonRef.current = null;
+      searchAddonRef.current = null;
     };
-  }, [fontSize, lineHeight]); // CRITICAL: Removed theme - terminal should only be created once, theme changes handled separately
+  }, [paneId, fontSize, lineHeight]); // Re-attach if paneId changes
 
   // Handle theme changes
   useEffect(() => {
-    if (xtermRef.current && theme) {
-      // CRITICAL: Check if DOM renderer is ready before modifying options
-      const element = xtermRef.current.element;
+    if (termRef.current && theme) {
+      const element = termRef.current.element;
       if (!element || !element.querySelector('.xterm-rows')) {
         return;
       }
       
-      // Simply update theme - xterm.js will handle the repaint internally
-      // DO NOT call refresh(), clear(), or write() as they may cause content loss
-      xtermRef.current.options.theme = theme;
+      termRef.current.options.theme = theme;
       
-      // CRITICAL FIX: Remove hardcoded background-color from .xterm-viewport
-      // xterm.js sets inline styles that override CSS, we need to remove them
       requestAnimationFrame(() => {
         const viewport = element.querySelector('.xterm-viewport') as HTMLElement;
         if (viewport) {
@@ -424,31 +334,26 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
   // Handle font changes
   useEffect(() => {
-    if (xtermRef.current) {
-      // CRITICAL: Check if DOM renderer is ready before modifying options
-      // Modifying fontSize/lineHeight triggers internal resize which needs renderer
-      const element = xtermRef.current.element;
+    if (termRef.current) {
+      const element = termRef.current.element;
       if (!element || !element.querySelector('.xterm-rows')) {
-        // DOM renderer not ready yet, skip this update
-        // It will use the initial fontSize/lineHeight from terminal creation
         return;
       }
       
-      if (fontSize) xtermRef.current.options.fontSize = fontSize;
-      if (lineHeight) xtermRef.current.options.lineHeight = lineHeight;
+      if (fontSize) termRef.current.options.fontSize = fontSize;
+      if (lineHeight) termRef.current.options.lineHeight = lineHeight;
       
-      // Safe fit with RAF
       requestAnimationFrame(() => {
         try {
-          const element = xtermRef.current?.element;
+          const element = termRef.current?.element;
           if (fitAddonRef.current && element && element.offsetParent && element.clientWidth > 0 && element.clientHeight > 0) {
-             const currentCols = xtermRef.current?.cols;
-             const currentRows = xtermRef.current?.rows;
+             const currentCols = termRef.current?.cols;
+             const currentRows = termRef.current?.rows;
              fitAddonRef.current.fit();
              
-             if (onResizeRef.current && xtermRef.current) {
-                 if (xtermRef.current.cols !== currentCols || xtermRef.current.rows !== currentRows) {
-                     onResizeRef.current(xtermRef.current.cols, xtermRef.current.rows);
+             if (onResizeRef.current && termRef.current) {
+                 if (termRef.current.cols !== currentCols || termRef.current.rows !== currentRows) {
+                     onResizeRef.current(termRef.current.cols, termRef.current.rows);
                  }
              }
           }
@@ -461,40 +366,42 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
   // Handle incoming data from SSH
   useEffect(() => {
-    if (incomingData && xtermRef.current) {
-      xtermRef.current.write(incomingData);
+    if (incomingData && termRef.current) {
+      termRef.current.write(incomingData);
     }
   }, [incomingData]);
 
   // Handle disconnected state
   useEffect(() => {
-    if (xtermRef.current) {
+    if (termRef.current) {
       if (disconnected) {
-        xtermRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')}]\x1b[0m\r\n`);
+        termRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')}]\x1b[0m\r\n`);
       }
     }
   }, [disconnected, t]);
 
   // Handle right click and middle click
   useEffect(() => {
-    const el = terminalRef.current;
+    const el = placeholderRef.current;
     if (!el) return;
 
-    const CHUNK_SIZE = 4096; // 4KB chunks for IPC safety
+    const CHUNK_SIZE = 4096;
 
     const sendLargeText = async (text: string) => {
-        const term = xtermRef.current;
-        if (!term) return;
+        const term = termRef.current;
+        if (!term || !onDataRef.current) return;
         
-        // Split text into chunks to avoid IPC overload
+        // Use onData callback instead of paste() to avoid text selection
         for (let i = 0; i < text.length; i += CHUNK_SIZE) {
             const chunk = text.substring(i, i + CHUNK_SIZE);
-            term.paste(chunk);
-            // Small delay between chunks to let the backend/SSH process it
+            onDataRef.current(chunk);
             if (i + CHUNK_SIZE < text.length) {
                 await new Promise(resolve => setTimeout(resolve, 10));
             }
         }
+        
+        // Focus terminal after pasting
+        term.focus();
     };
 
     const handleContextMenu = async (e: MouseEvent) => {
@@ -502,12 +409,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         e.stopPropagation();
         
         if (rightClickBehavior === 'paste') {
-            const term = xtermRef.current;
+            const term = termRef.current;
             if (!term) return;
 
             const selection = term.getSelection();
             if (selection) {
-                // Smart copy: if there's a selection, copy it and clear
                 try {
                     await writeText(selection);
                     term.clearSelection();
@@ -517,7 +423,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                     showToast(t('common.copy_failed', 'Copy failed'), 'error');
                 }
             } else {
-                // Smart paste: if no selection, paste from clipboard
                 try {
                     const text = await readText();
                     if (text) {
@@ -534,14 +439,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     };
 
     const handleMouseDown = async (e: MouseEvent) => {
-        // Right click (button 2)
         if (e.button === 2) {
-            // Prevent xterm.js from handling right click (which might clear selection)
             e.stopPropagation();
             return;
         }
 
-        // Middle click (button 1)
         if (e.button === 1) {
             e.preventDefault();
             try {
@@ -556,13 +458,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     };
     
     const handleMouseUp = (e: MouseEvent) => {
-        // Prevent right click (button 2) from clearing selection
         if (e.button === 2) {
             e.stopPropagation();
         }
     };
     
-    // Add click handler to prevent selection clearing on right click
     const handleClick = (e: MouseEvent) => {
         if (e.button === 2) {
             e.stopPropagation();
@@ -586,7 +486,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   return (
     <>
       <div 
-        ref={terminalRef} 
+        ref={placeholderRef} 
         className={cn('absolute inset-0 w-full h-full overflow-hidden', className)}
         style={{ backgroundColor: 'var(--term-bg)' }}
       />
@@ -607,12 +507,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               label={t('common.copy', 'Copy')} 
               icon={<Copy className="w-4 h-4" />}
               onClick={async () => {
-                if (xtermRef.current) {
-                  const selection = xtermRef.current.getSelection();
+                if (termRef.current) {
+                  const selection = termRef.current.getSelection();
                   if (selection) {
                     try {
                       await writeText(selection);
-                      xtermRef.current.clearSelection();
+                      termRef.current.clearSelection();
                       showToast(t('common.copied_to_clipboard'), 'success');
                     } catch (err) {
                       console.error('Failed to copy to clipboard:', err);
@@ -629,20 +529,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               onClick={async () => {
                 try {
                   const text = await readText();
-                  if (text && xtermRef.current) {
-                    // Use sendLargeText logic or simple paste?
-                    // Reusing logic from useEffect is hard due to closure.
-                    // But we can duplicate the simple logic or extract it.
-                    // For now simple paste is fine, or better yet trigger the logic.
-                    // Let's implement chunking here too.
+                  if (text && termRef.current && onDataRef.current) {
                     const CHUNK_SIZE = 4096;
                     for (let i = 0; i < text.length; i += CHUNK_SIZE) {
                         const chunk = text.substring(i, i + CHUNK_SIZE);
-                        xtermRef.current.paste(chunk);
+                        onDataRef.current(chunk);
                         if (i + CHUNK_SIZE < text.length) {
                             await new Promise(r => setTimeout(r, 10));
                         }
                     }
+                    // Focus terminal after pasting
+                    termRef.current.focus();
                   }
                 } catch (e) {
                   console.error(e);

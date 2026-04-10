@@ -10,6 +10,7 @@ pub mod security;
 pub mod snippets;
 pub mod ssh;
 pub mod theme;
+pub mod window_state;
 
 use config::ConfigManager;
 use error::Result;
@@ -18,6 +19,7 @@ use log::info;
 use monitor::LocalMonitor;
 use ssh::{ConnectionManager, TunnelManager};
 use std::sync::Arc;
+use tauri::Manager;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,6 +46,34 @@ async fn main() -> Result<()> {
         .manage(tunnel_manager)
         .manage(local_term_manager)
         .manage(local_monitor)
+        .setup(|app| {
+            // Restore window state synchronously before window is shown
+            if let Some(window) = app.get_webview_window("main") {
+                // Hide window first to avoid flicker
+                let _ = window.hide();
+                
+                // Restore state
+                if let Err(e) = window_state::restore_window_state(app.handle()) {
+                    eprintln!("Failed to restore window state: {}", e);
+                }
+                
+                // Show window after state is restored
+                let _ = window.show();
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Save window state on close
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    // Save immediately on close
+                    if let Err(e) = window_state::save_window_state(window.app_handle()) {
+                        eprintln!("Failed to save window state on close: {}", e);
+                    }
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::get_version,

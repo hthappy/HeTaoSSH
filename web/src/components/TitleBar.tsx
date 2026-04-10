@@ -61,7 +61,7 @@ export function TitleBar({ children }: TitleBarProps) {
       </div>
 
       {/* Center: Tabs - Container is draggable, only tab elements are not */}
-      <div className="flex-1 min-w-0 px-2 h-full flex items-center overflow-hidden">
+      <div className="flex-1 min-w-0 px-2 h-full flex items-center overflow-hidden drag-region">
         {children}
       </div>
 
