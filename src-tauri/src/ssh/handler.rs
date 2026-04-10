@@ -28,6 +28,8 @@ impl SshChannelHandler {
     pub async fn init_channel(
         &mut self,
         session: &mut russh::client::Handle<crate::ssh::connection::ClientHandler>,
+        cols: u32,
+        rows: u32,
     ) -> Result<()> {
         let channel = session
             .channel_open_session()
@@ -55,7 +57,7 @@ impl SshChannelHandler {
         ];
         
         channel
-            .request_pty(false, "xterm-256color", 120, 40, 0, 0, &terminal_modes)
+            .request_pty(false, "xterm-256color", cols, rows, 0, 0, &terminal_modes)
             .await
             .map_err(|e| SshError::Channel(e.to_string()))?;
 

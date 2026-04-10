@@ -193,7 +193,7 @@ impl SshConnection {
     }
 
     /// Connect and open a shell channel
-    pub async fn connect_with_shell(&mut self) -> Result<()> {
+    pub async fn connect_with_shell(&mut self, cols: u32, rows: u32) -> Result<()> {
         self.connect().await?;
 
         if let Some(ref mut session) = self.session {
@@ -212,9 +212,9 @@ impl SshConnection {
                 })?;
             self.sftp_session = Some(sftp);
 
-            // Open Shell channel
+            // Open Shell channel with specified dimensions
             let mut channel_handler = SshChannelHandler::new();
-            channel_handler.init_channel(session).await?;
+            channel_handler.init_channel(session, cols, rows).await?;
             self.channel_handler = Some(channel_handler);
 
             Ok(())
@@ -295,8 +295,9 @@ impl SshConnection {
             let _ = self.disconnect().await;
         }
 
-        // Re-establish connection
-        self.connect_with_shell().await
+        // Re-establish connection with default dimensions
+        // Frontend will send actual size via ssh_resize after reconnection
+        self.connect_with_shell(80, 24).await
     }
 
     /// Measure SSH connection latency using a quick exec command

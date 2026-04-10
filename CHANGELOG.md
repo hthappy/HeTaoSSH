@@ -1,3 +1,11 @@
+## [1.1.12] - 2026-04-10
+
+### 🐛 Bug 修复
+
+- **终端尺寸不匹配导致显示异常** - 修复了连接 macOS SSH 时出现多余 `%` 符号的问题，以及 vim 中方向键跳行的问题。根本原因是 PTY 初始化时使用了硬编码的 `120×40` 尺寸，与前端实际终端尺寸不匹配，现已改为使用合理的默认值 `80×24`，前端会在终端创建后立即发送实际尺寸更新 PTY
+
+---
+
 ## [1.1.11] - 2026-04-05
 
 ### 🐛 Bug 修复
@@ -56,41 +64,6 @@
 - **终端搜索** - 按 `Ctrl+F` 在终端内容中搜索
 - **命令历史记录** - 使用上下箭头浏览历史命令
 
-#### 问题修复
-- **macOS 输入框无法输入** - 修复了透明窗口导致的输入焦点问题
-- **快捷键冲突** - 输入框聚焦时自动禁用快捷键
-
-#### 技术改进
-- 使用 `@tauri-apps/plugin-os` 检测操作系统平台
-- 输入框聚焦时自动跳过快捷键处理
-- 创建 `useTransferProgress` Hook 管理 SFTP 传输状态
-- 创建 `useCommandHistory` Hook 管理命令历史
-
-#### 性能优化
-- 启动时间从 ~3s 优化到 ~1.5s (⬇️ 50%)
-- 内存占用从 ~200MB 优化到 ~120MB (⬇️ 40%)
-- 移除冗余模块（audit.rs, tunnel.rs）
-
-### 📦 安装
-
-**macOS**:
-```bash
-brew install hetao-ssh  # 待添加
-```
-
-**Windows**:
-```powershell
-winget install HeTaoSSH  # 待添加
-```
-
-**从源码构建**:
-```bash
-git clone https://github.com/hthappy/HeTaoSSH.git
-cd HeTaoSSH
-pnpm install
-pnpm tauri build
-```
-
 ### 🐛 已知问题
 
 - 主题市场云端 API 尚未实现，目前仅支持本地导入/导出
@@ -110,7 +83,6 @@ pnpm tauri build
 ## [0.3.0] - 2026-02-01
 
 ### 新增
-- 初始公开发布
 - SSH 连接管理
 - SFTP 文件传输
 - 终端模拟器

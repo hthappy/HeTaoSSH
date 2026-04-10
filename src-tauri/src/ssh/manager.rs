@@ -262,10 +262,14 @@ impl ConnectionManager {
         // 建立连接 (不持有锁，避免阻塞其他操作)
         let mut conn = SshConnection::new(config);
 
+        // Use reasonable defaults - frontend will send actual size via ssh_resize shortly after
+        let cols = 80;
+        let rows = 24;
+
         // 增加连接超时，防止永久卡住
         tokio::time::timeout(
             std::time::Duration::from_secs(CONNECTION_TIMEOUT_SECS),
-            conn.connect_with_shell(),
+            conn.connect_with_shell(cols, rows),
         )
         .await
         .map_err(|_| {
