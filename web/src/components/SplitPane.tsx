@@ -91,6 +91,7 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
         'flex h-full w-full overflow-hidden',
         isHorizontal ? 'flex-row' : 'flex-col'
       )}
+      style={{ backgroundColor: 'var(--term-bg)' }}
     >
       {children.map((child, index) => (
         <div 
@@ -103,6 +104,7 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
             flexBasis: sizes[index] ? `${sizes[index]}%` : undefined,
             flexGrow: 0,
             flexShrink: 0,
+            backgroundColor: 'var(--term-bg)'
           }}
         >
           {/* Pane */}
@@ -111,6 +113,7 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
               'flex-1 overflow-hidden h-full w-full',
               isDragging && dragIndex !== index && dragIndex !== index - 1 && 'pointer-events-none'
             )}
+            style={{ backgroundColor: 'var(--term-bg)' }}
           >
             {child}
           </div>
@@ -119,40 +122,33 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
           {index < children.length - 1 && (
             <div
               className={cn(
-                'flex items-center justify-center group cursor-col-resize select-none relative',
+                'flex items-center justify-center group select-none relative',
                 isHorizontal 
-                  ? 'w-2.5 bg-term-selection/0 hover:bg-term-blue/10 transition-all' 
-                  : 'h-2.5 bg-term-selection/0 hover:bg-term-blue/10 transition-all flex-col',
-                isDragging && dragIndex === index && (isHorizontal ? 'w-3 bg-term-blue' : 'h-3 bg-term-blue')
+                  ? 'w-1 hover:w-1.5 cursor-col-resize' 
+                  : 'h-1 hover:h-1.5 cursor-row-resize',
+                isDragging && dragIndex === index && 'bg-term-blue/30'
               )}
-              style={{
-                ...(isHorizontal ? { 
-                  boxShadow: 'inset 2px 0 0 rgba(126, 152, 202, 0.3)',
-                } : { 
-                  boxShadow: 'inset 0 2px 0 rgba(126, 152, 202, 0.3)',
-                })
-              }}
+              style={{ backgroundColor: 'var(--term-bg)' }}
               onMouseDown={(e) => handleMouseDown(e, index)}
             >
-              {isHorizontal ? (
-                <>
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-term-selection/40 group-hover:bg-term-blue/50 translate-x-[-50%]" />
-                  <div className="w-1 h-full flex flex-col justify-center items-center gap-1.5 opacity-0 group-hover:opacity-70 transition-opacity">
-                    <div className="w-1 h-1 bg-term-fg rounded-full" />
-                    <div className="w-1 h-1 bg-term-fg rounded-full" />
-                    <div className="w-1 h-1 bg-term-fg rounded-full" />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="absolute top-1/2 left-0 right-0 h-px bg-term-selection/40 group-hover:bg-term-blue/50 translate-y-[-50%]" />
-                  <div className="h-1 w-full flex flex-row justify-center items-center gap-1.5 opacity-0 group-hover:opacity-70 transition-opacity">
-                    <div className="h-1 w-1 bg-term-fg rounded-full" />
-                    <div className="h-1 w-1 bg-term-fg rounded-full" />
-                    <div className="h-1 w-1 bg-term-fg rounded-full" />
-                  </div>
-                </>
-              )}
+              {/* Single center line */}
+              <div className={cn(
+                'absolute bg-term-selection',
+                isHorizontal 
+                  ? 'left-0 top-0 bottom-0 w-px' 
+                  : 'top-0 left-0 right-0 h-px',
+                'group-hover:bg-term-blue/50 transition-colors'
+              )} />
+              
+              {/* Drag handle dots (only visible on hover) */}
+              <div className={cn(
+                'flex justify-center items-center gap-1 opacity-0 group-hover:opacity-60 transition-opacity z-10',
+                isHorizontal ? 'flex-col' : 'flex-row'
+              )}>
+                <div className="w-1 h-1 bg-term-fg rounded-full" />
+                <div className="w-1 h-1 bg-term-fg rounded-full" />
+                <div className="w-1 h-1 bg-term-fg rounded-full" />
+              </div>
             </div>
           )}
         </div>

@@ -226,6 +226,22 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     term.open(terminalRef.current);
     xtermRef.current = term;
     
+    // CRITICAL: Remove hardcoded background-color from xterm.js internal elements
+    // xterm.js sets inline styles that override CSS variables
+    const removeInlineBackgrounds = () => {
+      const element = term.element;
+      if (element) {
+        const viewport = element.querySelector('.xterm-viewport') as HTMLElement;
+        if (viewport) {
+          viewport.style.backgroundColor = '';
+        }
+        const screen = element.querySelector('.xterm-screen') as HTMLElement;
+        if (screen) {
+          screen.style.backgroundColor = '';
+        }
+      }
+    };
+    
     // CRITICAL: Wait for DOM renderer to be fully initialized before any operations
     // DOM renderer needs time to set up its internal state
     const waitForRenderer = new Promise<void>((resolve) => {
@@ -236,6 +252,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           const element = term.element;
           if (element && element.querySelector('.xterm-rows')) {
             // DOM renderer is ready
+            removeInlineBackgrounds(); // Remove inline backgrounds after renderer is ready
             resolve();
           } else {
             // Not ready yet, check again
@@ -375,20 +392,33 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [theme, fontSize, lineHeight]); // Removed isActive - terminal should only be created once
+  }, [fontSize, lineHeight]); // CRITICAL: Removed theme - terminal should only be created once, theme changes handled separately
 
   // Handle theme changes
   useEffect(() => {
     if (xtermRef.current && theme) {
       // CRITICAL: Check if DOM renderer is ready before modifying options
-      // Modifying theme triggers internal resize which needs renderer
       const element = xtermRef.current.element;
       if (!element || !element.querySelector('.xterm-rows')) {
-        // DOM renderer not ready yet, skip this update
         return;
       }
       
+      // Simply update theme - xterm.js will handle the repaint internally
+      // DO NOT call refresh(), clear(), or write() as they may cause content loss
       xtermRef.current.options.theme = theme;
+      
+      // CRITICAL FIX: Remove hardcoded background-color from .xterm-viewport
+      // xterm.js sets inline styles that override CSS, we need to remove them
+      requestAnimationFrame(() => {
+        const viewport = element.querySelector('.xterm-viewport') as HTMLElement;
+        if (viewport) {
+          viewport.style.backgroundColor = '';
+        }
+        const screen = element.querySelector('.xterm-screen') as HTMLElement;
+        if (screen) {
+          screen.style.backgroundColor = '';
+        }
+      });
     }
   }, [theme]);
 
@@ -558,7 +588,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       <div 
         ref={terminalRef} 
         className={cn('absolute inset-0 w-full h-full overflow-hidden', className)}
-        style={{ backgroundColor: theme?.background }}
+        style={{ backgroundColor: 'var(--term-bg)' }}
       />
       {showSearch && (
         <TerminalSearchBar

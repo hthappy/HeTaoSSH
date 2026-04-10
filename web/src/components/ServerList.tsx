@@ -1,5 +1,5 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, Ref } from 'react';
-import { Plus, Trash2, Edit2, Plug, CheckCircle2, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, Plug, PlugZap, CheckCircle2, Search } from 'lucide-react';
 import { useSshStore } from '@/stores/ssh-store';
 import type { ServerConfig } from '@/types/config';
 import { cn } from '@/lib/utils';
@@ -162,10 +162,8 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
                   key={server.id}
                   onContextMenu={(e) => handleContextMenu(e, server)}
                   className={cn(
-                    'group flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all duration-200',
-                    isConnected
-                      ? 'bg-term-green/10 border border-term-green/50 shadow-[0_0_15px_rgba(var(--term-green-rgb),0.2)]'
-                      : 'hover:bg-term-selection border border-transparent'
+                    'group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all duration-200',
+                    'hover:bg-term-selection border border-transparent'
                   )}
                   onClick={() => onServerClick(server.id!)}
                 >
@@ -174,7 +172,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
                     {isConnected ? (
                       <Plug className="w-4 h-4 text-term-green" />
                     ) : (
-                      <Plug className="w-4 h-4 text-term-fg/40" />
+                      <PlugZap className="w-4 h-4 text-term-fg/30" />
                     )}
                   </div>
 
@@ -186,7 +184,7 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

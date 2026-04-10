@@ -120,7 +120,7 @@ const SingleTerminal = memo(function SingleTerminal({
 
   if (!activeConnection) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-term-bg">
+      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: 'var(--term-bg)' }}>
         <div className="text-center text-term-fg opacity-50">
           <p className="text-sm">{t('terminal.disconnected')}</p>
         </div>
@@ -130,19 +130,19 @@ const SingleTerminal = memo(function SingleTerminal({
 
   return (
     <div 
-      className="w-full h-full flex flex-col overflow-hidden bg-term-bg relative"
-      style={{ backgroundColor: theme?.background }}
+      className="w-full h-full flex flex-col overflow-hidden relative"
+      style={{ backgroundColor: 'var(--term-bg)' }}
       onClick={onPaneClick}
     >
       {activeConnection.status === 'connecting' ? (
-        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60" style={{ backgroundColor: 'var(--term-bg)' }}>
           <div className="text-center">
             <div className="w-8 h-8 border-4 border-term-fg/30 border-t-term-fg rounded-full animate-spin mx-auto mb-4" />
             <p>{t('terminal.connecting')}</p>
           </div>
         </div>
       ) : activeConnection.status === 'connected' ? (
-        <div className="flex-1 relative w-full h-full overflow-hidden">
+        <div className="flex-1 relative w-full h-full overflow-hidden" style={{ backgroundColor: 'var(--term-bg)' }}>
           <TerminalComponent
             ref={terminalRef}
             className="absolute inset-0"
@@ -159,7 +159,7 @@ const SingleTerminal = memo(function SingleTerminal({
           />
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60">
+        <div className="flex-1 flex items-center justify-center text-term-fg opacity-60" style={{ backgroundColor: 'var(--term-bg)' }}>
           <div className="text-center">
             <p className="text-lg mb-2 text-term-red">{t('server.test_failed')}</p>
             <p className="text-sm">{activeConnection.error}</p>
@@ -248,7 +248,7 @@ export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rig
   // If we have a pane group, render split panes
   if (paneGroup) {
     return (
-      <div className="w-full h-full flex flex-col overflow-hidden bg-term-bg">
+      <div className="w-full h-full flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--term-bg)' }}>
         <PaneRenderer
           group={paneGroup}
           theme={theme}
@@ -272,7 +272,7 @@ export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rig
 
   if (!activeConnection) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-term-bg">
+      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: theme?.background }}>
         <div className="text-center text-term-fg opacity-50">
           <p className="text-lg mb-2">{t('terminal.welcome')}</p>
           <p className="text-sm">{t('terminal.start_tip')}</p>

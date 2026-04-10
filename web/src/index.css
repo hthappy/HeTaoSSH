@@ -118,3 +118,13 @@ html, body, #root {
     transform: translateX(0);
   }
 }
+
+/* xterm.js viewport background fix - use CSS variable instead of hardcoded color */
+.xterm-viewport {
+  background-color: var(--term-bg) !important;
+}
+
+/* Ensure xterm screen also uses CSS variable */
+.xterm-screen {
+  background-color: var(--term-bg) !important;
+}

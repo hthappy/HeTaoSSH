@@ -420,7 +420,7 @@ function App() {
           )}
 
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 bg-term-bg relative">
+          <div className="flex-1 flex flex-col min-w-0 relative" style={{ backgroundColor: 'var(--term-bg)' }}>
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
@@ -467,7 +467,7 @@ function App() {
             </TitleBar>
 
             {/* Tab Content - Each tab has its own Terminal instance */}
-            <div className="flex-1 relative bg-term-bg">
+            <div className="flex-1 relative" style={{ backgroundColor: 'var(--term-bg)' }}>
               {workspaceTabs.map(tab => {
                 const isActive = tab.id === activeTabId;
                 return (

@@ -302,10 +302,10 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
         ) : filteredSnippets.length === 0 ? (
           <div className="text-center text-term-fg opacity-50 text-sm py-8">{t('snippets.no_match')}</div>
         ) : (
-          <div className="p-2 space-y-4">
+          <div className="p-2 space-y-2">
             {Object.entries(groupedSnippets).map(([category, snippets]) => (
               <div key={category}>
-                <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-term-fg opacity-50 uppercase tracking-wider px-1">
+                <div className="flex items-center gap-2 mb-1.5 text-xs font-semibold text-term-fg opacity-50 uppercase tracking-wider px-1">
                   <FolderOpen className="w-3 h-3" />
                   {category}
                 </div>
@@ -314,7 +314,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                     <div
                       key={snippet.id}
                       onContextMenu={(e) => handleContextMenu(e, snippet)}
-                      className="group bg-term-selection/20 rounded-md px-2 py-1.5 border border-term-selection hover:border-term-blue/30 transition-colors"
+                      className="group bg-term-selection/20 rounded-md px-2 py-1 border border-term-selection hover:border-term-blue/30 transition-colors"
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setHoveredSnippet({ snippet, rect });
@@ -334,7 +334,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
                           {onExecute && (
                             <button
                               onClick={() => handleExecute(snippet)}

@@ -67,7 +67,7 @@ impl SshChannelHandler {
 
         // Spawn task to handle channel I/O and resize
         tokio::spawn(async move {
-            let mut buf = vec![0u8; 8192];
+            let _buf = vec![0u8; 8192]; // Reserved for future use
             
             loop {
                 tokio::select! {
