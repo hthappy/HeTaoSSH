@@ -278,9 +278,9 @@ impl SshConnection {
     }
 
     /// Resize terminal
-    pub async fn resize(&self, cols: u32, rows: u32) -> Result<()> {
-        if let Some(ref channel_handler) = self.channel_handler {
-            channel_handler.resize(cols, rows).await
+    pub async fn resize(&mut self, cols: u32, rows: u32) -> Result<()> {
+        if let Some(ref handler) = self.channel_handler {
+            handler.resize(cols, rows).await
         } else {
             Err(SshError::Channel("Channel not initialized".to_string()))
         }

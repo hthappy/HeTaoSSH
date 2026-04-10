@@ -225,10 +225,47 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Open terminal
     term.open(terminalRef.current);
     xtermRef.current = term;
+    
+    // CRITICAL: Wait for DOM renderer to be fully initialized before any operations
+    // DOM renderer needs time to set up its internal state
+    const waitForRenderer = new Promise<void>((resolve) => {
+      // Check if renderer is ready
+      const checkRenderer = () => {
+        try {
+          // Try to access renderer - if it throws, it's not ready
+          const element = term.element;
+          if (element && element.querySelector('.xterm-rows')) {
+            // DOM renderer is ready
+            resolve();
+          } else {
+            // Not ready yet, check again
+            setTimeout(checkRenderer, 10);
+          }
+        } catch (e) {
+          // Error accessing renderer, try again
+          setTimeout(checkRenderer, 10);
+        }
+      };
+      checkRenderer();
+    });
+    
+    // Wait for renderer before continuing with fit operations
+    waitForRenderer.then(() => {
+      // Renderer is ready, safe to proceed with fit
+    });
 
     // Safe fit helper
     const fitTerminal = () => {
       if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
+      
+      // CRITICAL: Check if DOM renderer is ready before any fit operations
+      const element = xtermRef.current.element;
+      if (!element || !element.querySelector('.xterm-rows')) {
+        // DOM renderer not ready yet, retry after a short delay
+        setTimeout(fitTerminal, 50);
+        return;
+      }
+      
       // Use requestAnimationFrame to avoid layout thrashing and ensure DOM is ready
       requestAnimationFrame(() => {
         if (!xtermRef.current || !fitAddonRef.current || isUnmounted) return;
@@ -343,14 +380,30 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   // Handle theme changes
   useEffect(() => {
     if (xtermRef.current && theme) {
+      // CRITICAL: Check if DOM renderer is ready before modifying options
+      // Modifying theme triggers internal resize which needs renderer
+      const element = xtermRef.current.element;
+      if (!element || !element.querySelector('.xterm-rows')) {
+        // DOM renderer not ready yet, skip this update
+        return;
+      }
+      
       xtermRef.current.options.theme = theme;
-      // Force background update if needed (usually handled by theme option)
     }
   }, [theme]);
 
   // Handle font changes
   useEffect(() => {
     if (xtermRef.current) {
+      // CRITICAL: Check if DOM renderer is ready before modifying options
+      // Modifying fontSize/lineHeight triggers internal resize which needs renderer
+      const element = xtermRef.current.element;
+      if (!element || !element.querySelector('.xterm-rows')) {
+        // DOM renderer not ready yet, skip this update
+        // It will use the initial fontSize/lineHeight from terminal creation
+        return;
+      }
+      
       if (fontSize) xtermRef.current.options.fontSize = fontSize;
       if (lineHeight) xtermRef.current.options.lineHeight = lineHeight;
       

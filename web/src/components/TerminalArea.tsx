@@ -61,7 +61,7 @@ const SingleTerminal = memo(function SingleTerminal({
       invoke('ssh_resize', { tabId: backendId, cols, rows })
         .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
-  }, [backendId, isLocal]);
+  }, [backendId, isLocal, pane.id]);
 
   const handleTerminalEnter = useCallback(() => {
     window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 

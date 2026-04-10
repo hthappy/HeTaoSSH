@@ -263,8 +263,9 @@ impl ConnectionManager {
         let mut conn = SshConnection::new(config);
 
         // Use reasonable defaults - frontend will send actual size via ssh_resize shortly after
-        let cols = 80;
-        let rows = 24;
+        // Using 120×30 as default (common terminal size) instead of 80×24
+        let cols = 120;
+        let rows = 30;
 
         // 增加连接超时，防止永久卡住
         tokio::time::timeout(
