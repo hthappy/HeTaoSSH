@@ -92,7 +92,6 @@ impl SshConnection {
         // Add Keep-Alive to prevent connection drops during inactivity
         config.keepalive_interval = Some(std::time::Duration::from_secs(30));
         config.keepalive_max = 3;
-        config.connection_timeout = Some(std::time::Duration::from_secs(10));
 
         let handler = ClientHandler {
             host: self.config.host.clone(),
@@ -100,8 +99,12 @@ impl SshConnection {
         };
 
         let addr = (self.config.host.as_str(), self.config.port);
-        let mut session = russh::client::connect(Arc::new(config), addr, handler)
+        let mut session = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            russh::client::connect(Arc::new(config), addr, handler)
+        )
             .await
+            .map_err(|_| SshError::ConnectionFailed("Connection timed out after 10s".to_string()))?
             .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
 
         // Try authentication methods
