@@ -54,6 +54,16 @@ class TerminalPool {
         tabStopWidth: 4,
         drawBoldTextInBrightColors: true,
         allowProposedApi: true,
+        // Disable automatic selection after paste
+        // This prevents pasted text from being highlighted
+        rightClickSelectsWord: false,
+        // Enable bracketed paste mode - allows applications to distinguish pasted text
+        // This prevents multi-line pastes from being executed immediately
+        // Applications like vim, OpenCode will receive paste events properly
+        // Format: \x1b[200~<pasted text>\x1b[201~
+        windowOptions: {
+          setWinLines: false,
+        },
       });
 
       const fitAddon = new FitAddon();
@@ -64,6 +74,34 @@ class TerminalPool {
 
       // Open terminal into the container
       term.open(container);
+      
+      // Enable OSC 52 clipboard integration
+      // This allows terminal applications (like OpenCode, tmux, vim) to:
+      // 1. Copy selected text to system clipboard via OSC 52 escape sequence
+      // 2. Read from clipboard when pasting
+      // OSC 52 format: \x1b]52;c;<base64 encoded text>\x07
+      term.parser.registerOscHandler(52, (data: string) => {
+        try {
+          // OSC 52 format: 52;c;<base64>
+          const parts = data.split(';');
+          if (parts.length >= 2) {
+            const base64Data = parts[parts.length - 1];
+            if (base64Data === '?') {
+              // Query clipboard - not supported in browsers for security
+              return false;
+            }
+            // Decode base64 and copy to clipboard
+            const text = atob(base64Data);
+            navigator.clipboard.writeText(text).catch(err => {
+              console.warn('[Terminal] OSC 52 clipboard write failed:', err);
+            });
+            return true;
+          }
+        } catch (err) {
+          console.warn('[Terminal] OSC 52 parse error:', err);
+        }
+        return false;
+      });
       
       instance = {
         term,

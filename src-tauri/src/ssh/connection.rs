@@ -87,7 +87,13 @@ impl SshConnection {
     pub async fn connect(&mut self) -> Result<()> {
         info!("Connecting to {}:{}", self.config.host, self.config.port);
 
-        let config = Config::default();
+        let mut config = Config::default();
+        
+        // Add Keep-Alive to prevent connection drops during inactivity
+        config.keepalive_interval = Some(std::time::Duration::from_secs(30));
+        config.keepalive_max = 3;
+        config.connection_timeout = Some(std::time::Duration::from_secs(10));
+
         let handler = ClientHandler {
             host: self.config.host.clone(),
             port: self.config.port,

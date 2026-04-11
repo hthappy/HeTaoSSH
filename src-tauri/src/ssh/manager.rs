@@ -243,6 +243,8 @@ impl ConnectionManager {
         &self,
         id: &str,
         config: ServerConfig,
+        cols: Option<u32>,
+        rows: Option<u32>,
         app_handle: tauri::AppHandle,
     ) -> Result<()> {
         // 先清理旧的 Actor（支持重连场景）
@@ -262,10 +264,12 @@ impl ConnectionManager {
         // 建立连接 (不持有锁，避免阻塞其他操作)
         let mut conn = SshConnection::new(config);
 
-        // Use reasonable defaults - frontend will send actual size via ssh_resize shortly after
+        // Use provided dimensions or reasonable defaults
         // Using 120×30 as default (common terminal size) instead of 80×24
-        let cols = 120;
-        let rows = 30;
+        let cols = cols.unwrap_or(120);
+        let rows = rows.unwrap_or(30);
+        
+        info!("Creating SSH connection with PTY size: {}×{}", cols, rows);
 
         // 增加连接超时，防止永久卡住
         tokio::time::timeout(

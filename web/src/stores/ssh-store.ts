@@ -260,7 +260,19 @@ export const useSshStore = create<SshState>((set, get) => ({
         get().updateConnectionStatus(serverIdFromEvent, { status: 'disconnected', error: 'Connection lost' });
       });
 
-      await invoke('ssh_connect', { tabId: `conn-${serverId}`, config: server });
+      // Use standard terminal size (80×24) for initial connection
+      // Terminal component will send actual size via onResize callback after fit
+      const cols = 80;
+      const rows = 24;
+
+      console.log(`[SSH Connect] Connecting with standard size: ${cols}×${rows} (will resize after terminal ready)`);
+
+      await invoke('ssh_connect', { 
+        tabId: `conn-${serverId}`, 
+        config: server,
+        cols,
+        rows
+      });
       // Update single default pane's backendId when connected (for tracking)
       const tabs = get().workspaceTabs;
       for (const tab of tabs) {
@@ -345,24 +357,27 @@ export const useSshStore = create<SshState>((set, get) => ({
   closeTab: (tabId: string) => {
     const tab = get().workspaceTabs.find(t => t.id === tabId);
     
-    // Dispose all terminal instances for this tab
-    const paneGroup = get().paneGroups[tabId];
-    if (paneGroup) {
-      const disposePanes = (group: PaneGroup) => {
-        for (const pane of group.panes) {
-          if ('serverId' in pane) {
-            // Dispose terminal instance from pool
-            terminalPool.dispose(pane.id);
-          } else if ('direction' in pane) {
-            disposePanes(pane);
+    // Only dispose terminal instances for terminal/local tabs
+    if (tab && (tab.type === 'terminal' || tab.type === 'local')) {
+      // Dispose all terminal instances for this tab
+      const paneGroup = get().paneGroups[tabId];
+      if (paneGroup) {
+        const disposePanes = (group: PaneGroup) => {
+          for (const pane of group.panes) {
+            if ('serverId' in pane) {
+              // Dispose terminal instance from pool
+              terminalPool.dispose(pane.id);
+            } else if ('direction' in pane) {
+              disposePanes(pane);
+            }
           }
-        }
-      };
-      disposePanes(paneGroup);
-    } else if (tab) {
-      // Single pane (no split) - dispose using the single pane ID
-      const singlePaneId = `pane-single-${tab.serverId}`;
-      terminalPool.dispose(singlePaneId);
+        };
+        disposePanes(paneGroup);
+      } else {
+        // Single pane (no split) - dispose using the single pane ID
+        const singlePaneId = `pane-single-${tab.serverId}`;
+        terminalPool.dispose(singlePaneId);
+      }
     }
     
     // If closing terminal tab or local terminal tab, disconnect
@@ -460,7 +475,16 @@ export const useSshStore = create<SshState>((set, get) => ({
       const server = get().servers.find(s => s.id === tab.serverId);
       if (server) {
         try {
-          await invoke('ssh_connect', { tabId: newBackendId, config: server });
+          // Use standard terminal size, will be updated by onResize callback
+          const cols = 80;
+          const rows = 24;
+          
+          await invoke('ssh_connect', { 
+            tabId: newBackendId, 
+            config: server,
+            cols,
+            rows
+          });
         } catch (err) {
           console.error('Failed to connect new pane:', err);
         }
@@ -664,7 +688,18 @@ export const useSshStore = create<SshState>((set, get) => ({
     get().updateConnectionStatus(serverId, { status: 'connecting', error: undefined });
     
     try {
-      await invoke('ssh_connect', { tabId: connectionKey, config: server });
+      // Use standard terminal size, will be updated by onResize callback
+      const cols = 80;
+      const rows = 24;
+      
+      console.log(`[SSH Reconnect] Reconnecting with standard size: ${cols}×${rows}`);
+      
+      await invoke('ssh_connect', { 
+        tabId: connectionKey, 
+        config: server,
+        cols,
+        rows
+      });
       get().updateConnectionStatus(serverId, { status: 'connected', error: undefined });
       // If we had a terminal tab, make sure it becomes active
       const existingTerm = get().workspaceTabs.find(t => t.serverId === serverId && t.type === 'terminal');

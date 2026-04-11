@@ -74,13 +74,42 @@ const SingleTerminal = memo(function SingleTerminal({
     
     let unlisten: (() => void) | undefined;
     let isMounted = true;
+    
+    // Buffer for batching terminal writes to improve performance with high-frequency output
+    let writeBuffer: Uint8Array[] = [];
+    let writeTimer: NodeJS.Timeout | null = null;
+    const WRITE_BATCH_DELAY = 16; // ~60fps, prevents UI blocking during rapid log output
+
+    const flushWrites = () => {
+      if (writeBuffer.length === 0 || !terminalRef.current) return;
+      
+      // Merge all buffered data into a single array
+      const totalLength = writeBuffer.reduce((sum, arr) => sum + arr.length, 0);
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const arr of writeBuffer) {
+        merged.set(arr, offset);
+        offset += arr.length;
+      }
+      
+      // Write merged data in one operation
+      terminalRef.current.write(merged);
+      writeBuffer = [];
+      writeTimer = null;
+    };
 
     const setupListener = async () => {
       const eventName = isLocal ? `terminal-data-${backendId}` : `ssh-data-${backendId}`;
       
       const unlistenFn = await listen<number[]>(eventName, (event) => {
-        if (terminalRef.current) {
-          terminalRef.current.write(new Uint8Array(event.payload));
+        if (!terminalRef.current) return;
+        
+        // Add to buffer instead of writing immediately
+        writeBuffer.push(new Uint8Array(event.payload));
+        
+        // Schedule flush if not already scheduled
+        if (!writeTimer) {
+          writeTimer = setTimeout(flushWrites, WRITE_BATCH_DELAY);
         }
       });
       
@@ -98,6 +127,11 @@ const SingleTerminal = memo(function SingleTerminal({
         if (unlistenExit) unlistenExit();
       } else {
         unlisten = () => {
+          // Flush any remaining data before cleanup
+          if (writeTimer) {
+            clearTimeout(writeTimer);
+            flushWrites();
+          }
           unlistenFn();
           if (unlistenExit) unlistenExit();
         };

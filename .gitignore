@@ -11,8 +11,7 @@ yarn-error.log*
 
 temp_*
 
-docs/PRD.md
-AGENTS.md
+docs/
 
 # Rust / Tauri
 src-tauri/target/

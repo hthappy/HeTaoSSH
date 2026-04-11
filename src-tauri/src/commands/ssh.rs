@@ -48,7 +48,9 @@ use tauri::State;
 ///     port: 22,
 ///     username: 'user',
 ///     password: 'pass'
-///   }
+///   },
+///   cols: 155,  // 可选：终端列数
+///   rows: 39,   // 可选：终端行数
 /// });
 /// ```
 #[tauri::command]
@@ -56,9 +58,11 @@ pub async fn ssh_connect(
     app_handle: tauri::AppHandle,
     tab_id: String,
     config: ServerConfig,
+    cols: Option<u32>,
+    rows: Option<u32>,
     state: State<'_, Arc<ConnectionManager>>,
 ) -> Result<String> {
-    state.create_connection(&tab_id, config, app_handle).await?;
+    state.create_connection(&tab_id, config, cols, rows, app_handle).await?;
     Ok("Connected".to_string())
 }
 

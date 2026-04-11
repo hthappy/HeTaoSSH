@@ -1,10 +1,10 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
 import { ITheme } from 'xterm';
 import { useTranslation } from 'react-i18next';
-import { Clipboard, Copy } from 'lucide-react';
+import { Clipboard, Copy, RotateCcw } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,7 @@ interface TerminalProps {
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
   onEnter?: () => void;
+  onReady?: (cols: number, rows: number) => void; // NEW: Called when terminal is ready with dimensions
   disconnected?: boolean;
   incomingData?: string;
   theme?: ITheme;
@@ -40,7 +41,7 @@ interface TerminalProps {
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   function Terminal(
-    { className, paneId, onData, onResize, onEnter, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
+    { className, paneId, onData, onResize, onEnter, onReady, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
     ref
   ) {
   const { t } = useTranslation();
@@ -57,6 +58,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   const onEnterRef = useRef(onEnter);
   const onDataRef = useRef(onData);
   const onResizeRef = useRef(onResize);
+  const onReadyRef = useRef(onReady);
   const disconnectedRef = useRef(disconnected);
   
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -65,6 +67,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   // Use refs instead of state to avoid re-renders on every keystroke
   const currentCommandRef = useRef('');
   const commandHistoryRef = useRef<{ command: string; timestamp: number }[]>([]);
+  const ctrlCSpamRef = useRef({ count: 0, lastTime: 0 });
 
   // Update refs
   useEffect(() => {
@@ -77,11 +80,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     onResizeRef.current = onResize;
   }, [onResize]);
   useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+  useEffect(() => {
     disconnectedRef.current = disconnected;
   }, [disconnected]);
 
   // Subscribe to dynamic shortcuts
   const terminalSearchKeys = useShortcutsStore(state => state.shortcuts.find(s => s.id === 'terminal-search')?.keys || 'Ctrl+F');
+
+
 
   useEffect(() => {
     if (isActive && serverId !== undefined) {
@@ -205,6 +213,29 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Setup event handlers
     const onDataDisposable = instance.term.onData((data) => {
       if (!disconnectedRef.current && onDataRef.current) {
+        // Detect Ctrl+C (\\x03) spam to automatically escape broken terminal states
+        if (data === '\x03') {
+          const now = Date.now();
+          if (now - ctrlCSpamRef.current.lastTime < 1000) {
+            ctrlCSpamRef.current.count++;
+          } else {
+            ctrlCSpamRef.current.count = 1;
+          }
+          ctrlCSpamRef.current.lastTime = now;
+          
+          if (ctrlCSpamRef.current.count >= 3) {
+            // Panic reset: Disable mouse tracking, alt screen, bracketed paste
+            if (termRef.current) {
+              termRef.current.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1049l\x1b[?1l\x1b[?2004l');
+            }
+            ctrlCSpamRef.current.count = 0;
+            showToast(t('common.terminal_rescued', '(Auto-Rescue) 终端控制状态已重置'), 'success');
+          }
+        } else {
+          // Reset spam counter on any other key
+          ctrlCSpamRef.current.count = 0;
+        }
+
         if (data === '\r' && serverId !== undefined) {
           if (currentCommandRef.current.trim()) {
             addToHistory(serverId, currentCommandRef.current);
@@ -223,6 +254,31 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         onEnterRef.current();
       }
     });
+
+    // Use custom key handler to intercept paste and use Tauri's clipboard API
+    // Native webview paste might be restricted or inconsistent
+    const termAny = instance.term as any;
+    if (!termAny._customPasteHandlerAttached) {
+      instance.term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        // Only handle keydown to prevent double-pasting (xterm fires for keydown/keyup/keypress)
+        if (e.type === 'keydown' && ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') || (e.shiftKey && e.key === 'Insert')) {
+          e.preventDefault();
+          
+          readText().then(text => {
+            if (text && termRef.current) {
+              termRef.current.paste(text);
+              termRef.current.focus();
+            }
+          }).catch(err => {
+            console.error('[Terminal] Failed to read clipboard for paste:', err);
+          });
+          
+          return false; // Prevent xterm from processing this key
+        }
+        return true;
+      });
+      termAny._customPasteHandlerAttached = true;
+    }
 
     // Fit terminal after attachment
     const fitTerminal = () => {
@@ -245,8 +301,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 const currentRows = termRef.current.rows;
                 fitAddonRef.current.fit();
                 
-                if (onResizeRef.current && (termRef.current.cols !== currentCols || termRef.current.rows !== currentRows)) {
-                    onResizeRef.current(termRef.current.cols, termRef.current.rows);
+                const newCols = termRef.current.cols;
+                const newRows = termRef.current.rows;
+                
+                // Only send resize if dimensions actually changed
+                if (onResizeRef.current && (newCols !== currentCols || newRows !== currentRows)) {
+                    console.log(`[Terminal] Resize: ${currentCols}×${currentRows} → ${newCols}×${newRows}`);
+                    onResizeRef.current(newCols, newRows);
                 }
             }
           }
@@ -258,10 +319,22 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     const initialFitTimeout = setTimeout(() => {
       fitTerminal();
+      // Send initial size after a delay to ensure terminal is ready
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (termRef.current && onResizeRef.current) {
-            onResizeRef.current(termRef.current.cols, termRef.current.rows);
+            const cols = termRef.current.cols;
+            const rows = termRef.current.rows;
+            if (cols > 0 && rows > 0) {
+              console.log(`[Terminal] Initial size: ${cols}×${rows}`);
+              onResizeRef.current(cols, rows);
+              
+              // NEW: Notify parent that terminal is ready with dimensions
+              if (onReadyRef.current) {
+                console.log(`[Terminal] Ready callback: ${cols}×${rows}`);
+                onReadyRef.current(cols, rows);
+              }
+            }
           }
         });
       });
@@ -298,6 +371,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       onDataDisposable.dispose();
       onKeyDisposable.dispose();
       
+
       // CRITICAL: Only remove from DOM, do NOT dispose the terminal
       if (placeholderRef.current && instance.container.parentNode === placeholderRef.current) {
         placeholderRef.current.removeChild(instance.container);
@@ -376,6 +450,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     if (termRef.current) {
       if (disconnected) {
         termRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')}]\x1b[0m\r\n`);
+        
+        // Fix stuck state due to broken connections:
+        // When disconnected, ensure mouse reporting and application cursor keys are disabled!
+        // This prevents the terminal from sending garbage mouse reports if it reconnects 
+        // to a fresh shell that isn't expecting them.
+        termRef.current.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1049l\x1b[?1l\x1b[?2004l');
       }
     }
   }, [disconnected, t]);
@@ -384,25 +464,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   useEffect(() => {
     const el = placeholderRef.current;
     if (!el) return;
-
-    const CHUNK_SIZE = 4096;
-
-    const sendLargeText = async (text: string) => {
-        const term = termRef.current;
-        if (!term || !onDataRef.current) return;
-        
-        // Use onData callback instead of paste() to avoid text selection
-        for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-            const chunk = text.substring(i, i + CHUNK_SIZE);
-            onDataRef.current(chunk);
-            if (i + CHUNK_SIZE < text.length) {
-                await new Promise(resolve => setTimeout(resolve, 10));
-            }
-        }
-        
-        // Focus terminal after pasting
-        term.focus();
-    };
 
     const handleContextMenu = async (e: MouseEvent) => {
         e.preventDefault();
@@ -425,8 +486,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             } else {
                 try {
                     const text = await readText();
-                    if (text) {
-                        await sendLargeText(text);
+                    if (text && termRef.current) {
+                        termRef.current.paste(text);
+                        termRef.current.focus();
                     }
                 } catch (err) {
                     console.error('Failed to read clipboard:', err);
@@ -448,8 +510,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             e.preventDefault();
             try {
                 const text = await readText();
-                if (text) {
-                    await sendLargeText(text);
+                if (text && termRef.current) {
+                    termRef.current.paste(text);
+                    termRef.current.focus();
                 }
             } catch (err) {
                 console.error('Failed to read clipboard for middle click:', err);
@@ -529,22 +592,27 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               onClick={async () => {
                 try {
                   const text = await readText();
-                  if (text && termRef.current && onDataRef.current) {
-                    const CHUNK_SIZE = 4096;
-                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-                        const chunk = text.substring(i, i + CHUNK_SIZE);
-                        onDataRef.current(chunk);
-                        if (i + CHUNK_SIZE < text.length) {
-                            await new Promise(r => setTimeout(r, 10));
-                        }
-                    }
-                    // Focus terminal after pasting
+                  if (text && termRef.current) {
+                    termRef.current.paste(text);
                     termRef.current.focus();
                   }
                 } catch (e) {
                   console.error(e);
                   showToast(t('common.paste_failed', 'Paste failed'), 'error');
                 }
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+            <div className="h-px bg-zinc-800 my-1" />
+            <ContextMenuItem 
+              label={t('common.reset_terminal', '重置终端 (Reset)')} 
+              icon={<RotateCcw className="w-4 h-4" />}
+              onClick={() => {
+                if (termRef.current) {
+                  termRef.current.reset();
+                  termRef.current.focus();
+                }
+                showToast(t('common.terminal_reset_success', '终端状态已重置'), 'success');
                 setContextMenu(prev => ({ ...prev, visible: false }));
               }}
             />

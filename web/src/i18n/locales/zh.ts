@@ -200,6 +200,7 @@ export default {
     connected: '已连接',
     connecting: '连接中...',
     disconnected: '已断开',
+    reconnecting: '重连中...',
     monitor: '监控',
     refresh_rate: '2s 刷新',
     cpu: 'CPU',
