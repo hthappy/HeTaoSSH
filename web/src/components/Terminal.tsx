@@ -4,7 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
 import { ITheme } from 'xterm';
 import { useTranslation } from 'react-i18next';
-import { Clipboard, Copy, RotateCcw } from 'lucide-react';
+import { Clipboard, Copy } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
@@ -67,7 +67,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   // Use refs instead of state to avoid re-renders on every keystroke
   const currentCommandRef = useRef('');
   const commandHistoryRef = useRef<{ command: string; timestamp: number }[]>([]);
-  const ctrlCSpamRef = useRef({ count: 0, lastTime: 0 });
+  const lastHiddenTimeRef = useRef<number>(0);
 
   // Update refs
   useEffect(() => {
@@ -213,29 +213,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Setup event handlers
     const onDataDisposable = instance.term.onData((data) => {
       if (!disconnectedRef.current && onDataRef.current) {
-        // Detect Ctrl+C (\\x03) spam to automatically escape broken terminal states
-        if (data === '\x03') {
-          const now = Date.now();
-          if (now - ctrlCSpamRef.current.lastTime < 1000) {
-            ctrlCSpamRef.current.count++;
-          } else {
-            ctrlCSpamRef.current.count = 1;
-          }
-          ctrlCSpamRef.current.lastTime = now;
-          
-          if (ctrlCSpamRef.current.count >= 3) {
-            // Panic reset: Disable mouse tracking, alt screen, bracketed paste
-            if (termRef.current) {
-              termRef.current.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1049l\x1b[?1l\x1b[?2004l');
-            }
-            ctrlCSpamRef.current.count = 0;
-            showToast(t('common.terminal_rescued', '(Auto-Rescue) 终端控制状态已重置'), 'success');
-          }
-        } else {
-          // Reset spam counter on any other key
-          ctrlCSpamRef.current.count = 0;
-        }
-
         if (data === '\r' && serverId !== undefined) {
           if (currentCommandRef.current.trim()) {
             addToHistory(serverId, currentCommandRef.current);
@@ -460,6 +437,49 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     }
   }, [disconnected, t]);
 
+  // 【核心修复】窗口恢复可见时，静默重置终端鼠标追踪模式
+  // 原理：OpenCode/vim 等全屏程序会开启鼠标追踪。当窗口最小化后程序异常退出，
+  // xterm.js 不知道远程程序已退出，仍保持鼠标追踪状态。
+  // 用户恢复窗口并移动鼠标时，xterm.js 会持续发送坐标数据给 zsh，产生乱码。
+  // 修复方式：窗口恢复时向本地 xterm.js 写入 DECRST 序列，清除其内部鼠标追踪状态。
+  // 注意：这些序列只能写给本地终端模拟器，绝不能发送给远程 shell（否则会变成乱码）。
+  useEffect(() => {
+    // DECRST 序列：关闭各种鼠标追踪模式
+    const MOUSE_MODES_OFF = '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l';
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // 记录窗口隐藏时间
+        lastHiddenTimeRef.current = Date.now();
+      } else {
+        // 窗口恢复可见：如果隐藏超过 5 秒，静默重置鼠标追踪
+        const hiddenDuration = Date.now() - lastHiddenTimeRef.current;
+        if (hiddenDuration > 5000 && termRef.current && !disconnectedRef.current) {
+          // 仅清除本地 xterm.js 的鼠标追踪状态（阻止 xterm.js 生成坐标数据）
+          // 不向远程发送任何内容 — DECRST 是终端控制序列，不是 shell 命令
+          termRef.current.write(MOUSE_MODES_OFF);
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      const hiddenDuration = Date.now() - lastHiddenTimeRef.current;
+      if (hiddenDuration > 5000 && termRef.current && !disconnectedRef.current) {
+        termRef.current.write(MOUSE_MODES_OFF);
+        // 重置计时避免重复触发
+        lastHiddenTimeRef.current = 0;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, []);
+
   // Handle right click and middle click
   useEffect(() => {
     const el = placeholderRef.current;
@@ -600,19 +620,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   console.error(e);
                   showToast(t('common.paste_failed', 'Paste failed'), 'error');
                 }
-                setContextMenu(prev => ({ ...prev, visible: false }));
-              }}
-            />
-            <div className="h-px bg-zinc-800 my-1" />
-            <ContextMenuItem 
-              label={t('common.reset_terminal', '重置终端 (Reset)')} 
-              icon={<RotateCcw className="w-4 h-4" />}
-              onClick={() => {
-                if (termRef.current) {
-                  termRef.current.reset();
-                  termRef.current.focus();
-                }
-                showToast(t('common.terminal_reset_success', '终端状态已重置'), 'success');
                 setContextMenu(prev => ({ ...prev, visible: false }));
               }}
             />

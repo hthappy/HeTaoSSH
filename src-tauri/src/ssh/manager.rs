@@ -4,17 +4,10 @@ use crate::ssh::SshConnection;
 use log::{error, info, warn};
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot, Mutex};
-use tokio::time::{sleep, Duration};
 use tauri::Emitter;
 
 /// SSH 连接超时时间（秒）
 const CONNECTION_TIMEOUT_SECS: u64 = 15;
-
-/// 最大重连次数
-const MAX_RECONNECT_ATTEMPTS: u32 = 2;
-
-/// 重连间隔时间
-const RECONNECT_INTERVAL: Duration = Duration::from_secs(3);
 
 /// 系统监控数据刷新间隔（秒）- 暂未使用，保留供将来扩展
 #[allow(dead_code)]
@@ -707,7 +700,7 @@ async fn connection_actor(
     use tauri::Emitter;
     info!("Connection actor started: {}", id);
     let event_name = format!("ssh-data-{}", id);
-    let mut reconnect_attempts = 0;
+
 
     loop {
         tokio::select! {
@@ -766,7 +759,6 @@ async fn connection_actor(
                         // 尝试重新连接
                         match conn.reconnect().await {
                             Ok(_) => {
-                                reconnect_attempts = 0;
                                 let _ = app_handle.emit("ssh-reconnected", &id);
                                 let _ = reply.send(Ok(()));
                             }
@@ -792,126 +784,100 @@ async fn connection_actor(
             data_opt = conn.recv() => {
                 match data_opt {
                     Some(data) => {
-                        reconnect_attempts = 0;
                         let _ = app_handle.emit(&event_name, data);
                     }
                     None => {
-                        warn!("Connection {} lost, attempting auto-reconnect...", id);
-
-                        let _ = app_handle.emit("ssh-reconnecting", &ReconnectEvent {
-                            id: id.clone(),
-                            attempt: reconnect_attempts + 1,
-                            max_attempts: MAX_RECONNECT_ATTEMPTS,
-                        });
-
-                        if reconnect_attempts < MAX_RECONNECT_ATTEMPTS {
-                            reconnect_attempts += 1;
-                            sleep(RECONNECT_INTERVAL).await;
-
-                            info!("Reconnecting {} (attempt {}/{})", id, reconnect_attempts, MAX_RECONNECT_ATTEMPTS);
-
-                            match conn.reconnect().await {
-                                Ok(_) => {
-                                    info!("Reconnection successful for {}", id);
-                                    reconnect_attempts = 0;
-                                    let _ = app_handle.emit("ssh-reconnected", &id);
-                                    continue;
-                                }
-                                Err(e) => {
-                                    error!("Reconnection failed for {}: {}", id, e);
-                                }
-                            }
-                        } else {
-                            error!("Max reconnection attempts reached for {}, giving up", id);
-                            let _ = app_handle.emit("ssh-disconnected", &id);
-                            let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[Connection lost. Press any key to reconnect...]\x1b[0m\r\n".to_vec());
-                            // Enter listening mode for reconnection event - the connection is effectively disconnected now
-                            loop {
-                                tokio::select! {
-                                    cmd_opt = rx.recv() => {
-                                        let Some(cmd) = cmd_opt else { 
-                                            info!("Command channel closed for disconnected connection {}", id);
-                                            break; 
-                                        };
-                                        // Handle only the reconnect command, ignore others when disconnected
-                                        match cmd {
-                                            ConnCommand::Reconnect { reply } => {
-                                                info!("Manual reconnection request for connection {}", id);
-                                                match conn.reconnect().await {
-                                                    Ok(_) => {
-                                                        info!("Manual reconnection successful for {}", id);
-                                                        reconnect_attempts = 0;
-                                                        let _ = app_handle.emit("ssh-reconnected", &id);
-                                                        let _ = reply.send(Ok(()));
-                                                        // Return to normal operation after successful reconnect
-                                                        break;
-                                                    }
-                                                    Err(e) => {
-                                                        error!("Manual reconnection failed for {}: {}", id, e);
-                                                        let _ = reply.send(Err(e));
-                                                    }
+                        // 连接断开：不自动重连，直接进入断开状态等待用户手动操作
+                        // 原因：活跃的程序（OpenCode/vim/tail -f）会通过数据流自然保持连接，
+                        // 连接断开说明终端确实空闲且服务器主动超时断开了。
+                        // 自动重连会导致无限循环：新 session 空闲 → 服务器再断 → 再重连...
+                        warn!("Connection {} lost (server disconnected)", id);
+                        let _ = app_handle.emit("ssh-disconnected", &id);
+                        let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[Connection lost. Press any key to reconnect...]\x1b[0m\r\n".to_vec());
+                        
+                        // 进入等待模式：仅处理 Reconnect 和 Disconnect 命令
+                        loop {
+                            tokio::select! {
+                                cmd_opt = rx.recv() => {
+                                    let Some(cmd) = cmd_opt else { 
+                                        info!("Command channel closed for disconnected connection {}", id);
+                                        break; 
+                                    };
+                                    match cmd {
+                                        ConnCommand::Reconnect { reply } => {
+                                            info!("Manual reconnection request for connection {}", id);
+                                            match conn.reconnect().await {
+                                                Ok(_) => {
+                                                    info!("Manual reconnection successful for {}", id);
+                                                    let _ = app_handle.emit("ssh-reconnected", &id);
+                                                    let _ = reply.send(Ok(()));
+                                                    break; // 恢复正常操作
+                                                }
+                                                Err(e) => {
+                                                    error!("Manual reconnection failed for {}: {}", id, e);
+                                                    let _ = reply.send(Err(e));
                                                 }
                                             }
-                                            ConnCommand::Disconnect { reply } => {
-                                                info!("Disconnect command received for already disconnected connection {}", id);
-                                                let _ = reply.send(Ok(())); // Connection already disconnected
-                                                break; // Close the connection for good
-                                            }
-                                            // Return errors for all other operations since the connection is gone
-                                            ConnCommand::SendData { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::ResizeTerminal { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpListDir { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpReadFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpWriteFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpGetHomeDir { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpRemoveFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpCreateDir { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpDownloadFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpDownloadDir { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpUploadFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpUploadFileWithProgress { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpRename { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::SftpCreateFile { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::MeasureLatency { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::CheckConnection { reply } => {
-                                                let _ = reply.send(false);
-                                            }
-                                            ConnCommand::GetSystemUsage { reply, .. } => {
-                                                let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                            }
-                                            ConnCommand::RecvData { reply, .. } => {
-                                                let _ = reply.send(None);
-                                            }
+                                        }
+                                        ConnCommand::Disconnect { reply } => {
+                                            info!("Disconnect command received for already disconnected connection {}", id);
+                                            let _ = reply.send(Ok(()));
+                                            break;
+                                        }
+                                        // 断开状态下所有其他操作返回错误
+                                        ConnCommand::SendData { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::ResizeTerminal { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpListDir { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpReadFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpWriteFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpGetHomeDir { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpRemoveFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpCreateDir { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpDownloadFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpDownloadDir { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpUploadFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpUploadFileWithProgress { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpRename { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::SftpCreateFile { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::MeasureLatency { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::CheckConnection { reply } => {
+                                            let _ = reply.send(false);
+                                        }
+                                        ConnCommand::GetSystemUsage { reply, .. } => {
+                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
+                                        }
+                                        ConnCommand::RecvData { reply, .. } => {
+                                            let _ = reply.send(None);
                                         }
                                     }
                                 }
@@ -926,12 +892,7 @@ async fn connection_actor(
     info!("Connection actor stopped: {}", id);
 }
 
-#[derive(Clone, serde::Serialize)]
-struct ReconnectEvent {
-    id: String,
-    attempt: u32,
-    max_attempts: u32,
-}
+
 
 #[derive(Clone, serde::Serialize)]
 #[allow(dead_code)]

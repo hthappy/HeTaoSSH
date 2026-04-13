@@ -87,11 +87,23 @@ impl SshConnection {
     pub async fn connect(&mut self) -> Result<()> {
         info!("Connecting to {}:{}", self.config.host, self.config.port);
 
+        // Configure SSH client with keepalive settings
         let mut config = Config::default();
         
-        // Add Keep-Alive to prevent connection drops during inactivity
-        config.keepalive_interval = Some(std::time::Duration::from_secs(30));
+        // Enable keepalive to prevent connection timeout
+        // Send keepalive every 15 seconds (more aggressive than default 30s)
+        // This helps prevent disconnection from firewalls and NAT devices
+        config.keepalive_interval = Some(std::time::Duration::from_secs(15));
+        
+        // Maximum number of consecutive keepalive messages without response
+        // before considering the connection dead
+        // 3 failures = 45 seconds without response before disconnect
         config.keepalive_max = 3;
+        
+        info!(
+            "SSH keepalive configured: interval={}s, max_failures={}",
+            15, 3
+        );
 
         let handler = ClientHandler {
             host: self.config.host.clone(),
