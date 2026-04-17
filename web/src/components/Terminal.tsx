@@ -238,7 +238,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     if (!termAny._customPasteHandlerAttached) {
       instance.term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         // Only handle keydown to prevent double-pasting (xterm fires for keydown/keyup/keypress)
-        if (e.type === 'keydown' && ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') || (e.shiftKey && e.key === 'Insert')) {
+        const isMac = navigator.userAgent.includes('Mac');
+        const isPaste = 
+          (isMac && e.metaKey && e.key.toLowerCase() === 'v') || // Mac: Cmd+V
+          (!isMac && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') || // Win/Linux: Ctrl+Shift+V
+          (e.shiftKey && e.key === 'Insert'); // Shift+Insert
+
+        if (e.type === 'keydown' && isPaste) {
           e.preventDefault();
           
           readText().then(text => {
