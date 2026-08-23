@@ -3,8 +3,8 @@ use crate::error::{Result, SshError};
 use crate::ssh::handler::SshChannelHandler;
 use log::info;
 use russh::client::{Config, Handle, Handler};
+use russh::keys::known_hosts::learn_known_hosts_path;
 use russh::keys::{load_secret_key, ssh_key, PrivateKeyWithHashAlg};
-use russh_keys::known_hosts::learn_known_hosts_path;
 use std::sync::Arc;
 
 /// SSH Connection wrapper with channel support
@@ -44,7 +44,7 @@ impl Handler for ClientHandler {
         let port = self.port;
 
         let check_result =
-            russh_keys::check_known_hosts_path(host, port, server_public_key, &known_hosts_path);
+            russh::keys::check_known_hosts_path(host, port, server_public_key, &known_hosts_path);
 
         match check_result {
             Ok(true) => {
@@ -255,18 +255,31 @@ impl SshConnection {
 
         // Disconnect session
         if let Some(ref mut session) = self.session {
-            session
-                .disconnect(
+            // 加超时：在半开的死连接上 disconnect 也可能挂起
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                session.disconnect(
                     russh::Disconnect::ByApplication,
                     "User disconnect",
                     "English",
-                )
-                .await
-                .map_err(|e| SshError::ConnectionFailed(e.to_string()))?;
-            info!(
-                "Disconnected from {}:{}",
-                self.config.host, self.config.port
-            );
+                ),
+            )
+            .await;
+
+            match result {
+                Ok(Ok(_)) => {
+                    info!(
+                        "Disconnected from {}:{}",
+                        self.config.host, self.config.port
+                    );
+                }
+                Ok(Err(e)) => {
+                    log::warn!("Disconnect error (ignored): {}", e);
+                }
+                Err(_) => {
+                    log::warn!("Disconnect timed out after 5s (connection likely already dead)");
+                }
+            }
         }
         self.session = None;
         Ok(())
@@ -298,6 +311,14 @@ impl SshConnection {
         }
     }
 
+    /// Non-blocking receive: returns buffered output if immediately available.
+    /// Used to batch bursts of terminal output into a single frontend event.
+    pub fn try_recv(&self) -> Option<Vec<u8>> {
+        self.channel_handler
+            .as_ref()
+            .and_then(|h| h.try_recv_data())
+    }
+
     /// Resize terminal
     pub async fn resize(&mut self, cols: u32, rows: u32) -> Result<()> {
         if let Some(ref handler) = self.channel_handler {
@@ -326,27 +347,33 @@ impl SshConnection {
         use std::time::Instant;
         use tokio::io::AsyncReadExt;
 
+        // 每一步都加超时：连接半开时 channel_open_session / exec / read 都可能永久挂起，
+        // 而该函数运行在连接 Actor 内，挂起会冻结整个连接（Ctrl+C、断开全部失效）
+        const STEP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
         if let Some(ref session) = self.session {
             let start = Instant::now();
-            
+
             // Open a new session channel for latency measurement
-            let channel = session
-                .channel_open_session()
+            let channel = tokio::time::timeout(STEP_TIMEOUT, session.channel_open_session())
                 .await
+                .map_err(|_| {
+                    SshError::Channel("Latency check timed out opening channel".to_string())
+                })?
                 .map_err(|e| SshError::Channel(format!("Failed to open channel: {}", e)))?;
-            
+
             // Execute a quick echo command
-            channel
-                .exec(true, "echo")
+            tokio::time::timeout(STEP_TIMEOUT, channel.exec(true, "echo"))
                 .await
+                .map_err(|_| SshError::Channel("Latency check timed out on exec".to_string()))?
                 .map_err(|e| SshError::Channel(format!("Exec failed: {}", e)))?;
-            
+
             // Read response (small data)
             let mut buf = [0u8; 64];
             let stream = channel.into_stream();
             let (mut reader, _writer) = tokio::io::split(stream);
-            let _ = reader.read(&mut buf).await;
-            
+            let _ = tokio::time::timeout(STEP_TIMEOUT, reader.read(&mut buf)).await;
+
             let elapsed = start.elapsed();
             Ok(elapsed.as_millis())
         } else {

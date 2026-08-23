@@ -130,14 +130,19 @@ async fn exec_remote_command(
     session: &russh::client::Handle<crate::ssh::connection::ClientHandler>,
     command: &str,
 ) -> Result<String> {
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| SshError::Channel(format!("Failed to open exec channel: {}", e)))?;
+    // 打开通道和 exec 都要加超时：连接半开时这两步会永久挂起，
+    // 而调用方运行在连接 Actor 内，挂起会冻结整个连接
+    let channel = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        session.channel_open_session(),
+    )
+    .await
+    .map_err(|_| SshError::Channel("Timed out opening exec channel".to_string()))?
+    .map_err(|e| SshError::Channel(format!("Failed to open exec channel: {}", e)))?;
 
-    channel
-        .exec(true, command)
+    tokio::time::timeout(std::time::Duration::from_secs(5), channel.exec(true, command))
         .await
+        .map_err(|_| SshError::Channel("Timed out executing remote command".to_string()))?
         .map_err(|e| SshError::Channel(format!("Failed to exec command: {}", e)))?;
 
     // 读取所有输出

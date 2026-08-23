@@ -19,8 +19,8 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 
 # SSH
-russh = "0.50.0-beta.7"
-russh-keys = "0.50.0-beta.7"
+# 0.50 稳定版（keys 模块已内置，无需单独的 russh-keys crate）
+russh = "0.50"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -54,7 +54,7 @@ async-trait = "0.1"
 # Directories
 dirs = "6"
 keyring = { version = "3.6.3", features = ["windows-native"] }
-russh-sftp = "2.0.0-beta.2"
+russh-sftp = "2.1"
 plist = "1.8.0"
 reqwest = { version = "0.13.2", features = ["json"] }
 portable-pty = "0.9.0"

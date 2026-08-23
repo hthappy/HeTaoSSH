@@ -9,6 +9,28 @@ use tauri::Emitter;
 /// SSH 连接超时时间（秒）
 const CONNECTION_TIMEOUT_SECS: u64 = 15;
 
+/// 快速命令的看门狗超时（秒）
+///
+/// Actor 串行处理命令，任何一条命令永久挂起都会冻结整个连接
+/// （Ctrl+C、断开全部失效）。快速命令（收发数据、resize、延迟测量、
+/// 系统监控、SFTP 小操作）超过该时间未完成即判定连接死亡，
+/// 通知前端并转入等待重连状态。
+///
+/// 取值说明：要大于 GetSystemUsage 的内部超时上限（打开通道 5s +
+/// exec 5s + 读取 5s ≈ 15s），避免慢速服务器上的误杀。
+const QUICK_CMD_TIMEOUT_SECS: u64 = 30;
+const QUICK_CMD_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(QUICK_CMD_TIMEOUT_SECS);
+
+/// 重连操作的超时时间（秒）
+const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 单次 emit 到前端的终端输出聚合上限（字节）
+///
+/// tail -f 等输出洪峰时，把已积压的输出合并成一次事件，
+/// 大幅减少 IPC 次数（原来每个 SSH 数据包都是一条独立的 JSON 事件）
+const MAX_EMIT_BATCH_BYTES: usize = 64 * 1024;
+
 /// 系统监控数据刷新间隔（秒）- 暂未使用，保留供将来扩展
 #[allow(dead_code)]
 const MONITOR_REFRESH_INTERVAL_SECS: u64 = 2;
@@ -240,18 +262,21 @@ impl ConnectionManager {
         rows: Option<u32>,
         app_handle: tauri::AppHandle,
     ) -> Result<()> {
-        // 先清理旧的 Actor（支持重连场景）
-        {
+        // 先清理旧的 Actor（支持重连场景）。
+        // 注意：必须先从 map 中移除并释放全局锁，再发送 Disconnect。
+        // 旧 Actor 可能已卡死（命令队列已满），在持锁状态下 send().await
+        // 会永久阻塞全局锁，导致所有连接都无法操作。
+        let old_handle = {
             let mut handles = self.handles.lock().await;
-            if let Some(old_handle) = handles.remove(id) {
-                // 发送断开命令给旧 Actor，忽略回复（Actor 可能已退出）
-                let (reply_tx, _reply_rx) = oneshot::channel();
-                let _ = old_handle
-                    .tx
-                    .send(ConnCommand::Disconnect { reply: reply_tx })
-                    .await;
-                info!("Removed existing connection actor for reconnection: {}", id);
-            }
+            handles.remove(id)
+        };
+        if let Some(old_handle) = old_handle {
+            // 尽力而为：队列满说明 Actor 已卡死，直接放弃（句柄随 old_handle 丢弃）
+            let (reply_tx, _reply_rx) = oneshot::channel();
+            let _ = old_handle
+                .tx
+                .try_send(ConnCommand::Disconnect { reply: reply_tx });
+            info!("Removed existing connection actor for reconnection: {}", id);
         }
 
         // 建立连接 (不持有锁，避免阻塞其他操作)
@@ -294,16 +319,30 @@ impl ConnectionManager {
 
     /// 移除连接
     pub async fn remove_connection(&self, id: &str) -> Result<()> {
-        let mut handles = self.handles.lock().await;
+        // 先移除并释放全局锁，再与 Actor 通信。
+        // 绝对不能在持锁状态下 send().await：Actor 卡死时队列满，
+        // send 会永久阻塞并冻结所有连接的 get_tx/create_connection。
+        let handle = {
+            let mut handles = self.handles.lock().await;
+            handles.remove(id)
+        };
 
-        if let Some(handle) = handles.remove(id) {
+        if let Some(handle) = handle {
             let (reply_tx, reply_rx) = oneshot::channel();
-            let _ = handle
-                .tx
-                .send(ConnCommand::Disconnect { reply: reply_tx })
-                .await;
-            // 等待断开完成，但不阻塞太久
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await;
+            match handle.tx.try_send(ConnCommand::Disconnect { reply: reply_tx }) {
+                Ok(_) => {
+                    // 等待断开完成，但不阻塞太久
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), reply_rx).await;
+                }
+                Err(_) => {
+                    // 队列满或 Actor 已退出：放弃优雅断开，句柄随 handle 丢弃。
+                    // 卡死的 Actor 会由命令看门狗回收。
+                    warn!(
+                        "Connection actor for {} is unresponsive, abandoning graceful disconnect",
+                        id
+                    );
+                }
+            }
             info!("Removed SSH connection: {}", id);
         }
 
@@ -701,39 +740,82 @@ async fn connection_actor(
     info!("Connection actor started: {}", id);
     let event_name = format!("ssh-data-{}", id);
 
+    // 看门狗：对快速命令加超时。超时则回复错误并标记连接死亡（返回 true），
+    // 随后统一走「通知前端 + 等待重连」流程，避免 Actor 永久卡死。
+    macro_rules! handle_quick {
+        ($reply:expr, $name:literal, $fut:expr) => {{
+            match tokio::time::timeout(QUICK_CMD_TIMEOUT, $fut).await {
+                Ok(res) => {
+                    let _ = $reply.send(res);
+                    false
+                }
+                Err(_) => {
+                    error!(
+                        "Connection {}: {} timed out after {}s, treating connection as dead",
+                        id, $name, QUICK_CMD_TIMEOUT_SECS
+                    );
+                    let _ = $reply.send(Err(SshError::ConnectionFailed(
+                        crate::error::messages::CONNECTION_TIMEOUT.to_string(),
+                    )));
+                    true
+                }
+            }
+        }};
+    }
 
-    loop {
+    'main: loop {
+        let mut connection_dead = false;
+
         tokio::select! {
             cmd_opt = rx.recv() => {
-                let Some(cmd) = cmd_opt else { break; };
+                let Some(cmd) = cmd_opt else { break 'main; };
                 match cmd {
                     ConnCommand::SendData { data, reply } => {
-                        let _ = reply.send(conn.send(&data).await);
+                        connection_dead |= handle_quick!(reply, "SendData", conn.send(&data));
                     }
                     ConnCommand::RecvData { reply } => {
                         let _ = reply.send(None);
                     }
                     ConnCommand::ResizeTerminal { cols, rows, reply } => {
-                        let _ = reply.send(conn.resize(cols, rows).await);
+                        connection_dead |= handle_quick!(reply, "ResizeTerminal", conn.resize(cols, rows));
                     }
                     ConnCommand::SftpListDir { path, reply } => {
-                        let _ = reply.send(handle_sftp_list_dir(&conn, &path).await);
+                        connection_dead |= handle_quick!(reply, "SftpListDir", handle_sftp_list_dir(&conn, &path));
                     }
                     ConnCommand::SftpReadFile { path, reply } => {
-                        let _ = reply.send(handle_sftp_read_file(&conn, &path).await);
+                        connection_dead |= handle_quick!(reply, "SftpReadFile", handle_sftp_read_file(&conn, &path));
                     }
                     ConnCommand::SftpWriteFile { path, content, reply } => {
-                        let _ = reply.send(handle_sftp_write_file(&conn, &path, &content).await);
+                        connection_dead |= handle_quick!(reply, "SftpWriteFile", handle_sftp_write_file(&conn, &path, &content));
                     }
                     ConnCommand::SftpGetHomeDir { reply } => {
-                        let _ = reply.send(handle_sftp_get_home_dir(&conn).await);
+                        connection_dead |= handle_quick!(reply, "SftpGetHomeDir", handle_sftp_get_home_dir(&conn));
                     }
                     ConnCommand::SftpRemoveFile { path, reply } => {
-                        let _ = reply.send(handle_sftp_remove_file(&conn, &path).await);
+                        connection_dead |= handle_quick!(reply, "SftpRemoveFile", handle_sftp_remove_file(&conn, &path));
                     }
                     ConnCommand::SftpCreateDir { path, reply } => {
-                        let _ = reply.send(handle_sftp_create_dir(&conn, &path).await);
+                        connection_dead |= handle_quick!(reply, "SftpCreateDir", handle_sftp_create_dir(&conn, &path));
                     }
+                    ConnCommand::SftpRename { old_path, new_path, reply } => {
+                        connection_dead |= handle_quick!(reply, "SftpRename", handle_sftp_rename(&conn, &old_path, &new_path));
+                    }
+                    ConnCommand::SftpCreateFile { path, reply } => {
+                        connection_dead |= handle_quick!(reply, "SftpCreateFile", handle_sftp_create_file(&conn, &path));
+                    }
+                    ConnCommand::MeasureLatency { reply } => {
+                        connection_dead |= handle_quick!(reply, "MeasureLatency", conn.measure_latency());
+                    }
+                    ConnCommand::CheckConnection { reply } => {
+                        // 检查连接是否活跃
+                        let is_connected = conn.is_connected();
+                        let _ = reply.send(is_connected);
+                    }
+                    ConnCommand::GetSystemUsage { reply } => {
+                        connection_dead |= handle_quick!(reply, "GetSystemUsage", handle_get_system_usage(&conn));
+                    }
+                    // 大文件传输可能耗时很长，不适用看门狗；
+                    // 连接真正断开时 russh keepalive 会使传输报错返回
                     ConnCommand::SftpDownloadFile { remote_path, local_path, reply } => {
                         let _ = reply.send(handle_sftp_download_file(&conn, &remote_path, &local_path).await);
                     }
@@ -746,44 +828,42 @@ async fn connection_actor(
                     ConnCommand::SftpUploadFileWithProgress { local_path, remote_path, reply } => {
                         let _ = reply.send(handle_sftp_upload_file_with_progress(&conn, app_handle.clone(), &id, &local_path, &remote_path).await);
                     }
-                    ConnCommand::SftpRename { old_path, new_path, reply } => {
-                        let _ = reply.send(handle_sftp_rename(&conn, &old_path, &new_path).await);
-                    }
-                    ConnCommand::SftpCreateFile { path, reply } => {
-                        let _ = reply.send(handle_sftp_create_file(&conn, &path).await);
-                    }
-                    ConnCommand::MeasureLatency { reply } => {
-                        let _ = reply.send(conn.measure_latency().await);
-                    }
                     ConnCommand::Reconnect { reply } => {
-                        // 尝试重新连接
-                        match conn.reconnect().await {
-                            Ok(_) => {
+                        // 尝试重新连接（带超时，避免永久挂起）
+                        match tokio::time::timeout(RECONNECT_TIMEOUT, conn.reconnect()).await {
+                            Ok(Ok(_)) => {
                                 let _ = app_handle.emit("ssh-reconnected", &id);
                                 let _ = reply.send(Ok(()));
                             }
-                            Err(e) => {
+                            Ok(Err(e)) => {
                                 let _ = reply.send(Err(e));
+                            }
+                            Err(_) => {
+                                error!("Connection {}: reconnect timed out", id);
+                                let _ = reply.send(Err(SshError::ConnectionFailed(
+                                    crate::error::messages::CONNECTION_TIMEOUT.to_string(),
+                                )));
+                                connection_dead = true;
                             }
                         }
                     }
-                    ConnCommand::CheckConnection { reply } => {
-                        // 检查连接是否活跃
-                        let is_connected = conn.is_connected();
-                        let _ = reply.send(is_connected);
-                    }
-                    ConnCommand::GetSystemUsage { reply } => {
-                        let _ = reply.send(handle_get_system_usage(&conn).await);
-                    }
                     ConnCommand::Disconnect { reply } => {
                         let _ = reply.send(conn.disconnect().await);
-                        break;
+                        break 'main;
                     }
                 }
             }
             data_opt = conn.recv() => {
                 match data_opt {
-                    Some(data) => {
+                    Some(mut data) => {
+                        // 批量聚合：把已积压的输出合并成一次 emit，
+                        // 降低 tail -f 等输出洪峰时的 IPC 压力
+                        while data.len() < MAX_EMIT_BATCH_BYTES {
+                            match conn.try_recv() {
+                                Some(more) => data.extend_from_slice(&more),
+                                None => break,
+                            }
+                        }
                         let _ = app_handle.emit(&event_name, data);
                     }
                     None => {
@@ -792,104 +872,102 @@ async fn connection_actor(
                         // 连接断开说明终端确实空闲且服务器主动超时断开了。
                         // 自动重连会导致无限循环：新 session 空闲 → 服务器再断 → 再重连...
                         warn!("Connection {} lost (server disconnected)", id);
-                        let _ = app_handle.emit("ssh-disconnected", &id);
-                        let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[Connection lost. Press any key to reconnect...]\x1b[0m\r\n".to_vec());
-                        
-                        // 进入等待模式：仅处理 Reconnect 和 Disconnect 命令
-                        loop {
-                            tokio::select! {
-                                cmd_opt = rx.recv() => {
-                                    let Some(cmd) = cmd_opt else { 
-                                        info!("Command channel closed for disconnected connection {}", id);
-                                        break; 
-                                    };
-                                    match cmd {
-                                        ConnCommand::Reconnect { reply } => {
-                                            info!("Manual reconnection request for connection {}", id);
-                                            match conn.reconnect().await {
-                                                Ok(_) => {
-                                                    info!("Manual reconnection successful for {}", id);
-                                                    let _ = app_handle.emit("ssh-reconnected", &id);
-                                                    let _ = reply.send(Ok(()));
-                                                    break; // 恢复正常操作
-                                                }
-                                                Err(e) => {
-                                                    error!("Manual reconnection failed for {}: {}", id, e);
-                                                    let _ = reply.send(Err(e));
-                                                }
-                                            }
-                                        }
-                                        ConnCommand::Disconnect { reply } => {
-                                            info!("Disconnect command received for already disconnected connection {}", id);
-                                            let _ = reply.send(Ok(()));
-                                            break;
-                                        }
-                                        // 断开状态下所有其他操作返回错误
-                                        ConnCommand::SendData { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::ResizeTerminal { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpListDir { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpReadFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpWriteFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpGetHomeDir { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpRemoveFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpCreateDir { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpDownloadFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpDownloadDir { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpUploadFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpUploadFileWithProgress { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpRename { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::SftpCreateFile { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::MeasureLatency { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::CheckConnection { reply } => {
-                                            let _ = reply.send(false);
-                                        }
-                                        ConnCommand::GetSystemUsage { reply, .. } => {
-                                            let _ = reply.send(Err(SshError::ConnectionFailed("Connection lost".to_string())));
-                                        }
-                                        ConnCommand::RecvData { reply, .. } => {
-                                            let _ = reply.send(None);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        connection_dead = true;
                     }
                 }
+            }
+        }
+
+        if connection_dead {
+            // 连接已死（数据流结束或命令看门狗超时）：通知前端并进入等待重连状态
+            let _ = app_handle.emit("ssh-disconnected", &id);
+            let _ = app_handle.emit(&event_name, b"\r\n\x1b[31m[Connection lost. Press any key to reconnect...]\x1b[0m\r\n".to_vec());
+
+            if !wait_for_reconnect(&id, &mut conn, &mut rx, &app_handle).await {
+                break 'main;
             }
         }
     }
 
     info!("Connection actor stopped: {}", id);
+}
+
+/// 连接死亡后的等待状态：仅响应 Reconnect / Disconnect 命令。
+///
+/// 返回 `true` 表示重连成功、应恢复主循环；
+/// 返回 `false` 表示 Actor 应退出（收到 Disconnect 或命令通道关闭）。
+async fn wait_for_reconnect(
+    id: &str,
+    conn: &mut SshConnection,
+    rx: &mut mpsc::Receiver<ConnCommand>,
+    app_handle: &tauri::AppHandle,
+) -> bool {
+    use tauri::Emitter;
+    loop {
+        let Some(cmd) = rx.recv().await else {
+            info!("Command channel closed for disconnected connection {}", id);
+            return false;
+        };
+        match cmd {
+            ConnCommand::Reconnect { reply } => {
+                info!("Manual reconnection request for connection {}", id);
+                match tokio::time::timeout(RECONNECT_TIMEOUT, conn.reconnect()).await {
+                    Ok(Ok(_)) => {
+                        info!("Manual reconnection successful for {}", id);
+                        let _ = app_handle.emit("ssh-reconnected", &id);
+                        let _ = reply.send(Ok(()));
+                        return true;
+                    }
+                    Ok(Err(e)) => {
+                        error!("Manual reconnection failed for {}: {}", id, e);
+                        let _ = reply.send(Err(e));
+                    }
+                    Err(_) => {
+                        error!("Reconnection timed out for {}", id);
+                        let _ = reply.send(Err(SshError::ConnectionFailed(
+                            crate::error::messages::CONNECTION_TIMEOUT.to_string(),
+                        )));
+                    }
+                }
+            }
+            ConnCommand::Disconnect { reply } => {
+                info!("Disconnect command received for already disconnected connection {}", id);
+                let _ = reply.send(Ok(()));
+                return false;
+            }
+            // 断开状态下所有其他操作返回错误
+            other => reply_connection_lost(other),
+        }
+    }
+}
+
+/// 在断开状态下拒绝命令：向调用方回复 "Connection lost" 错误
+fn reply_connection_lost(cmd: ConnCommand) {
+    fn err() -> SshError {
+        SshError::ConnectionFailed("Connection lost".to_string())
+    }
+    match cmd {
+        ConnCommand::SendData { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::RecvData { reply } => { let _ = reply.send(None); }
+        ConnCommand::ResizeTerminal { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpListDir { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpReadFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpWriteFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpGetHomeDir { reply } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpRemoveFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpCreateDir { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpDownloadFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpDownloadDir { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpUploadFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpUploadFileWithProgress { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpRename { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpCreateFile { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::MeasureLatency { reply } => { let _ = reply.send(Err(err())); }
+        ConnCommand::CheckConnection { reply } => { let _ = reply.send(false); }
+        ConnCommand::GetSystemUsage { reply } => { let _ = reply.send(Err(err())); }
+        // Reconnect / Disconnect 由 wait_for_reconnect 单独处理，不会走到这里
+        ConnCommand::Reconnect { .. } | ConnCommand::Disconnect { .. } => {}
+    }
 }
 
 
