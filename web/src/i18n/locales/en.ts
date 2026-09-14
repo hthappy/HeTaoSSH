@@ -30,6 +30,8 @@ export default {
     all: 'All',
     optional: '(Optional)',
     new_local_terminal: 'New Local Terminal',
+    select_shell: 'Select shell',
+    default: 'Default',
     minimize: 'Minimize',
     maximize: 'Maximize',
     restore: 'Restore',

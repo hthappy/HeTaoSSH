@@ -9,9 +9,10 @@ import { ActivityBar, type Activity } from '@/components/ActivityBar';
 import { CommandSnippets } from '@/components/CommandSnippets';
 import { useSshStore } from '@/stores/ssh-store';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
-import { Terminal, X, FileCode2, Plus, Loader2 } from 'lucide-react';
+import { Terminal, X, FileCode2, Plus, Loader2, ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -55,7 +56,55 @@ function App() {
   const serverListRef = useRef<ServerListHandle>(null);
   const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  
+
+  // Local terminal shell selection (Windows Terminal style dropdown)
+  const [localShells, setLocalShells] = useState<{ id: string; name: string; available: boolean }[]>([]);
+  const [shellMenuOpen, setShellMenuOpen] = useState(false);
+  const shellMenuRef = useRef<HTMLDivElement>(null);
+  const [defaultShell, setDefaultShell] = useState<string>(() => {
+    try {
+      return localStorage.getItem('hetaossh-default-shell') || 'powershell';
+    } catch {
+      return 'powershell';
+    }
+  });
+
+  // Fetch available local shells once
+  useEffect(() => {
+    invoke<{ id: string; name: string; available: boolean }[]>('list_local_shells')
+      .then(setLocalShells)
+      .catch(() => setLocalShells([
+        { id: 'powershell', name: 'Windows PowerShell', available: true },
+        { id: 'cmd', name: 'Command Prompt', available: true },
+      ]));
+  }, []);
+
+  // Close shell dropdown on outside click
+  useEffect(() => {
+    if (!shellMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (shellMenuRef.current && !shellMenuRef.current.contains(e.target as Node)) {
+        setShellMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [shellMenuOpen]);
+
+  const openLocalTerminal = useCallback((shell?: string) => {
+    const chosen = shell || defaultShell;
+    createLocalTerminal(chosen).catch(console.error);
+  }, [createLocalTerminal, defaultShell]);
+
+  const selectShell = useCallback((shellId: string) => {
+    setShellMenuOpen(false);
+    setDefaultShell(shellId);
+    try {
+      localStorage.setItem('hetaossh-default-shell', shellId);
+    } catch { /* ignore */ }
+    createLocalTerminal(shellId).catch(console.error);
+  }, [createLocalTerminal]);
+
   // Check for updates on startup
   useEffect(() => {
     // Disable global context menu
@@ -172,7 +221,7 @@ function App() {
       const newTerminalKeys = getKeys('new-local-terminal');
       if (newTerminalKeys && matchesShortcut(e, newTerminalKeys)) {
         e.preventDefault();
-        createLocalTerminal().catch(console.error);
+        openLocalTerminal();
         return;
       }
 
@@ -241,7 +290,7 @@ function App() {
     // Use capture phase to intercept before terminal handles it
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeTabId, closeTab, splitPane, closePane, getActivePaneId, getKeys, createLocalTerminal]);
+  }, [activeTabId, closeTab, splitPane, closePane, getActivePaneId, getKeys, openLocalTerminal]);
 
   // Resolve current theme object
   const currentTheme = useMemo(() => {
@@ -456,13 +505,45 @@ function App() {
                   </div>
                 ))}
                 
-                <button
-                  onClick={() => createLocalTerminal().catch(console.error)}
-                  className="p-1.5 ml-1 rounded-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors flex-shrink-0 no-drag"
-                  title={t('common.new_local_terminal', 'Open Local Terminal')}
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                {/* New local terminal: "+" opens default shell, chevron opens shell picker (Windows Terminal style) */}
+                <div ref={shellMenuRef} className="relative flex items-center ml-1 flex-shrink-0 no-drag">
+                  <button
+                    onClick={() => openLocalTerminal()}
+                    className="p-1.5 rounded-l-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors"
+                    title={t('common.new_local_terminal', 'Open Local Terminal')}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShellMenuOpen(v => !v)}
+                    className="p-1.5 pl-0.5 pr-1 rounded-r-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors"
+                    title={t('common.select_shell', 'Select shell')}
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {shellMenuOpen && (
+                    <div className="absolute top-full right-0 mt-1 z-50 min-w-[160px] rounded-md border border-term-selection bg-term-bg shadow-lg py-1">
+                      {localShells.map(shell => (
+                        <button
+                          key={shell.id}
+                          disabled={!shell.available}
+                          onClick={() => selectShell(shell.id)}
+                          className={cn(
+                            'w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 transition-colors',
+                            shell.available
+                              ? 'text-term-fg hover:bg-term-selection/50 cursor-pointer'
+                              : 'text-term-fg/30 cursor-not-allowed'
+                          )}
+                        >
+                          <span>{shell.name}</span>
+                          {shell.id === defaultShell && (
+                            <span className="text-term-blue text-[10px]">{t('common.default', 'Default')}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </TitleBar>
 

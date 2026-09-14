@@ -136,10 +136,17 @@ pub async fn open_local_terminal(
     id: String,
     rows: u16,
     cols: u16,
+    shell: Option<String>,
     app_handle: AppHandle,
     state: State<'_, Arc<LocalTerminalManager>>,
 ) -> Result<()> {
-    state.create_terminal(id, rows, cols, app_handle)
+    state.create_terminal(id, rows, cols, shell, app_handle)
+}
+
+/// List available local shells (PowerShell / pwsh / cmd / Git Bash)
+#[tauri::command]
+pub async fn list_local_shells() -> Result<Vec<crate::local_term::LocalShell>> {
+    Ok(crate::local_term::available_shells())
 }
 
 /// Write data to local terminal

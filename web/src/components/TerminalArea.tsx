@@ -47,11 +47,11 @@ const SingleTerminal = memo(function SingleTerminal({
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
     if (cols <= 0 || rows <= 0) return;
-    
+
     if (isLocal) {
       if (!localTermCreated.current) {
         localTermCreated.current = true;
-        invoke('open_local_terminal', { id: backendId, rows, cols })
+        invoke('open_local_terminal', { id: backendId, rows, cols, shell: activeConnection?.shell ?? null })
           .catch(err => console.error('Failed to start local terminal:', err));
       } else {
         invoke('local_term_resize', { id: backendId, cols, rows })
@@ -61,7 +61,7 @@ const SingleTerminal = memo(function SingleTerminal({
       invoke('ssh_resize', { tabId: backendId, cols, rows })
         .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
-  }, [backendId, isLocal, pane.id]);
+  }, [backendId, isLocal, pane.id, activeConnection?.shell]);
 
   const handleTerminalEnter = useCallback(() => {
     window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 

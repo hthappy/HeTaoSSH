@@ -30,6 +30,8 @@ export default {
     all: '全部',
     optional: '（可选）',
     new_local_terminal: '新建本地终端',
+    select_shell: '选择终端类型',
+    default: '默认',
     minimize: '最小化',
     maximize: '最大化',
     restore: '恢复',

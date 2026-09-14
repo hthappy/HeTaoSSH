@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
             commands::local_term_write,
             commands::local_term_resize,
             commands::local_term_close,
+            commands::list_local_shells,
             commands::local_list_dir,
             commands::local_get_home_dir,
             commands::open_path_in_explorer,

@@ -103,6 +103,8 @@ export interface ConnectionStatus {
   status: 'connected' | 'connecting' | 'disconnected';
   error?: string;
   isLocal?: boolean;
+  /** 本地终端使用的 shell（powershell / pwsh / cmd / gitbash） */
+  shell?: string;
 }
 
 interface SshState {
@@ -131,7 +133,7 @@ interface SshState {
   // Connection Management
   connectServer: (serverId: number) => Promise<void>;
   reconnectServer: (serverId: number) => Promise<void>; // Added for manual reconnect capability
-  createLocalTerminal: () => Promise<void>;
+  createLocalTerminal: (shell?: string) => Promise<void>;
   updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => void;
 
   // Tab Management
@@ -490,9 +492,10 @@ export const useSshStore = create<SshState>((set, get) => ({
         }
       }
     } else {
-       // Local terminal: we need to create a new local terminal
+       // Local terminal: we need to create a new local terminal (same shell as the source tab)
        try {
-           await invoke('open_local_terminal', { id: newBackendId, rows: 24, cols: 80 });
+           const sourceShell = get().connections.find(c => c.serverId === tab.serverId)?.shell;
+           await invoke('open_local_terminal', { id: newBackendId, rows: 24, cols: 80, shell: sourceShell ?? null });
        } catch (err) {
            console.error('Failed to open local terminal:', err);
        }
@@ -640,19 +643,28 @@ export const useSshStore = create<SshState>((set, get) => ({
     return get().sftpPaths[serverId];
   },
 
-  createLocalTerminal: async () => {
+  createLocalTerminal: async (shell?: string) => {
     // Generate a unique ID for the local terminal
     // We use negative numbers for local terminal IDs to avoid conflict with server IDs (which are usually positive DB IDs)
     // Or just use a timestamp-based ID
-    const localId = -Date.now(); 
+    const localId = -Date.now();
     const tabId = `local-${localId}`;
+
+    const shellNames: Record<string, string> = {
+      powershell: 'PowerShell',
+      pwsh: 'PowerShell 7',
+      cmd: 'Command Prompt',
+      gitbash: 'Git Bash',
+    };
+    const title = shellNames[shell || 'powershell'] || 'Local Terminal';
 
     // Add connection status
     set((state) => ({
-      connections: [...state.connections, { 
-        serverId: localId, 
+      connections: [...state.connections, {
+        serverId: localId,
         status: 'connected', // Local terminal connects immediately (or very fast)
-        isLocal: true 
+        isLocal: true,
+        shell: shell || 'powershell',
       }],
       workspaceTabs: [
         ...state.workspaceTabs,
@@ -660,7 +672,7 @@ export const useSshStore = create<SshState>((set, get) => ({
           id: tabId,
           serverId: localId,
           type: 'local',
-          title: 'Local Terminal',
+          title,
           isLocal: true,
         }
       ],
