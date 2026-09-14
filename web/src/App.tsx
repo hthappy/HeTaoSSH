@@ -11,6 +11,7 @@ import { useSshStore } from '@/stores/ssh-store';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 import { Terminal, X, FileCode2, Plus, Loader2, ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
@@ -60,7 +61,9 @@ function App() {
   // Local terminal shell selection (Windows Terminal style dropdown)
   const [localShells, setLocalShells] = useState<{ id: string; name: string; available: boolean }[]>([]);
   const [shellMenuOpen, setShellMenuOpen] = useState(false);
+  const [shellMenuPos, setShellMenuPos] = useState<{ left: number; top: number } | null>(null);
   const shellMenuRef = useRef<HTMLDivElement>(null);
+  const shellDropdownRef = useRef<HTMLDivElement>(null);
   const [defaultShell, setDefaultShell] = useState<string>(() => {
     try {
       return localStorage.getItem('hetaossh-default-shell') || 'powershell';
@@ -79,17 +82,35 @@ function App() {
       ]));
   }, []);
 
-  // Close shell dropdown on outside click
+  // Close shell dropdown on outside click (check both the trigger area and the portaled menu)
   useEffect(() => {
     if (!shellMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (shellMenuRef.current && !shellMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inTrigger = shellMenuRef.current?.contains(target);
+      const inMenu = shellDropdownRef.current?.contains(target);
+      if (!inTrigger && !inMenu) {
         setShellMenuOpen(false);
       }
     };
     window.addEventListener('mousedown', handler);
     return () => window.removeEventListener('mousedown', handler);
   }, [shellMenuOpen]);
+
+  const toggleShellMenu = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    setShellMenuOpen(v => {
+      if (!v) {
+        const r = e.currentTarget.getBoundingClientRect();
+        // Menu is portaled to body (titlebar has overflow-hidden which would clip it);
+        // keep it inside the window horizontally
+        setShellMenuPos({
+          left: Math.max(8, Math.min(r.left, window.innerWidth - 176)),
+          top: r.bottom + 4,
+        });
+      }
+      return !v;
+    });
+  }, []);
 
   const openLocalTerminal = useCallback((shell?: string) => {
     const chosen = shell || defaultShell;
@@ -506,7 +527,7 @@ function App() {
                 ))}
                 
                 {/* New local terminal: "+" opens default shell, chevron opens shell picker (Windows Terminal style) */}
-                <div ref={shellMenuRef} className="relative flex items-center ml-1 flex-shrink-0 no-drag">
+                <div ref={shellMenuRef} className="flex items-center ml-1 flex-shrink-0 no-drag">
                   <button
                     onClick={() => openLocalTerminal()}
                     className="p-1.5 rounded-l-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors"
@@ -515,35 +536,41 @@ function App() {
                     <Plus className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => setShellMenuOpen(v => !v)}
+                    onClick={toggleShellMenu}
                     className="p-1.5 pl-0.5 pr-1 rounded-r-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors"
                     title={t('common.select_shell', 'Select shell')}
                   >
                     <ChevronDown className="w-3 h-3" />
                   </button>
-                  {shellMenuOpen && (
-                    <div className="absolute top-full right-0 mt-1 z-50 min-w-[160px] rounded-md border border-term-selection bg-term-bg shadow-lg py-1">
-                      {localShells.map(shell => (
-                        <button
-                          key={shell.id}
-                          disabled={!shell.available}
-                          onClick={() => selectShell(shell.id)}
-                          className={cn(
-                            'w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 transition-colors',
-                            shell.available
-                              ? 'text-term-fg hover:bg-term-selection/50 cursor-pointer'
-                              : 'text-term-fg/30 cursor-not-allowed'
-                          )}
-                        >
-                          <span>{shell.name}</span>
-                          {shell.id === defaultShell && (
-                            <span className="text-term-blue text-[10px]">{t('common.default', 'Default')}</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
+                {/* Portaled to body: the titlebar container has overflow-hidden and would clip the menu */}
+                {shellMenuOpen && shellMenuPos && createPortal(
+                  <div
+                    ref={shellDropdownRef}
+                    className="fixed z-[9999] min-w-[160px] rounded-md border border-term-selection bg-term-bg shadow-lg py-1"
+                    style={{ left: shellMenuPos.left, top: shellMenuPos.top }}
+                  >
+                    {localShells.map(shell => (
+                      <button
+                        key={shell.id}
+                        disabled={!shell.available}
+                        onClick={() => selectShell(shell.id)}
+                        className={cn(
+                          'w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 transition-colors',
+                          shell.available
+                            ? 'text-term-fg hover:bg-term-selection/50 cursor-pointer'
+                            : 'text-term-fg/30 cursor-not-allowed'
+                        )}
+                      >
+                        <span>{shell.name}</span>
+                        {shell.id === defaultShell && (
+                          <span className="text-term-blue text-[10px]">{t('common.default', 'Default')}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>,
+                  document.body
+                )}
               </div>
             </TitleBar>
 
