@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import type { SftpEntry } from '@/types/sftp';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { useSshStore } from '@/stores/ssh-store';
 
@@ -299,6 +300,8 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const [showHidden, setShowHidden] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [uploadProgress, setUploadProgress] = useState<Record<string, { fileName: string; transferred: number; total: number; percentage: number }>>({});
+  // 删除二次确认：右键 Delete 先把路径放进这里，ConfirmDialog 确认后才真正删除
+  const [pendingDeletePath, setPendingDeletePath] = useState<string | null>(null);
   
   // VSCode-style inline input state
   const [inlineInput, setInlineInput] = useState<{
@@ -533,24 +536,17 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     setContextMenu(null);
   };
 
-  const handleDelete = async () => {
-    if (!contextMenu) return;
-    
+  const handleDelete = async (path: string) => {
     try {
-      await invoke('sftp_remove_file', { tabId: connTabId, path: contextMenu.path });
+      await invoke('sftp_remove_file', { tabId: connTabId, path });
       showToast(t('file.delete_success', 'File deleted successfully'), 'success');
       // Refresh parent directory
-      // We need to know parent path.
-      // contextMenu.path is full path.
-      if (contextMenu.path) {
-        const parentPath = contextMenu.path.substring(0, contextMenu.path.lastIndexOf('/')) || '/';
-        loadDir(parentPath);
-      }
+      const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
+      loadDir(parentPath);
     } catch (error) {
       console.error('Failed to delete file:', error);
       showToast(t('file.delete_failed', 'Failed to delete file'), 'error');
     }
-    setContextMenu(null);
   };
 
   const getParentAndPrefix = useCallback((raw: string) => {
@@ -760,10 +756,10 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                 id="pathInput"
                 value="${browserPath}"
                 class="flex-1 bg-term-selection/50 text-term-fg text-xs px-2 py-1.5 rounded border border-term-selection focus:border-term-blue focus:outline-none"
-                placeholder="Enter path or select from browser below"
+                placeholder="${t('file.path_placeholder', 'Enter path or select from browser below')}"
               />
               <button id="loadPath" class="px-3 py-1.5 bg-term-blue text-term-bg text-xs font-medium rounded hover:bg-term-blue/80">
-                Load
+                ${t('common.load', 'Load')}
               </button>
             </div>
             
@@ -774,7 +770,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                   </svg>
-                  Loading...
+                  ${t('common.loading', 'Loading...')}
                 </div>
               ` : `
                 <div class="space-y-0.5">
@@ -1202,11 +1198,17 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
                       setContextMenu(null);
                     }}
                   />
-                  <ContextMenuItem 
-                    label={t('file.delete', 'Delete')} 
+                  <ContextMenuItem
+                    label={t('file.delete', 'Delete')}
                     icon={<Trash2 className="w-4 h-4" />}
                     danger
-                    onClick={handleDelete}
+                    onClick={() => {
+                      // 删除前先弹二次确认
+                      if (contextMenu?.path) {
+                        setPendingDeletePath(contextMenu.path);
+                      }
+                      setContextMenu(null);
+                    }}
                   />
                 </>
               )}
@@ -1279,6 +1281,20 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
             </div>
           )}
         </ContextMenu>
+      )}
+
+      {/* 删除确认对话框 */}
+      {pendingDeletePath && (
+        <ConfirmDialog
+          title={t('file.delete', 'Delete')}
+          message={`${t('file.delete_confirm', 'Are you sure you want to delete this file?')}\n${pendingDeletePath}`}
+          isDanger
+          onConfirm={() => {
+            handleDelete(pendingDeletePath);
+            setPendingDeletePath(null);
+          }}
+          onCancel={() => setPendingDeletePath(null)}
+        />
       )}
 
       {/* 路径导航输入框 */}
@@ -1410,7 +1426,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
             {/* Upload Progress Section */}
             {Object.keys(uploadProgress).length > 0 && (
               <div className="mt-4 border-t border-term-selection pt-2">
-                <div className="px-2 py-1 text-xs text-term-fg/60 uppercase">Uploading</div>
+                <div className="px-2 py-1 text-xs text-term-fg/60 uppercase">{t('file.uploading_files', 'Uploading')}</div>
                 {Object.entries(uploadProgress).map(([key, progress]) => (
                   <div key={key} className="px-2 py-2 flex items-center gap-2">
                     <span className="text-sm text-term-fg flex-1 truncate">{progress.fileName}</span>

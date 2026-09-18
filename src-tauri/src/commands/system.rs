@@ -180,6 +180,12 @@ pub async fn local_term_close(
     Ok(())
 }
 
+/// Check whether a local path is a directory (used to reject folder drops)
+#[tauri::command]
+pub fn local_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
 /// Open folder in system explorer (Windows Explorer, macOS Finder, etc.)
 #[tauri::command]
 pub async fn open_path_in_explorer(path: String) -> Result<()> {

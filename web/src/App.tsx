@@ -18,8 +18,9 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
-import { ToastProvider } from '@/components/Toast';
+import { ToastProvider, useToast } from '@/components/Toast';
 import { UpdateDialog } from '@/components/UpdateDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
@@ -31,14 +32,15 @@ import { ThemeSchema } from '@/types/theme';
 function App() {
   const { t, i18n } = useTranslation();
   const { getKeys } = useShortcutsStore();
-  const { 
+  const {
     servers,
-    connectServer, 
-    workspaceTabs, 
-    activeTabId, 
-    setActiveTab, 
+    connectServer,
+    workspaceTabs,
+    activeTabId,
+    setActiveTab,
     closeTab,
     connections,
+    dirtyFiles,
     openFileTab,
     sendToTerminal,
     createLocalTerminal,
@@ -57,6 +59,27 @@ function App() {
   const serverListRef = useRef<ServerListHandle>(null);
   const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  // 待确认关闭的标签页（文件有未保存修改时先弹确认）
+  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+
+  // 关闭标签页入口：文件标签有未保存修改时先弹确认框
+  const requestCloseTab = useCallback((tabId: string) => {
+    const tab = workspaceTabs.find((t) => t.id === tabId);
+    if (tab?.type === 'file' && tab.filePath) {
+      const connId = (tab.isLocal || (tab.serverId && tab.serverId < 0))
+        ? `local-${tab.serverId}`
+        : `conn-${tab.serverId}`;
+      if (dirtyFiles[`${connId}|${tab.filePath}`]) {
+        setPendingCloseTabId(tabId);
+        return;
+      }
+    }
+    closeTab(tabId);
+  }, [workspaceTabs, dirtyFiles, closeTab]);
+
+  const pendingCloseTab = pendingCloseTabId
+    ? workspaceTabs.find((t) => t.id === pendingCloseTabId)
+    : undefined;
 
   // Local terminal shell selection (Windows Terminal style dropdown)
   const [localShells, setLocalShells] = useState<{ id: string; name: string; available: boolean }[]>([]);
@@ -225,7 +248,7 @@ function App() {
         e.preventDefault();
         e.stopPropagation();
         if (activeTabId) {
-          closeTab(activeTabId);
+          requestCloseTab(activeTabId);
         }
         return;
       }
@@ -301,7 +324,7 @@ function App() {
           if (activePaneId) {
             closePane(activeTabId, activePaneId);
           } else {
-            closeTab(activeTabId);
+            requestCloseTab(activeTabId);
           }
         }
         return;
@@ -311,7 +334,7 @@ function App() {
     // Use capture phase to intercept before terminal handles it
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeTabId, closeTab, splitPane, closePane, getActivePaneId, getKeys, openLocalTerminal]);
+  }, [activeTabId, requestCloseTab, splitPane, closePane, getActivePaneId, getKeys, openLocalTerminal]);
 
   // Resolve current theme object
   const currentTheme = useMemo(() => {
@@ -351,7 +374,7 @@ function App() {
     
     // 如果是本地终端或本地文件
     if (activeTab.type === 'local' || activeTab.isLocal) {
-      return t('common.new_local_terminal').replace('新建', ''); // 或直接返回 'Local Terminal' / 本地终端
+      return t('common.local_terminal', 'Local Terminal');
     }
     
     // 如果是远程服务器，返回服务器名称
@@ -381,6 +404,7 @@ function App() {
 
   return (
     <ToastProvider>
+      <FileDropListener />
       <div className={cn(
         "flex flex-col h-screen bg-term-bg overflow-hidden transition-colors duration-300",
         !isMaximized && "border border-term-selection rounded-lg"
@@ -513,10 +537,14 @@ function App() {
                       <FileCode2 className="w-3.5 h-3.5 text-term-yellow flex-shrink-0" />
                     )}
                     <span className="truncate min-w-0">{tab.title}</span>
+                    {/* 未保存修改标记（仅文件标签） */}
+                    {tab.type === 'file' && tab.filePath && dirtyFiles[`${(tab.isLocal || (tab.serverId && tab.serverId < 0)) ? `local-${tab.serverId}` : `conn-${tab.serverId}`}|${tab.filePath}`] && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-term-yellow flex-shrink-0" />
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        closeTab(tab.id);
+                        requestCloseTab(tab.id);
                       }}
                       className="flex-shrink-0 ml-1 p-0.5 rounded-sm text-foreground opacity-100 hover:text-white transition-all"
                       style={{ opacity: 1 }}
@@ -613,6 +641,8 @@ function App() {
                         tabId={tab.isLocal || (tab.serverId && tab.serverId < 0) ? `local-${tab.serverId}` : `conn-${tab.serverId}`}
                         filePath={tab.filePath!}
                         theme={xtermTheme}
+                        editorMinimap={settings.editorMinimap}
+                        editorWordWrap={settings.editorWordWrap}
                       />
                     )}
                   </div>
@@ -625,17 +655,37 @@ function App() {
                     <img src={logo} alt="Logo" className="w-10 h-10 opacity-20 grayscale" />
                   </div>
                   <p className="text-sm font-bold">HeTaoSSH</p>
-                  <p className="text-xs mt-2">Press Ctrl+N to connect</p>
+                  <p className="text-xs mt-2">{t('common.press_key_to_connect', { keys: getKeys('new-connection') || 'Ctrl+N' })}</p>
                 </div>
               )}
             </div>
             
-            {/* Settings Dialog - Inside Tab Content area, below title bar */}
+            {/* 未保存文件关闭确认 */}
+          {pendingCloseTab && (
+            <ConfirmDialog
+              title={t('common.close_tab', 'Close Tab')}
+              message={t('file.unsaved_close_confirm', { name: pendingCloseTab.title })}
+              isDanger
+              confirmText={t('common.close', 'Close')}
+              onConfirm={() => {
+                closeTab(pendingCloseTab.id);
+                setPendingCloseTabId(null);
+              }}
+              onCancel={() => setPendingCloseTabId(null)}
+            />
+          )}
+
+          {/* Settings Dialog - Inside Tab Content area, below title bar */}
             {showSettings && (
               <div className="absolute top-10 right-0 bottom-0 left-0 z-40">
                 <SettingsDialog
                   isOpen={showSettings}
-                  onClose={() => setShowSettings(false)}
+                  // 关闭时清除主题预览：Save 路径下预览主题已被写入 settings，
+                  // currentTheme 会解析到同一主题；Cancel 路径则正确还原
+                  onClose={() => {
+                    setPreviewTheme(null);
+                    setShowSettings(false);
+                  }}
                   settings={settings}
                   onSave={setSettings}
                   onPreviewTheme={setPreviewTheme}
@@ -676,6 +726,114 @@ function App() {
       </div>
     </ToastProvider>
   );
+}
+
+/**
+ * 监听操作系统文件拖放：
+ * - 活动标签是已连接的 SSH 远程终端 → 上传文件到远程当前目录
+ *   （目标目录 = SFTP 文件浏览器当前路径，未打开过文件浏览器则用远程主目录）
+ * - 其他情况 → 在内置编辑器标签页中打开本地文件
+ * 目录会被跳过并提示。同一个本地文件重复拖入会复用已打开的标签页。
+ */
+function FileDropListener() {
+  const { showToast } = useToast();
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let mounted = true;
+
+    getCurrentWindow()
+      .onDragDropEvent(async (event) => {
+        if (event.payload.type !== 'drop') return;
+
+        // 通过 getState() 读取最新状态，避免监听器闭包捕获旧值
+        const { workspaceTabs, activeTabId, connections, getSftpPath, openFileTab } =
+          useSshStore.getState();
+        const activeTab = workspaceTabs.find((tab) => tab.id === activeTabId);
+        const activeConn =
+          activeTab?.serverId != null
+            ? connections.find((c) => c.serverId === activeTab.serverId)
+            : undefined;
+        const isRemoteActive =
+          !!activeConn && !activeConn.isLocal && activeConn.status === 'connected';
+
+        if (isRemoteActive) {
+          // ---- 远程终端：上传 ----
+          const serverId = activeConn.serverId;
+          const connTabId = `conn-${serverId}`;
+
+          let remoteDir = getSftpPath(serverId);
+          if (!remoteDir) {
+            try {
+              remoteDir = await invoke<string>('sftp_get_home_dir', { tabId: connTabId });
+            } catch (err) {
+              showToast(t('file.upload_failed', { name: '', error: `${err}` }), 'error');
+              return;
+            }
+          }
+
+          for (const path of event.payload.paths) {
+            const fileName = path.split(/[\\/]/).pop() || path;
+            try {
+              if (await invoke<boolean>('local_is_dir', { path })) {
+                showToast(t('file.drop_dir_skipped', { name: path }), 'info');
+                continue;
+              }
+              const remotePath = remoteDir.endsWith('/')
+                ? `${remoteDir}${fileName}`
+                : `${remoteDir}/${fileName}`;
+              showToast(t('file.uploading', { name: fileName }), 'info');
+              await invoke('sftp_upload_file_with_progress', {
+                tabId: connTabId,
+                localPath: path,
+                remotePath,
+              });
+              showToast(t('file.upload_success', { name: fileName }), 'success');
+            } catch (err) {
+              console.error('Failed to upload dropped file:', err);
+              showToast(t('file.upload_failed', { name: fileName, error: `${err}` }), 'error');
+            }
+          }
+          return;
+        }
+
+        // ---- 本地：编辑器打开 ----
+        for (const path of event.payload.paths) {
+          try {
+            const isDir = await invoke<boolean>('local_is_dir', { path });
+            if (isDir) {
+              showToast(t('file.drop_dir_skipped', { name: path }), 'info');
+              continue;
+            }
+
+            // 由路径哈希生成稳定的负数 ID：同一文件重复拖入时复用标签页
+            // （openFileTab 按 serverId + filePath 去重）
+            let hash = 0;
+            for (let i = 0; i < path.length; i++) {
+              hash = (hash * 31 + path.charCodeAt(i)) | 0;
+            }
+            const localId = -(Math.abs(hash) + 1);
+            const fileName = path.split(/[\\/]/).pop() || path;
+            openFileTab(localId, path, fileName);
+          } catch (err) {
+            console.error('Failed to open dropped file:', err);
+            showToast(t('file.load_failed', { error: `${err}` }), 'error');
+          }
+        }
+      })
+      .then((f) => {
+        if (mounted) unlisten = f;
+        else f();
+      });
+
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, [showToast, t]);
+
+  return null;
 }
 
 export default App;

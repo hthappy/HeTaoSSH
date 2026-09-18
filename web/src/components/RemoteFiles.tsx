@@ -6,9 +6,11 @@ interface RemoteFilesProps {
   tabId: string;
   filePath: string;
   theme?: ITheme;
+  editorMinimap?: boolean;
+  editorWordWrap?: boolean;
 }
 
-export function RemoteFiles({ isActive = false, tabId, filePath, theme }: RemoteFilesProps) {
+export function RemoteFiles({ isActive = false, tabId, filePath, theme, editorMinimap, editorWordWrap }: RemoteFilesProps) {
   if (!isActive || !tabId || !filePath) {
     return null;
   }
@@ -19,6 +21,8 @@ export function RemoteFiles({ isActive = false, tabId, filePath, theme }: Remote
         tabId={tabId}
         filePath={filePath}
         theme={theme}
+        editorMinimap={editorMinimap}
+        editorWordWrap={editorWordWrap}
       />
     </div>
   );

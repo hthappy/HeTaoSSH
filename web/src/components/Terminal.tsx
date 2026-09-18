@@ -14,6 +14,7 @@ import { addToHistory, getHistory } from '@/lib/commandHistory';
 import { useToast } from '@/components/Toast';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 import { terminalPool } from '@/lib/terminalPool';
+import { useSshStore } from '@/stores/ssh-store';
 
 export type TerminalHandle = {
   write: (data: string | Uint8Array) => void;
@@ -212,7 +213,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     
     // Setup event handlers
     const onDataDisposable = instance.term.onData((data) => {
-      if (!disconnectedRef.current && onDataRef.current) {
+      // 断线状态：按任意键触发重连（handleTerminalKeyPress 内部会跳过本地终端和非断线状态）
+      if (disconnectedRef.current) {
+        if (serverId !== undefined) {
+          useSshStore.getState().handleTerminalKeyPress(serverId);
+        }
+        return;
+      }
+      if (onDataRef.current) {
         if (data === '\r' && serverId !== undefined) {
           if (currentCommandRef.current.trim()) {
             addToHistory(serverId, currentCommandRef.current);
@@ -432,7 +440,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   useEffect(() => {
     if (termRef.current) {
       if (disconnected) {
-        termRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')}]\x1b[0m\r\n`);
+        termRef.current.write(`\r\n\x1b[31m[${t('status.disconnected')} — ${t('status.press_any_key_to_reconnect', 'Press any key to reconnect')}]\x1b[0m\r\n`);
         
         // Fix stuck state due to broken connections:
         // When disconnected, ensure mouse reporting and application cursor keys are disabled!

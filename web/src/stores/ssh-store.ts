@@ -125,6 +125,9 @@ interface SshState {
   // File manager paths per connection (keyed by serverId, negative for local)
   sftpPaths: Record<number, string>;
 
+  // 文件编辑器未保存标记：key = `${connTabId}|${filePath}`
+  dirtyFiles: Record<string, boolean>;
+
   loadServers: () => Promise<void>;
   saveServer: (config: ServerConfig) => Promise<void>;
   deleteServer: (id: number) => Promise<void>;
@@ -153,6 +156,9 @@ interface SshState {
   setSftpPath: (serverId: number, path: string) => void;
   getSftpPath: (serverId: number) => string | undefined;
 
+  // 编辑器 dirty 状态
+  setFileDirty: (key: string, dirty: boolean) => void;
+
   // Terminal API
   sendToTerminal: (serverId: number, data: string) => Promise<void>;
   sendToTerminalBackend: (backendId: string, isLocal: boolean, data: string) => Promise<void>;
@@ -172,6 +178,7 @@ export const useSshStore = create<SshState>((set, get) => ({
   activeTabId: null,
   paneGroups: {},
   sftpPaths: {},
+  dirtyFiles: {},
   
   // We need a separate function to setup the listeners, typically called at app level
   // This is just the initial store structure
@@ -641,6 +648,18 @@ export const useSshStore = create<SshState>((set, get) => ({
 
   getSftpPath: (serverId: number) => {
     return get().sftpPaths[serverId];
+  },
+
+  setFileDirty: (key: string, dirty: boolean) => {
+    set((state) => {
+      const next = { ...state.dirtyFiles };
+      if (dirty) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      return { dirtyFiles: next };
+    });
   },
 
   createLocalTerminal: async (shell?: string) => {

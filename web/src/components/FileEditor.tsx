@@ -8,15 +8,18 @@ import { ITheme } from 'xterm';
 import { X } from 'lucide-react';
 import { useShortcutsStore } from '@/stores/shortcuts-store';
 import { matchesShortcut } from '@/stores/shortcuts-store';
+import { useSshStore } from '@/stores/ssh-store';
 
 interface FileEditorProps {
   tabId: string;
   filePath: string | null;
   theme?: ITheme;
   onClose?: () => void;
+  editorMinimap?: boolean;
+  editorWordWrap?: boolean;
 }
 
-export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps) {
+export function FileEditor({ tabId, filePath, theme, onClose, editorMinimap = false, editorWordWrap = true }: FileEditorProps) {
   const { t } = useTranslation();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
@@ -27,6 +30,10 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
   const [error, setError] = React.useState<string | null>(null);
   const [hasChanges, setHasChanges] = React.useState(false);
   const { showToast } = useToast();
+  const setFileDirty = useSshStore((s) => s.setFileDirty);
+
+  // dirty 状态的 key：与 closeTab 检查未保存修改时使用同一规则
+  const dirtyKey = `${tabId}|${filePath}`;
 
   React.useEffect(() => {
     if (filePath) {
@@ -43,6 +50,7 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
       console.log('[FileEditor] File loaded, length:', fileContent.length);
       setContent(fileContent);
       setHasChanges(false);
+      setFileDirty(dirtyKey, false);
     } catch (err) {
       console.error('[FileEditor] Load failed:', err);
       const msg = t('file.load_failed', { error: `${err}` });
@@ -60,6 +68,7 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
     try {
       await invoke('sftp_write_file', { tabId, path: filePath, content });
       setHasChanges(false);
+      setFileDirty(dirtyKey, false);
       showToast(t('file.save_success'), 'success');
     } catch (err) {
       const msg = t('file.save_failed', { error: `${err}` });
@@ -74,9 +83,9 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
     monacoRef.current = monaco;
 
     editor.updateOptions({
-      minimap: { enabled: false },
+      minimap: { enabled: editorMinimap },
       fontSize: 14,
-      wordWrap: 'on',
+      wordWrap: editorWordWrap ? 'on' : 'off',
       automaticLayout: true,
       scrollBeyondLastLine: false,
       padding: { top: 16, bottom: 16 },
@@ -114,7 +123,15 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
         monaco.editor.setModelLanguage(model, language);
       }
     }
-  }, [filePath, theme]);
+  }, [filePath, theme, editorMinimap, editorWordWrap]);
+
+  // 设置变更时实时生效（不重建编辑器）
+  useEffect(() => {
+    editorRef.current?.updateOptions({
+      minimap: { enabled: editorMinimap },
+      wordWrap: editorWordWrap ? 'on' : 'off',
+    });
+  }, [editorMinimap, editorWordWrap]);
 
   const applyMonacoTheme = (monaco: Monaco, theme: ITheme) => {
     monaco.editor.defineTheme('dynamic-theme', {
@@ -149,7 +166,13 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
   const handleChange = useCallback((value: string | undefined) => {
     setContent(value || '');
     setHasChanges(true);
-  }, []);
+    setFileDirty(dirtyKey, true);
+  }, [dirtyKey, setFileDirty]);
+
+  // 卸载时清除 dirty 标记（标签页关闭后不留残留）
+  useEffect(() => {
+    return () => setFileDirty(dirtyKey, false);
+  }, [dirtyKey, setFileDirty]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -184,7 +207,12 @@ export function FileEditor({ tabId, filePath, theme, onClose }: FileEditorProps)
         <div className="h-9 flex items-center justify-between px-4 border-b border-term-selection bg-term-bg shrink-0">
           <span className="text-sm text-term-fg truncate opacity-80">{filePath}</span>
           <div className="flex items-center gap-2">
-            {hasChanges && <span className="text-xs text-term-yellow">{t('common.saving')}...</span>}
+            {hasChanges && (
+              <span className="flex items-center gap-1.5 text-xs text-term-yellow">
+                <span className="w-2 h-2 rounded-full bg-term-yellow inline-block" />
+                {t('file.unsaved_changes', 'Unsaved changes')}
+              </span>
+            )}
             {onClose && (
               <button
                 onClick={onClose}
