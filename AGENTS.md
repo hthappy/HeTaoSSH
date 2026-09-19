@@ -4,8 +4,8 @@
 
 **HeTaoSSH** - Modern SSH client built with Tauri 2.0
 - **Backend**: Rust (`russh` for SSH, `sqlx` + `SQLite` for storage)
-- **Frontend**: React/Vue 3 + Tailwind CSS + Shadcn/UI
-- **Terminal**: xterm.js with WebGL acceleration
+- **Frontend**: React + TypeScript + Tailwind CSS
+- **Terminal**: xterm.js managed through a DOM-reparenting terminal pool
 - **Editor**: Monaco Editor (VS Code kernel)
 
 ---
@@ -38,6 +38,8 @@ pnpm tauri dev       # Dev mode (hot reload)
 pnpm tauri build     # Build production app
 pnpm lint            # Frontend lint
 pnpm format          # Frontend format
+pnpm exec tsc --noEmit  # Type-check frontend without emitting files
+pnpm build           # Type-check and create the Vite production bundle
 ```
 
 ---
@@ -319,6 +321,27 @@ DOM Reparenting solves this by:
 - ✅ Always use terminalPool for instance management
 - ✅ Use native DOM APIs for container attachment
 - ✅ Maintain paneId consistency across splits
+
+### Terminal, SFTP, and Transfer UX Rules
+
+1. **Remote terminal drag-and-drop uses the SFTP destination, never a parsed shell prompt.**
+   - `FileDropListener` in `web/src/App.tsx` handles OS-level drops while a remote connection is active.
+   - It must use `getSftpPath(serverId)` as the destination; when no SFTP path has been selected, resolve and store the remote home directory first.
+   - Do not infer a destination from terminal output or a prompt such as `/data/product`; prompts are customizable and may not represent the shell's real current directory.
+   - Before invoking `sftp_upload_file_with_progress`, switch to the SFTP activity so `FileTree` can show its inline progress.
+
+2. **Use progress events for transfers, not per-file Toast spam.**
+   - `sftp-upload-progress` powers both the SFTP inline progress section and the global `TransferProgress` overlay.
+   - Keep a completed transfer visible briefly with its complete filename, then refresh the target directory.
+   - Reserve Toast notifications for actionable failures and exceptional cases.
+
+3. **Do not force scrollback to the bottom during a resize.**
+   - In `Terminal.tsx`, only follow output if the viewport was already at the bottom before fitting.
+   - Preserve active-pane focus when actions originate outside the terminal (for example, executing a snippet).
+
+4. **Workspace tabs and dirty files.**
+   - File dirty state is stored in `ssh-store.ts`; use `requestCloseTab` in `App.tsx` for user-initiated closes so unsaved edits are confirmed.
+   - `reorderTabs` only changes visual tab order. It must not recreate terminal panes or dispose pooled terminal instances.
 
 ### Tauri IPC Commands
 

@@ -8,7 +8,6 @@ build
 pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
-
 temp_*
 
 docs/
@@ -43,6 +42,8 @@ check_output.txt
 output.txt
 output_utf8.txt
 test_output.log
+
+CHANGELOG.md
 
 # Temporary files in src-tauri
 src-tauri/*.txt

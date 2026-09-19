@@ -559,14 +559,29 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="relative flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-gradient-to-l after:from-term-bg after:to-transparent">
+              <div
+                className="relative flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full no-drag after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-gradient-to-l after:from-term-bg after:to-transparent"
+                onDragOver={(event) => {
+                  // The title bar is a native window-drag region. Mark the
+                  // entire tab strip as a valid HTML drop target so Chromium
+                  // does not show the prohibited-drop cursor in its gaps.
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
+              >
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
                     draggable
                     onDragStart={(event) => {
+                      event.stopPropagation();
                       event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', tab.id);
                       setDraggedTabId(tab.id);
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
                     }}
                     onDragOver={(event) => {
                       event.preventDefault();
@@ -574,7 +589,8 @@ function App() {
                     }}
                     onDrop={(event) => {
                       event.preventDefault();
-                      if (draggedTabId) reorderTabs(draggedTabId, tab.id);
+                      const sourceTabId = event.dataTransfer.getData('text/plain') || draggedTabId;
+                      if (sourceTabId) reorderTabs(sourceTabId, tab.id);
                       setDraggedTabId(null);
                     }}
                     onDragEnd={() => setDraggedTabId(null)}
