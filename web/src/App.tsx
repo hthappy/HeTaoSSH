@@ -7,7 +7,7 @@ import { StatusBar } from '@/components/StatusBar';
 import { SettingsDialog, type AppSettings } from '@/components/SettingsDialog';
 import { ActivityBar, type Activity } from '@/components/ActivityBar';
 import { CommandSnippets } from '@/components/CommandSnippets';
-import { useSshStore } from '@/stores/ssh-store';
+import { useSshStore, type PaneGroup, type TerminalPane } from '@/stores/ssh-store';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 import { Terminal, X, FileCode2, Plus, Loader2, ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -15,29 +15,39 @@ import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
-import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
 import { ToastProvider, useToast } from '@/components/Toast';
 import { UpdateDialog } from '@/components/UpdateDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
 import { TitleBar } from '@/components/TitleBar';
+import { terminalPool } from '@/lib/terminalPool';
+import { TransferProgress } from '@/components/TransferProgress';
+import { useTransferProgress } from '@/hooks/useTransferProgress';
 import logo from '@/assets/logo.png';
 
 import { ThemeSchema } from '@/types/theme';
 
+function collectPaneIds(group: PaneGroup): string[] {
+  return group.panes.flatMap((pane) => 'serverId' in pane
+    ? [(pane as TerminalPane).id]
+    : collectPaneIds(pane));
+}
+
 function App() {
   const { t, i18n } = useTranslation();
-  const { getKeys } = useShortcutsStore();
+  const { getKeys, shortcuts } = useShortcutsStore();
   const {
     servers,
     connectServer,
     workspaceTabs,
     activeTabId,
     setActiveTab,
+    reorderTabs,
     closeTab,
     connections,
     dirtyFiles,
@@ -46,7 +56,10 @@ function App() {
     createLocalTerminal,
     splitPane,
     closePane,
-    getActivePaneId
+    getActivePaneId,
+    setActivePane,
+    paneGroups,
+    reconnectServer
   } = useSshStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -59,8 +72,14 @@ function App() {
   const serverListRef = useRef<ServerListHandle>(null);
   const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<{ received: number; total?: number } | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   // 待确认关闭的标签页（文件有未保存修改时先弹确认）
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [pendingBulkClose, setPendingBulkClose] = useState<{ mode: 'others' | 'all'; tabId?: string } | null>(null);
 
   // 关闭标签页入口：文件标签有未保存修改时先弹确认框
   const requestCloseTab = useCallback((tabId: string) => {
@@ -80,6 +99,11 @@ function App() {
   const pendingCloseTab = pendingCloseTabId
     ? workspaceTabs.find((t) => t.id === pendingCloseTabId)
     : undefined;
+
+  const handleRemoteUploadStart = useCallback(() => {
+    setActiveActivity('sftp');
+    setIsSidebarOpen(true);
+  }, []);
 
   // Local terminal shell selection (Windows Terminal style dropdown)
   const [localShells, setLocalShells] = useState<{ id: string; name: string; available: boolean }[]>([]);
@@ -287,6 +311,13 @@ function App() {
         return;
       }
 
+      const shortcutHelpKeys = getKeys('shortcut-help');
+      if (shortcutHelpKeys && matchesShortcut(e, shortcutHelpKeys)) {
+        e.preventDefault();
+        setShowShortcutHelp(true);
+        return;
+      }
+
       // Terminal Search
       const searchKeys = getKeys('terminal-search');
       if (searchKeys && matchesShortcut(e, searchKeys)) {
@@ -329,12 +360,23 @@ function App() {
         }
         return;
       }
+
+      const focusNextPaneKeys = getKeys('focus-next-pane');
+      if (focusNextPaneKeys && matchesShortcut(e, focusNextPaneKeys) && activeTabId) {
+        const group = paneGroups[activeTabId];
+        if (group) {
+          e.preventDefault();
+          const paneIds = collectPaneIds(group);
+          const currentIndex = Math.max(0, paneIds.indexOf(getActivePaneId(activeTabId) || ''));
+          if (paneIds.length > 1) setActivePane(activeTabId, paneIds[(currentIndex + 1) % paneIds.length]);
+        }
+      }
     };
 
     // Use capture phase to intercept before terminal handles it
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeTabId, requestCloseTab, splitPane, closePane, getActivePaneId, getKeys, openLocalTerminal]);
+  }, [activeTabId, requestCloseTab, splitPane, closePane, getActivePaneId, getKeys, openLocalTerminal, paneGroups, setActivePane]);
 
   // Resolve current theme object
   const currentTheme = useMemo(() => {
@@ -404,7 +446,8 @@ function App() {
 
   return (
     <ToastProvider>
-      <FileDropListener />
+      <FileDropListener onRemoteUploadStart={handleRemoteUploadStart} />
+      <TransferOverlay />
       <div className={cn(
         "flex flex-col h-screen bg-term-bg overflow-hidden transition-colors duration-300",
         !isMaximized && "border border-term-selection rounded-lg"
@@ -477,22 +520,20 @@ function App() {
               )}
                 {activeActivity === 'snippets' && (
                    <CommandSnippets onExecute={(cmd) => {
-                    if (activeConnection) {
+                    if (activeConnection?.status === 'connected') {
                         // Send command without auto-executing (no \r)
                         // User can review the command and press Enter to execute
                         sendToTerminal(activeConnection.serverId, cmd);
                         
                         // Focus terminal after a short delay to ensure command is rendered
                         setTimeout(() => {
-                            // Find and focus the terminal
-                            const terminalElement = document.querySelector('.xterm') as HTMLElement;
-                            if (terminalElement) {
-                                terminalElement.focus();
-                            }
+                            // Focus the active pane, rather than the first xterm in a split.
+                            const paneId = getActivePaneId(activeTabId || '');
+                            if (paneId) terminalPool.get(paneId)?.term.focus();
                         }, 50);
+                        return true;
                     } else {
-                        // Show toast?
-                        console.warn('No active connection to execute snippet');
+                        return false;
                     }
                  }} />
                 )}
@@ -518,18 +559,37 @@ function App() {
             {/* Custom Title Bar with Tabs & Actions */}
             <TitleBar>
               {/* Workspace Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full">
+              <div className="relative flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-gradient-to-l after:from-term-bg after:to-transparent">
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move';
+                      setDraggedTabId(tab.id);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      if (draggedTabId) reorderTabs(draggedTabId, tab.id);
+                      setDraggedTabId(null);
+                    }}
+                    onDragEnd={() => setDraggedTabId(null)}
                     onClick={() => setActiveTab(tab.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setTabContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
+                    }}
                     className={cn(
                       'group flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer border select-none flex-shrink min-w-0 no-drag',
                       activeTabId === tab.id
                         ? 'bg-term-selection text-term-fg border-term-selection'
                         : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
                     )}
-                    style={{ maxWidth: '25%' }}
+                    style={{ maxWidth: '25%', opacity: draggedTabId === tab.id ? 0.5 : undefined }}
                   >
                     {tab.type === 'terminal' ? (
                       <Terminal className="w-3.5 h-3.5 text-term-blue flex-shrink-0" />
@@ -559,7 +619,7 @@ function App() {
                   <button
                     onClick={() => openLocalTerminal()}
                     className="p-1.5 rounded-l-md text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 transition-colors"
-                    title={t('common.new_local_terminal', 'Open Local Terminal')}
+                    title={`${t('common.new_local_terminal', 'Open Local Terminal')} (${getKeys('new-local-terminal') || 'Ctrl+Shift+T'})`}
                   >
                     <Plus className="w-4 h-4" />
                   </button>
@@ -601,6 +661,35 @@ function App() {
                 )}
               </div>
             </TitleBar>
+
+            {tabContextMenu && (
+              <ContextMenu x={tabContextMenu.x} y={tabContextMenu.y} onClose={() => setTabContextMenu(null)}>
+                <div className="p-1">
+                  <ContextMenuItem
+                    label={t('common.close')}
+                    shortcut={getKeys('close-tab')}
+                    onClick={() => {
+                      requestCloseTab(tabContextMenu.tabId);
+                      setTabContextMenu(null);
+                    }}
+                  />
+                  <ContextMenuItem
+                    label={t('common.close_other_tabs')}
+                    onClick={() => {
+                      setPendingBulkClose({ mode: 'others', tabId: tabContextMenu.tabId });
+                      setTabContextMenu(null);
+                    }}
+                  />
+                  <ContextMenuItem
+                    label={t('common.close_all_tabs')}
+                    onClick={() => {
+                      setPendingBulkClose({ mode: 'all' });
+                      setTabContextMenu(null);
+                    }}
+                  />
+                </div>
+              </ContextMenu>
+            )}
 
             {/* Tab Content - Each tab has its own Terminal instance */}
             <div className="flex-1 relative" style={{ backgroundColor: 'var(--term-bg)' }}>
@@ -675,6 +764,49 @@ function App() {
             />
           )}
 
+          {pendingBulkClose && (
+            <ConfirmDialog
+              title={t(pendingBulkClose.mode === 'all' ? 'common.close_all_tabs' : 'common.close_other_tabs')}
+              message={t('common.close_all_tabs_confirm')}
+              confirmText={t('common.close')}
+              isDanger
+              onCancel={() => setPendingBulkClose(null)}
+              onConfirm={() => {
+                workspaceTabs
+                  .filter((tab) => pendingBulkClose.mode === 'all' || tab.id !== pendingBulkClose.tabId)
+                  .forEach((tab) => closeTab(tab.id));
+                setPendingBulkClose(null);
+              }}
+            />
+          )}
+
+          {showShortcutHelp && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="w-full max-w-md rounded-lg border border-term-selection bg-term-bg shadow-xl">
+                <div className="flex items-center justify-between border-b border-term-selection px-4 py-3">
+                  <h2 className="text-sm font-semibold text-term-fg">{t('common.keyboard_shortcuts')}</h2>
+                  <button
+                    className="rounded p-1 text-term-fg/60 hover:bg-term-selection hover:text-term-fg"
+                    onClick={() => setShowShortcutHelp(false)}
+                    aria-label={t('common.close')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 p-4">
+                  {shortcuts.map((shortcut) => (
+                    <div key={shortcut.id} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-term-fg/75">{t(shortcut.label)}</span>
+                      <kbd className="rounded border border-term-selection bg-term-selection/30 px-1.5 py-0.5 font-mono text-[11px] text-term-fg">
+                        {shortcut.keys}
+                      </kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Settings Dialog - Inside Tab Content area, below title bar */}
             {showSettings && (
               <div className="absolute top-10 right-0 bottom-0 left-0 z-40">
@@ -700,42 +832,65 @@ function App() {
           isConnected={!!activeConnection && activeConnection.status === 'connected'}
           serverName={displayServerName}
           tabId={activeConnection ? (activeConnection.isLocal ? `local-${activeConnection.serverId}` : `conn-${activeConnection.serverId}`) : undefined}
+          onReconnect={activeConnection && !activeConnection.isLocal && activeConnection.status === 'disconnected'
+            ? () => reconnectServer(activeConnection.serverId)
+            : undefined}
         />
 
           <UpdateDialog
             isOpen={!!updateAvailable}
             version={updateAvailable?.version || ''}
             isUpdating={isUpdating}
+            releaseNotes={updateAvailable?.body}
+            progress={updateProgress}
+            error={updateError}
             onUpdate={async () => {
               if (!updateAvailable) return;
               setIsUpdating(true);
+              setUpdateError(null);
+              setUpdateProgress({ received: 0 });
               try {
-                await updateAvailable.downloadAndInstall();
+                await updateAvailable.downloadAndInstall((event) => {
+                  if (event.event === 'Started') {
+                    setUpdateProgress({ received: 0, total: event.data.contentLength });
+                  } else if (event.event === 'Progress') {
+                    setUpdateProgress((current) => ({
+                      received: (current?.received || 0) + event.data.chunkLength,
+                      total: current?.total,
+                    }));
+                  }
+                });
                 await relaunch();
               } catch (e) {
                 console.error(e);
-                await message(
-                  t('update.error', { error: String(e) }), 
-                  { title: t('update.title'), kind: 'error' }
-                );
+                setUpdateError(t('update.error', { error: String(e) }));
                 setIsUpdating(false);
               }
             }}
-            onClose={() => setUpdateAvailable(null)}
+            onClose={() => {
+              setUpdateAvailable(null);
+              setUpdateError(null);
+              setUpdateProgress(null);
+            }}
           />
       </div>
     </ToastProvider>
   );
 }
 
+function TransferOverlay() {
+  const { transfers, removeTransfer } = useTransferProgress();
+  return <TransferProgress transfers={transfers} onDismiss={removeTransfer} />;
+}
+
 /**
  * 监听操作系统文件拖放：
- * - 活动标签是已连接的 SSH 远程终端 → 上传文件到远程当前目录
+ * - 活动标签是已连接的 SSH 远程终端 → 切换到 SFTP 并上传文件
  *   （目标目录 = SFTP 文件浏览器当前路径，未打开过文件浏览器则用远程主目录）
  * - 其他情况 → 在内置编辑器标签页中打开本地文件
  * 目录会被跳过并提示。同一个本地文件重复拖入会复用已打开的标签页。
  */
-function FileDropListener() {
+function FileDropListener({ onRemoteUploadStart }: { onRemoteUploadStart: () => void }) {
   const { showToast } = useToast();
   const { t } = useTranslation();
 
@@ -748,7 +903,7 @@ function FileDropListener() {
         if (event.payload.type !== 'drop') return;
 
         // 通过 getState() 读取最新状态，避免监听器闭包捕获旧值
-        const { workspaceTabs, activeTabId, connections, getSftpPath, openFileTab } =
+        const { workspaceTabs, activeTabId, connections, getSftpPath, setSftpPath, openFileTab } =
           useSshStore.getState();
         const activeTab = workspaceTabs.find((tab) => tab.id === activeTabId);
         const activeConn =
@@ -773,6 +928,12 @@ function FileDropListener() {
             }
           }
 
+          // A terminal drop is an upload gesture. Show the destination folder
+          // and its inline progress before the transfer begins.
+          setSftpPath(serverId, remoteDir);
+          onRemoteUploadStart();
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+
           for (const path of event.payload.paths) {
             const fileName = path.split(/[\\/]/).pop() || path;
             try {
@@ -783,13 +944,11 @@ function FileDropListener() {
               const remotePath = remoteDir.endsWith('/')
                 ? `${remoteDir}${fileName}`
                 : `${remoteDir}/${fileName}`;
-              showToast(t('file.uploading', { name: fileName }), 'info');
               await invoke('sftp_upload_file_with_progress', {
                 tabId: connTabId,
                 localPath: path,
                 remotePath,
               });
-              showToast(t('file.upload_success', { name: fileName }), 'success');
             } catch (err) {
               console.error('Failed to upload dropped file:', err);
               showToast(t('file.upload_failed', { name: fileName, error: `${err}` }), 'error');
@@ -831,7 +990,7 @@ function FileDropListener() {
       mounted = false;
       unlisten?.();
     };
-  }, [showToast, t]);
+  }, [showToast, t, onRemoteUploadStart]);
 
   return null;
 }

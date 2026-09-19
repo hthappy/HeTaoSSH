@@ -4,7 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
 import { ITheme } from 'xterm';
 import { useTranslation } from 'react-i18next';
-import { Clipboard, Copy } from 'lucide-react';
+import { Clipboard, Copy, Search, Trash2 } from 'lucide-react';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
@@ -64,6 +64,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showSearch, setShowSearch] = useState(false);
+  // 是否有选区（用于禁用/启用右键菜单的 Copy 项）
+  const [hasSelection, setHasSelection] = useState(false);
   
   // Use refs instead of state to avoid re-renders on every keystroke
   const currentCommandRef = useRef('');
@@ -127,6 +129,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         if (fitAddonRef.current && element && element.clientWidth > 0 && element.clientHeight > 0) {
           const currentCols = termRef.current?.cols;
           const currentRows = termRef.current?.rows;
+          // Keep the user's viewport stable when they are reading scrollback.
+          // xterm's fit can otherwise make a resize feel like a forced jump to
+          // the newest output.
+          const term = termRef.current;
+          if (!term) return;
+          const shouldFollowOutput = term.buffer.active.viewportY >= term.buffer.active.baseY;
           fitAddonRef.current.fit();
           
           if (onResizeRef.current && termRef.current) {
@@ -137,7 +145,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               }
           }
           
-          termRef.current?.scrollToBottom();
+          if (shouldFollowOutput) termRef.current?.scrollToBottom();
           const rows = termRef.current?.rows || 24;
           termRef.current?.refresh(0, rows - 1);
         }
@@ -196,7 +204,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
   // DOM REPARENTING: Attach/detach terminal container
   useEffect(() => {
-    if (!placeholderRef.current) return;
+    const placeholder = placeholderRef.current;
+    if (!placeholder) return;
 
     console.log('[Terminal] DOM Reparenting: Attaching terminal for pane:', paneId);
     
@@ -209,7 +218,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     searchAddonRef.current = instance.searchAddon;
     
     // CRITICAL: Use native DOM API to attach the container
-    placeholderRef.current.appendChild(instance.container);
+    placeholder.appendChild(instance.container);
     
     // Setup event handlers
     const onDataDisposable = instance.term.onData((data) => {
@@ -240,8 +249,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       }
     });
 
+    // Track selection state for the context menu (disable Copy when nothing is selected)
+    const onSelectionDisposable = instance.term.onSelectionChange(() => {
+      setHasSelection(instance.term.hasSelection());
+    });
+
     // Use custom key handler to intercept paste and use Tauri's clipboard API
     // Native webview paste might be restricted or inconsistent
+    // xterm does not expose a slot for application-owned metadata.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const termAny = instance.term as any;
     if (!termAny._customPasteHandlerAttached) {
       instance.term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -341,13 +357,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     };
 
     const resizeObserver = new ResizeObserver(() => {
-        if (placeholderRef.current && placeholderRef.current.offsetParent) {
+        if (placeholder.offsetParent) {
             requestAnimationFrame(() => handleResize());
         }
     });
-    if (placeholderRef.current) {
-      resizeObserver.observe(placeholderRef.current);
-    }
+    resizeObserver.observe(placeholder);
 
     // Focus terminal
     instance.term.focus();
@@ -361,18 +375,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       resizeObserver.disconnect();
       onDataDisposable.dispose();
       onKeyDisposable.dispose();
+      onSelectionDisposable.dispose();
       
 
       // CRITICAL: Only remove from DOM, do NOT dispose the terminal
-      if (placeholderRef.current && instance.container.parentNode === placeholderRef.current) {
-        placeholderRef.current.removeChild(instance.container);
+      if (instance.container.parentNode === placeholder) {
+        placeholder.removeChild(instance.container);
       }
       
       termRef.current = null;
       fitAddonRef.current = null;
       searchAddonRef.current = null;
     };
-  }, [paneId, fontSize, lineHeight]); // Re-attach if paneId changes
+  }, [paneId, fontSize, lineHeight, serverId]); // Re-attach if paneId changes
 
   // Handle theme changes
   useEffect(() => {
@@ -600,9 +615,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           onClose={() => setContextMenu(prev => ({ ...prev, visible: false }))}
         >
           <div className="flex flex-col gap-0.5 p-1 min-w-[140px]">
-            <ContextMenuItem 
-              label={t('common.copy', 'Copy')} 
+            <ContextMenuItem
+              label={t('common.copy', 'Copy')}
               icon={<Copy className="w-4 h-4" />}
+              disabled={!hasSelection}
               onClick={async () => {
                 if (termRef.current) {
                   const selection = termRef.current.getSelection();
@@ -620,9 +636,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 setContextMenu(prev => ({ ...prev, visible: false }));
               }}
             />
-            <ContextMenuItem 
-              label={t('common.paste', 'Paste')} 
+            <ContextMenuItem
+              label={t('common.paste', 'Paste')}
               icon={<Clipboard className="w-4 h-4" />}
+              shortcut="Ctrl+Shift+V"
               onClick={async () => {
                 try {
                   const text = await readText();
@@ -634,6 +651,32 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   console.error(e);
                   showToast(t('common.paste_failed', 'Paste failed'), 'error');
                 }
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+            <ContextMenuItem
+              label={t('common.select_all', 'Select All')}
+              onClick={() => {
+                termRef.current?.selectAll();
+                termRef.current?.focus();
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+            <ContextMenuItem
+              label={t('shortcuts.terminal_search', 'Search')}
+              icon={<Search className="w-4 h-4" />}
+              shortcut={terminalSearchKeys}
+              onClick={() => {
+                setShowSearch(true);
+                setContextMenu(prev => ({ ...prev, visible: false }));
+              }}
+            />
+            <ContextMenuItem
+              label={t('common.clear', 'Clear')}
+              icon={<Trash2 className="w-4 h-4" />}
+              onClick={() => {
+                termRef.current?.clear();
+                termRef.current?.focus();
                 setContextMenu(prev => ({ ...prev, visible: false }));
               }}
             />

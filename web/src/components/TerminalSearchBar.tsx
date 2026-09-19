@@ -23,6 +23,9 @@ export function TerminalSearchBar({ searchAddonRef, onClose }: TerminalSearchBar
   // Subscribe to onDidChangeResults event (fires when decorations are enabled)
   // The event provides { resultIndex, resultCount } for displaying match count
   useEffect(() => {
+    // onDidChangeResults is available in recent xterm versions but absent from
+    // the public type definition used by this project.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const searchAddon: any = searchAddonRef.current;
     if (!searchAddon) return;
 

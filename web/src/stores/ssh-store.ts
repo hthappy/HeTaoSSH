@@ -144,6 +144,7 @@ interface SshState {
   openFileTab: (serverId: number, filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
+  reorderTabs: (sourceTabId: string, targetTabId: string) => void;
   
   // Pane Management
   splitPane: (tabId: string, direction: SplitDirection) => Promise<void>;
@@ -426,6 +427,19 @@ export const useSshStore = create<SshState>((set, get) => ({
     set({ activeTabId: tabId });
   },
 
+  reorderTabs: (sourceTabId: string, targetTabId: string) => {
+    if (sourceTabId === targetTabId) return;
+    set((state) => {
+      const sourceIndex = state.workspaceTabs.findIndex((tab) => tab.id === sourceTabId);
+      const targetIndex = state.workspaceTabs.findIndex((tab) => tab.id === targetTabId);
+      if (sourceIndex < 0 || targetIndex < 0) return state;
+      const workspaceTabs = [...state.workspaceTabs];
+      const [source] = workspaceTabs.splice(sourceIndex, 1);
+      workspaceTabs.splice(targetIndex, 0, source);
+      return { workspaceTabs };
+    });
+  },
+
   // Get pane group for a tab
   getPaneGroup: (tabId: string) => {
     return get().paneGroups[tabId] || null;
@@ -634,7 +648,8 @@ export const useSshStore = create<SshState>((set, get) => ({
     } else {
       // No panes left, remove the group
       set((state) => {
-        const { [tabId]: _, ...rest } = state.paneGroups;
+        const rest = { ...state.paneGroups };
+        delete rest[tabId];
         return { paneGroups: rest };
       });
     }

@@ -8,6 +8,7 @@ interface StatusBarProps {
   serverName?: string;
   isConnected?: boolean;
   tabId?: string;
+  onReconnect?: () => void;
 }
 
 interface ReconnectEvent {
@@ -75,10 +76,11 @@ export function StatusBar({
   serverName,
   isConnected = false,
   tabId,
+  onReconnect,
 }: StatusBarProps) {
   const { t } = useTranslation();
 
-  const [latency, setLatency] = useState<number>(0);
+  const [latency, setLatency] = useState<number | null>(null);
   const [usage, setUsage] = useState<SystemUsage | null>(null);
   const [networkSpeed, setNetworkSpeed] = useState<{ rx: number; tx: number }>({ rx: 0, tx: 0 });
   const [usageError, setUsageError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export function StatusBar({
     lastUsageRef.current = null;
     setNetworkSpeed({ rx: 0, tx: 0 });
     setReconnectInfo(null);
-    setLatency(0);
+    setLatency(null);
   }, [tabId]);
 
   // Fetch latency
@@ -173,7 +175,7 @@ export function StatusBar({
       lastUsageRef.current = null;
       setNetworkSpeed({ rx: 0, tx: 0 });
       setReconnectInfo(null);
-      setLatency(0);
+      setLatency(null);
       return;
     }
     fetchUsage();
@@ -229,21 +231,29 @@ export function StatusBar({
             <Wifi className={`w-3 h-3 ${isConnected ? 'text-term-green' : 'text-term-brightBlack'}`} />
           )}
           <span className={isConnected && !reconnectInfo ? 'text-term-green' : 'text-term-brightBlack'}>
-            {reconnectInfo 
+            {reconnectInfo
               ? `${t('status.reconnecting')} (${reconnectInfo.attempt}/${reconnectInfo.max})`
-              : isConnected 
+              : isConnected
                 ? t('status.connected')
                 : t('status.disconnected')
             }
           </span>
+          {!isConnected && !reconnectInfo && onReconnect && (
+            <button
+              className="ml-1 px-1.5 py-0 rounded text-[10px] bg-term-fg/10 hover:bg-term-fg/20 text-term-fg transition-colors"
+              onClick={onReconnect}
+            >
+              {t('status.reconnect')}
+            </button>
+          )}
         </div>
 
         {/* Latency */}
         {isConnected && !reconnectInfo && (
           <div className="flex items-center gap-1.5">
             <Clock className="w-3 h-3" />
-            <span className={getLatencyColor(latency)}>
-              {latency}ms
+            <span className={latency === null ? '' : getLatencyColor(latency)}>
+              {latency === null ? '--' : `${latency}ms`}
             </span>
           </div>
         )}
@@ -272,7 +282,7 @@ export function StatusBar({
               <div className="flex items-center gap-1">
                 <Network className="w-3 h-3 text-term-magenta" />
                 <span className="text-term-fg opacity-80">
-                  ↓{formatBytes(usage.network_rx)} ↑{formatBytes(usage.network_tx)}
+                  ↓{formatSpeed(networkSpeed.rx)} ↑{formatSpeed(networkSpeed.tx)}
                 </span>
               </div>
               {rootDisk && (

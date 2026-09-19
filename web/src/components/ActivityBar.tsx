@@ -1,6 +1,7 @@
 import { Server, Folder, Code, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { useShortcutsStore } from '@/stores/shortcuts-store';
 
 export type Activity = 'hosts' | 'sftp' | 'snippets';
 
@@ -12,6 +13,8 @@ interface ActivityBarProps {
 
 export function ActivityBar({ activeActivity, onActivityChange, onSettingsClick }: ActivityBarProps) {
   const { t } = useTranslation();
+  const { getKeys } = useShortcutsStore();
+  const settingsKeys = getKeys('settings');
   
   const items = [
     { id: 'hosts' as const, icon: Server, label: t('common.hosts', 'Hosts') },
@@ -45,7 +48,7 @@ export function ActivityBar({ activeActivity, onActivityChange, onSettingsClick 
         <button
             onClick={onSettingsClick}
             className="w-10 h-10 flex items-center justify-center rounded-lg text-term-fg/40 hover:text-term-fg hover:bg-term-selection/20 transition-colors mb-2"
-            title={t('common.settings', 'Settings')}
+            title={settingsKeys ? `${t('common.settings', 'Settings')} (${settingsKeys})` : t('common.settings', 'Settings')}
         >
             <Settings size={22} strokeWidth={1.5} />
         </button>

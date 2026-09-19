@@ -7,9 +7,12 @@ interface UpdateDialogProps {
   isUpdating: boolean;
   onUpdate: () => void;
   onClose: () => void;
+  releaseNotes?: string;
+  progress?: { received: number; total?: number } | null;
+  error?: string | null;
 }
 
-export function UpdateDialog({ isOpen, version, isUpdating, onUpdate, onClose }: UpdateDialogProps) {
+export function UpdateDialog({ isOpen, version, isUpdating, onUpdate, onClose, releaseNotes, progress, error }: UpdateDialogProps) {
   const { t } = useTranslation();
 
   if (!isOpen) return null;
@@ -24,6 +27,26 @@ export function UpdateDialog({ isOpen, version, isUpdating, onUpdate, onClose }:
         <p className="text-term-fg/80 mb-6">
           {t('update.available_msg_simple', { version })}
         </p>
+
+        {releaseNotes && (
+          <div className="mb-4 max-h-32 overflow-y-auto whitespace-pre-wrap rounded border border-term-selection bg-term-selection/10 p-3 text-xs text-term-fg/75">
+            {releaseNotes}
+          </div>
+        )}
+
+        {isUpdating && progress && (
+          <div className="mb-4">
+            <div className="mb-1 flex justify-between text-xs text-term-fg/70">
+              <span>{t('update.downloading')}</span>
+              <span>{progress.total ? `${Math.min(100, Math.round(progress.received / progress.total * 100))}%` : t('update.preparing')}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-term-selection">
+              <div className="h-full bg-term-blue transition-all" style={{ width: progress.total ? `${Math.min(100, progress.received / progress.total * 100)}%` : '35%' }} />
+            </div>
+          </div>
+        )}
+
+        {error && <p className="mb-4 rounded border border-term-red/40 bg-term-red/10 p-2 text-xs text-term-red">{error}</p>}
 
         <div className="flex justify-end gap-3">
           <button

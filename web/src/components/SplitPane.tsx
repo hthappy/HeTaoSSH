@@ -19,7 +19,7 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
       const initialSize = 100 / children.length;
       setSizes(Array(children.length).fill(initialSize));
     }
-  }, [children.length]);
+  }, [children.length, sizes.length]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, index: number) => {
     e.preventDefault();
@@ -117,8 +117,8 @@ export function SplitPane({ direction, children, onResize }: SplitPaneProps) {
               className={cn(
                 'flex items-center justify-center group select-none relative',
                 isHorizontal 
-                  ? 'w-1 hover:w-1.5 cursor-col-resize' 
-                  : 'h-1 hover:h-1.5 cursor-row-resize',
+                  ? 'w-2 cursor-col-resize hover:bg-term-blue/15'
+                  : 'h-2 cursor-row-resize hover:bg-term-blue/15',
                 isDragging && dragIndex === index && 'bg-term-blue/30'
               )}
               style={{ backgroundColor: 'var(--term-bg)' }}

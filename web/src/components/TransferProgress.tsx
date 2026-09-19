@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Download, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export interface TransferItem {
   id: string;
@@ -38,6 +39,7 @@ function formatEta(seconds: number): string {
 }
 
 export function TransferProgress({ transfers, onDismiss }: TransferProgressProps) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
   
   const activeTransfers = transfers.filter(t => t.status === 'transferring' || t.status === 'pending');
@@ -61,12 +63,12 @@ export function TransferProgress({ transfers, onDismiss }: TransferProgressProps
           {activeTransfers.length > 0 ? (
             <>
               <Download className="w-4 h-4 text-term-blue animate-pulse" />
-              <span>Transferring ({activeTransfers.length})</span>
+              <span>{t('transfer.transferring', { count: activeTransfers.length })}</span>
             </>
           ) : (
             <>
               <Download className="w-4 h-4 text-term-green" />
-              <span>Completed</span>
+              <span>{t('transfer.completed')}</span>
             </>
           )}
         </div>
@@ -125,12 +127,12 @@ export function TransferProgress({ transfers, onDismiss }: TransferProgressProps
             )}
 
             {transfer.status === 'completed' && (
-              <div className="text-xs text-term-green">✓ Transfer complete</div>
+              <div className="text-xs text-term-green">✓ {t('transfer.complete')}</div>
             )}
 
             {transfer.status === 'error' && (
               <div className="text-xs text-term-red" title={transfer.error}>
-                ✕ {transfer.error || 'Transfer failed'}
+                ✕ {transfer.error || t('transfer.failed')}
               </div>
             )}
           </div>

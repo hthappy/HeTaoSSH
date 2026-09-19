@@ -28,7 +28,7 @@ const SingleTerminal = memo(function SingleTerminal({
   onPaneClick,
 }: SingleTerminalProps) {
   const { t } = useTranslation();
-  const { connections, sendToTerminalBackend } = useSshStore();
+  const { connections, sendToTerminalBackend, connectServer } = useSshStore();
   const terminalRef = useRef<TerminalHandle | null>(null);
   const localTermCreated = useRef(false);
 
@@ -43,7 +43,7 @@ const SingleTerminal = memo(function SingleTerminal({
     if (isPaneActive) {
       sendToTerminalBackend(backendId, !!isLocal, data);
     }
-  }, [backendId, isLocal, sendToTerminalBackend, isPaneActive, pane.id]);
+  }, [backendId, isLocal, sendToTerminalBackend, isPaneActive]);
 
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
     if (cols <= 0 || rows <= 0) return;
@@ -61,7 +61,7 @@ const SingleTerminal = memo(function SingleTerminal({
       invoke('ssh_resize', { tabId: backendId, cols, rows })
         .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
-  }, [backendId, isLocal, pane.id, activeConnection?.shell]);
+  }, [backendId, isLocal, activeConnection?.shell]);
 
   const handleTerminalEnter = useCallback(() => {
     window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 
@@ -164,7 +164,9 @@ const SingleTerminal = memo(function SingleTerminal({
 
   return (
     <div 
-      className="w-full h-full flex flex-col overflow-hidden relative transition-opacity duration-200"
+      className={`w-full h-full flex flex-col overflow-hidden relative transition-all duration-200 ${
+        isPaneActive ? 'ring-1 ring-inset ring-term-blue/70' : ''
+      }`}
       style={{ 
         backgroundColor: 'var(--term-bg)',
         opacity: isPaneActive ? 1 : 0.6,
@@ -200,7 +202,15 @@ const SingleTerminal = memo(function SingleTerminal({
         <div className="flex-1 flex items-center justify-center text-term-fg opacity-60" style={{ backgroundColor: 'var(--term-bg)' }}>
           <div className="text-center">
             <p className="text-lg mb-2 text-term-red">{t('server.test_failed')}</p>
-            <p className="text-sm">{activeConnection.error}</p>
+            <p className="text-sm mb-4">{activeConnection.error}</p>
+            {!isLocal && (
+              <button
+                className="px-4 py-1.5 text-sm rounded bg-term-fg/10 hover:bg-term-fg/20 transition-colors"
+                onClick={() => connectServer(serverId)}
+              >
+                {t('common.retry')}
+              </button>
+            )}
           </div>
         </div>
       )}

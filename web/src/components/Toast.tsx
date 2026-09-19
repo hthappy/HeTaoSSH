@@ -50,10 +50,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+    const [paused, setPaused] = useState(false);
     useEffect(() => {
-        const timer = setTimeout(onClose, 3000);
+        if (paused) return;
+        // Give longer messages and errors enough time to be read.
+        const duration = Math.max(3000, Math.min(10000, 2200 + toast.message.length * 45 + (toast.type === 'error' ? 1800 : 0)));
+        const timer = setTimeout(onClose, duration);
         return () => clearTimeout(timer);
-    }, [onClose]);
+    }, [onClose, paused, toast.message.length, toast.type]);
 
     const icons = {
         success: <CheckCircle className="w-5 h-5 text-term-green flex-shrink-0" />,
@@ -80,6 +84,8 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
                 minWidth: '280px',
                 maxWidth: '420px',
             }}
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
         >
             {icons[toast.type]}
             <span className="text-sm text-term-fg flex-1">{toast.message}</span>

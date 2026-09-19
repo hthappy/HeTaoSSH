@@ -145,7 +145,15 @@ export const ServerList = forwardRef(({ onServerClick }: ServerListProps, ref: R
         {loading && !servers.length ? (
           <div className="text-center text-term-fg/40 text-sm py-8">{t('common.loading')}</div>
         ) : error ? (
-          <div className="text-center text-term-red text-sm py-8">{error}</div>
+          <div className="text-center text-term-red text-sm py-8">
+            <p className="mb-3">{error}</p>
+            <button
+              className="px-3 py-1 text-xs rounded bg-term-fg/10 hover:bg-term-fg/20 text-term-fg transition-colors"
+              onClick={() => loadServers()}
+            >
+              {t('common.retry')}
+            </button>
+          </div>
         ) : !servers.length ? (
           <div className="text-center text-term-fg/40 text-sm py-8">{t('server.no_servers')}</div>
         ) : filteredServers.length === 0 ? (

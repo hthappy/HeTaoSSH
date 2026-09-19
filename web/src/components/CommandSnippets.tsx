@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ContextMenu';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface CommandSnippet {
   id?: number;
@@ -15,7 +16,7 @@ interface CommandSnippet {
 }
 
 interface CommandSnippetsProps {
-  onExecute?: (command: string) => void;
+  onExecute?: (command: string) => boolean;
 }
 
 export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
@@ -41,6 +42,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
     snippet: CommandSnippet;
     rect: DOMRect;
   } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CommandSnippet | null>(null);
 
   const loadSnippets = useCallback(async () => {
     setIsLoading(true);
@@ -62,12 +64,18 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
   }, [loadSnippets]);
 
   const handleCopy = async (snippet: CommandSnippet) => {
-    await navigator.clipboard.writeText(snippet.command);
+    try {
+      await navigator.clipboard.writeText(snippet.command);
+      showToast(t('common.copied_to_clipboard'), 'success');
+    } catch (error) {
+      console.error('Failed to copy snippet:', error);
+      showToast(t('common.copy_failed'), 'error');
+    }
   };
 
   const handleExecute = (snippet: CommandSnippet) => {
-    if (onExecute) {
-      onExecute(snippet.command);
+    if (!onExecute || !onExecute(snippet.command)) {
+      showToast(t('common.no_active_connection'), 'error');
     }
   };
 
@@ -162,19 +170,6 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
     });
   };
 
-  const handleDelete = async (snippet: CommandSnippet) => {
-      if (confirm(t('snippets.delete_confirm', { name: snippet.name }))) {
-        try {
-          await invoke('delete_snippet', { id: snippet.id });
-          showToast(t('snippets.delete_success'), 'success');
-          loadSnippets();
-        } catch (error) {
-          console.error('Failed to delete snippet:', error);
-          showToast(t('snippets.delete_failed', { error: `${error}` }), 'error');
-        }
-      }
-  };
-
   return (
     <div 
       className="h-full flex flex-col bg-term-bg w-full flex-shrink-0"
@@ -225,7 +220,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                 icon={<Trash2 className="w-4 h-4" />}
                 danger
                 onClick={() => {
-                  handleDelete(contextMenu.snippet!);
+                  setPendingDelete(contextMenu.snippet!);
                   setContextMenu(null);
                 }}
               />
@@ -352,7 +347,7 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
                             <Pencil className="w-3.5 h-3.5 text-term-fg opacity-60" />
                           </button>
                           <button
-                            onClick={() => deleteSnippet(snippet)}
+                            onClick={() => setPendingDelete(snippet)}
                             className="p-1 hover:bg-term-red/20 rounded transition-colors"
                             title={t('snippets.delete')}
                           >
@@ -392,6 +387,20 @@ export function CommandSnippets({ onExecute }: CommandSnippetsProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={t('snippets.delete')}
+          message={t('snippets.delete_confirm', { name: pendingDelete.name })}
+          confirmText={t('common.delete')}
+          isDanger
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            deleteSnippet(pendingDelete);
+            setPendingDelete(null);
+          }}
+        />
       )}
 
       {/* Editor Modal */}

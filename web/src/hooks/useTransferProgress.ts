@@ -16,16 +16,14 @@ export function useTransferProgress() {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
 
   useEffect(() => {
-    const unlisten = listen<{
+    const updateFromProgress = (payload: {
       id: string;
       downloaded?: number;
       uploaded?: number;
       total: number;
       speed: number;
       eta: number;
-    }>('transfer-progress', (event) => {
-      const payload = event.payload;
-      
+    }) => {
       setTransfers(prev => {
         const existing = prev.find(t => t.id === payload.id);
         const progress = payload.total > 0 
@@ -52,10 +50,43 @@ export function useTransferProgress() {
           }];
         }
       });
+    };
+
+    const unlisten = listen<{
+      id: string;
+      downloaded?: number;
+      uploaded?: number;
+      total: number;
+      speed: number;
+      eta: number;
+    }>('transfer-progress', (event) => updateFromProgress(event.payload));
+
+    const unlistenSftpUpload = listen<{
+      id: string;
+      file_name: string;
+      bytes_transferred: number;
+      total_bytes: number;
+      percentage: number;
+    }>('sftp-upload-progress', (event) => {
+      const payload = event.payload;
+      const id = `${payload.id}|${payload.file_name}`;
+      setTransfers(prev => {
+        const existing = prev.find(t => t.id === id);
+        const progress = Math.min(100, payload.percentage);
+        const next: TransferItem = {
+          id,
+          filename: payload.file_name,
+          type: 'upload',
+          progress,
+          status: progress >= 100 ? 'completed' : 'transferring',
+        };
+        return existing ? prev.map(t => t.id === id ? { ...t, ...next } : t) : [...prev, next];
+      });
     });
 
     return () => {
       unlisten.then(f => f());
+      unlistenSftpUpload.then(f => f());
     };
   }, []);
 

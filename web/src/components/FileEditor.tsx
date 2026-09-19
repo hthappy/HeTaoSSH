@@ -237,7 +237,13 @@ export function FileEditor({ tabId, filePath, theme, onClose, editorMinimap = fa
           <div className="h-full flex items-center justify-center text-term-red">
             <div className="text-center">
               <p className="text-lg mb-2">{t('common.error')}</p>
-              <p className="text-sm">{error}</p>
+              <p className="text-sm mb-4">{error}</p>
+              <button
+                className="px-4 py-1.5 text-sm rounded bg-term-fg/10 hover:bg-term-fg/20 text-term-fg transition-colors"
+                onClick={() => loadFile(filePath)}
+              >
+                {t('common.retry')}
+              </button>
             </div>
           </div>
         ) : (

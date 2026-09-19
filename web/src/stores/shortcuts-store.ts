@@ -25,9 +25,11 @@ const DEFAULT_SHORTCUTS: Shortcut[] = [
   { id: 'close-pane', label: 'shortcuts.close_pane', defaultKeys: 'Ctrl+Shift+W', keys: 'Ctrl+Shift+W', category: 'global' },
   { id: 'new-local-terminal', label: 'shortcuts.new_local_terminal', defaultKeys: 'Ctrl+T', keys: 'Ctrl+T', category: 'global' },
   { id: 'settings', label: 'shortcuts.settings', defaultKeys: 'Ctrl+,', keys: 'Ctrl+,', category: 'global' },
+  { id: 'shortcut-help', label: 'shortcuts.help', defaultKeys: 'Ctrl+/', keys: 'Ctrl+/', category: 'global' },
   { id: 'terminal-search', label: 'shortcuts.terminal_search', defaultKeys: 'Ctrl+F', keys: 'Ctrl+F', category: 'terminal' },
   { id: 'split-horizontal', label: 'shortcuts.split_horizontal', defaultKeys: 'Ctrl+Shift+D', keys: 'Ctrl+Shift+D', category: 'terminal' },
   { id: 'split-vertical', label: 'shortcuts.split_vertical', defaultKeys: 'Ctrl+Shift+E', keys: 'Ctrl+Shift+E', category: 'terminal' },
+  { id: 'focus-next-pane', label: 'shortcuts.focus_next_pane', defaultKeys: 'Ctrl+Alt+ArrowRight', keys: 'Ctrl+Alt+ArrowRight', category: 'terminal' },
   { id: 'editor-save', label: 'shortcuts.editor_save', defaultKeys: 'Ctrl+S', keys: 'Ctrl+S', category: 'editor' },
 ];
 

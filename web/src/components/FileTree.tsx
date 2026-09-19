@@ -299,7 +299,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
   const [pathInput, setPathInput] = useState('');
   const [showHidden, setShowHidden] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, { fileName: string; transferred: number; total: number; percentage: number }>>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { fileName: string; transferred: number; total: number; percentage: number; completed: boolean }>>({});
   // 删除二次确认：右键 Delete 先把路径放进这里，ConfirmDialog 确认后才真正删除
   const [pendingDeletePath, setPendingDeletePath] = useState<string | null>(null);
   
@@ -389,18 +389,20 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
             fileName: progressData.file_name,
             transferred: progressData.bytes_transferred,
             total: progressData.total_bytes,
-            percentage: progressData.percentage
+            percentage: progressData.percentage,
+            completed: progressData.percentage >= 100,
           }
         }));
         
         if (progressData.percentage >= 100) {
+          loadDir(currentPath);
           setTimeout(() => {
             setUploadProgress(prev => {
               const newProgress = { ...prev };
               delete newProgress[fileKey];
               return newProgress;
             });
-          }, 2000);
+          }, 5000);
         }
       }
     });
@@ -408,7 +410,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     return () => {
       unlistenPromise.then(unlisten => unlisten()).catch(console.error);
     };
-  }, [tabId, currentPath]);
+  }, [tabId, currentPath, connTabId, loadDir]);
 
   // Listen for terminal enter key events to refresh file list
   useEffect(() => {
@@ -582,7 +584,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     } finally {
       if (seq === acRequestSeq.current) setAcLoading(false);
     }
-  }, [getParentAndPrefix, tabId, isLocal]);
+  }, [getParentAndPrefix, isLocal, connTabId]);
 
   useEffect(() => {
     if (!tabId) return;
@@ -919,13 +921,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       const remotePath = folderPath === '/' ? `/${file.fileName}` : `${folderPath}/${file.fileName}`;
       
       try {
-        showToast(t('file.uploading', { name: file.fileName }), 'info');
         await invoke('sftp_upload_file_with_progress', {
           tabId: connTabId,
           localPath: file.localPath,
           remotePath
         });
-        showToast(t('file.upload_success', { name: file.fileName }), 'success');
       } catch (error) {
         console.error('Upload failed:', error);
         showToast(t('file.upload_failed', { name: file.fileName, error: `${error}` }), 'error');
@@ -936,14 +936,14 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     if (folderPath === currentPath) {
       loadDir(currentPath);
     }
-  }, [connTabId, isLocal, currentPath, t, showToast, loadDir]);
+  }, [tabId, connTabId, isLocal, currentPath, t, showToast, loadDir]);
 
   // Focus inline input when it appears
   useEffect(() => {
     if (inlineInput && inlineInputRef.current) {
       inlineInputRef.current.focus();
     }
-  }, [inlineInput?.type, inlineInput?.targetPath]); // Only run when type/path changes, not value
+  }, [inlineInput]);
 
   // Handle inline input key events - use ref to avoid dependency on inlineInput value
   const handleInlineInputKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1040,13 +1040,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       const remotePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
       
       try {
-        showToast(t('file.uploading', { name: file.name }), 'info');
         await invoke('sftp_upload_file_with_progress', {
           tabId: connTabId,
           localPath,
           remotePath
         });
-        showToast(t('file.upload_success', { name: file.name }), 'success');
       } catch (error) {
         console.error('Upload failed:', error);
         showToast(t('file.upload_failed', { name: file.name, error: `${error}` }), 'error');
@@ -1109,13 +1107,11 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
           const remotePath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
           
           try {
-            showToast(t('file.uploading', { name: fileName }), 'info');
             await invoke('sftp_upload_file_with_progress', {
               tabId: connTabId,
               localPath,
               remotePath
             });
-            showToast(t('file.upload_success', { name: fileName }), 'success');
           } catch (error) {
             console.error('Upload failed:', error);
             showToast(t('file.upload_failed', { name: fileName, error: `${error}` }), 'error');
@@ -1134,7 +1130,7 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
     return () => {
       unlisten.then(f => f());
     };
-  }, [tabId, currentPath, t, showToast, loadDir]);
+  }, [tabId, currentPath, t, showToast, loadDir, connTabId]);
 
   return (
     <div 
@@ -1372,7 +1368,15 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       {/* 文件列表区域 */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
         {error ? (
-          <div className="p-4 text-term-red text-sm">{error}</div>
+          <div className="p-4 text-term-red text-sm">
+            <p className="mb-2">{error}</p>
+            <button
+              className="px-3 py-1 text-xs rounded bg-term-fg/10 hover:bg-term-fg/20 text-term-fg transition-colors"
+              onClick={() => loadDir(currentPath || '/')}
+            >
+              {t('common.retry')}
+            </button>
+          </div>
         ) : isLoading && !entries ? (
           <div className="p-4 text-term-fg/40 text-sm">{t('file_tree.loading')}</div>
         ) : !entries ? (
@@ -1428,12 +1432,16 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
               <div className="mt-4 border-t border-term-selection pt-2">
                 <div className="px-2 py-1 text-xs text-term-fg/60 uppercase">{t('file.uploading_files', 'Uploading')}</div>
                 {Object.entries(uploadProgress).map(([key, progress]) => (
-                  <div key={key} className="px-2 py-2 flex items-center gap-2">
-                    <span className="text-sm text-term-fg flex-1 truncate">{progress.fileName}</span>
-                    <span className="text-xs text-term-fg/60">{Math.round(progress.percentage)}%</span>
+                  <div key={key} className="px-2 py-2">
+                    <div className="flex items-center gap-2">
+                    <span className="text-sm text-term-fg flex-1 break-all" title={progress.fileName}>{progress.fileName}</span>
+                    <span className={progress.completed ? 'text-xs text-term-green' : 'text-xs text-term-fg/60'}>
+                      {progress.completed ? t('transfer.complete') : `${Math.round(progress.percentage)}%`}
+                    </span>
+                    </div>
                     <div className="w-24 h-2 bg-term-selection rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-term-blue transition-all duration-300" 
+                        className={`h-full transition-all duration-300 ${progress.completed ? 'bg-term-green' : 'bg-term-blue'}`}
                         style={{ width: `${progress.percentage}%` }} 
                       />
                     </div>
