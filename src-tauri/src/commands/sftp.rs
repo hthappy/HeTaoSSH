@@ -311,9 +311,25 @@ pub async fn sftp_upload_file_with_progress(
 ) -> Result<()> {
     // 统一路径验证 (validate path)
     validate_sftp_path(&remote_path)?;
-    
+
     state
         .sftp_upload_file_with_progress(&tab_id, &local_path, &remote_path)
+        .await
+}
+
+/// Recursively upload a local directory to remote with progress tracking
+#[tauri::command]
+pub async fn sftp_upload_dir_with_progress(
+    tab_id: String,
+    local_path: String,
+    remote_path: String,
+    state: State<'_, Arc<ConnectionManager>>,
+) -> Result<()> {
+    // 统一路径验证 (validate path)
+    validate_sftp_path(&remote_path)?;
+
+    state
+        .sftp_upload_dir_with_progress(&tab_id, &local_path, &remote_path)
         .await
 }
 

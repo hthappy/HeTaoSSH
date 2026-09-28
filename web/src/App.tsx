@@ -953,14 +953,11 @@ function FileDropListener({ onRemoteUploadStart }: { onRemoteUploadStart: () => 
           for (const path of event.payload.paths) {
             const fileName = path.split(/[\\/]/).pop() || path;
             try {
-              if (await invoke<boolean>('local_is_dir', { path })) {
-                showToast(t('file.drop_dir_skipped', { name: path }), 'info');
-                continue;
-              }
+              const isDir = await invoke<boolean>('local_is_dir', { path });
               const remotePath = remoteDir.endsWith('/')
                 ? `${remoteDir}${fileName}`
                 : `${remoteDir}/${fileName}`;
-              await invoke('sftp_upload_file_with_progress', {
+              await invoke(isDir ? 'sftp_upload_dir_with_progress' : 'sftp_upload_file_with_progress', {
                 tabId: connTabId,
                 localPath: path,
                 remotePath,

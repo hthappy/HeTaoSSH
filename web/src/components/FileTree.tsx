@@ -1038,9 +1038,10 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
       }
 
       const remotePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-      
+
       try {
-        await invoke('sftp_upload_file_with_progress', {
+        const isDir = await invoke<boolean>('local_is_dir', { path: localPath });
+        await invoke(isDir ? 'sftp_upload_dir_with_progress' : 'sftp_upload_file_with_progress', {
           tabId: connTabId,
           localPath,
           remotePath
@@ -1100,14 +1101,15 @@ export function FileTree({ tabId, onFileSelect }: FileTreeProps) {
         const uploadPath = targetFolder || currentPath;
 
         files.forEach(async (localPath) => {
-          // Normalize path separators to forward slash for consistency if needed, 
+          // Normalize path separators to forward slash for consistency if needed,
           // but backend handles local path as is usually.
           // Extract filename safely
           const fileName = localPath.split(/[\\/]/).pop() || 'unknown';
           const remotePath = uploadPath === '/' ? `/${fileName}` : `${uploadPath}/${fileName}`;
-          
+
           try {
-            await invoke('sftp_upload_file_with_progress', {
+            const isDir = await invoke<boolean>('local_is_dir', { path: localPath });
+            await invoke(isDir ? 'sftp_upload_dir_with_progress' : 'sftp_upload_file_with_progress', {
               tabId: connTabId,
               localPath,
               remotePath

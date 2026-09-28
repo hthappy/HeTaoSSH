@@ -132,6 +132,12 @@ enum ConnCommand {
         remote_path: String,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// SFTP: 递归上传文件夹（带进度）
+    SftpUploadDirWithProgress {
+        local_path: String,
+        remote_path: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
     /// SFTP: 重命名/移动文件或目录
     SftpRename {
         old_path: String,
@@ -588,6 +594,28 @@ impl ConnectionManager {
             .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
     }
 
+    /// 递归上传文件夹（带进度）
+    pub async fn sftp_upload_dir_with_progress(
+        &self,
+        id: &str,
+        local_path: &str,
+        remote_path: &str,
+    ) -> Result<()> {
+        let tx = self.get_tx(id).await?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(ConnCommand::SftpUploadDirWithProgress {
+            local_path: local_path.to_string(),
+            remote_path: remote_path.to_string(),
+            reply: reply_tx,
+        })
+        .await
+        .map_err(|_| SshError::Channel("Connection actor stopped".to_string()))?;
+
+        reply_rx
+            .await
+            .map_err(|_| SshError::Channel("Actor reply failed".to_string()))?
+    }
+
     /// 重命名/移动文件或目录
     pub async fn sftp_rename(&self, id: &str, old_path: &str, new_path: &str) -> Result<()> {
         let tx = self.get_tx(id).await?;
@@ -828,6 +856,9 @@ async fn connection_actor(
                     ConnCommand::SftpUploadFileWithProgress { local_path, remote_path, reply } => {
                         let _ = reply.send(handle_sftp_upload_file_with_progress(&conn, app_handle.clone(), &id, &local_path, &remote_path).await);
                     }
+                    ConnCommand::SftpUploadDirWithProgress { local_path, remote_path, reply } => {
+                        let _ = reply.send(handle_sftp_upload_dir_with_progress(&conn, app_handle.clone(), &id, &local_path, &remote_path).await);
+                    }
                     ConnCommand::Reconnect { reply } => {
                         // 尝试重新连接（带超时，避免永久挂起）
                         match tokio::time::timeout(RECONNECT_TIMEOUT, conn.reconnect()).await {
@@ -960,6 +991,7 @@ fn reply_connection_lost(cmd: ConnCommand) {
         ConnCommand::SftpDownloadDir { reply, .. } => { let _ = reply.send(Err(err())); }
         ConnCommand::SftpUploadFile { reply, .. } => { let _ = reply.send(Err(err())); }
         ConnCommand::SftpUploadFileWithProgress { reply, .. } => { let _ = reply.send(Err(err())); }
+        ConnCommand::SftpUploadDirWithProgress { reply, .. } => { let _ = reply.send(Err(err())); }
         ConnCommand::SftpRename { reply, .. } => { let _ = reply.send(Err(err())); }
         ConnCommand::SftpCreateFile { reply, .. } => { let _ = reply.send(Err(err())); }
         ConnCommand::MeasureLatency { reply } => { let _ = reply.send(Err(err())); }
@@ -1293,15 +1325,26 @@ async fn handle_sftp_upload_file_with_progress(
     local_path: &str,
     remote_path: &str,
 ) -> Result<()> {
-    use std::time::Instant;
-    use tokio::io::AsyncWriteExt;
-
     let sftp = conn
         .sftp_session
         .as_ref()
         .ok_or_else(|| {
             SshError::ConnectionFailed(crate::error::messages::SFTP_NOT_INITIALIZED.to_string())
         })?;
+
+    upload_single_file_with_progress(sftp, &app_handle, connection_id, local_path, remote_path).await
+}
+
+/// 上传单个文件并周期性发送进度事件
+async fn upload_single_file_with_progress(
+    sftp: &russh_sftp::client::SftpSession,
+    app_handle: &tauri::AppHandle,
+    connection_id: &str,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<()> {
+    use std::time::Instant;
+    use tokio::io::AsyncWriteExt;
 
     // Get total file size for the progress calculation
     let file_metadata = tokio::fs::metadata(local_path).await.map_err(SshError::Io)?;
@@ -1402,8 +1445,82 @@ async fn handle_sftp_upload_file_with_progress(
         total_bytes: file_size,
         percentage,
     };
-    
+
     let _ = app_handle.emit("sftp-upload-progress", &progress_event);
+
+    Ok(())
+}
+
+/// 递归上传本地文件夹到远程（带进度）
+///
+/// 使用迭代式深度优先遍历（栈），避免递归调用栈溢出。
+/// 远程目录通过逐级 create_dir 创建，已存在时忽略错误。
+async fn handle_sftp_upload_dir_with_progress(
+    conn: &SshConnection,
+    app_handle: tauri::AppHandle,
+    connection_id: &str,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<()> {
+    let sftp = conn
+        .sftp_session
+        .as_ref()
+        .ok_or_else(|| {
+            SshError::ConnectionFailed(crate::error::messages::SFTP_NOT_INITIALIZED.to_string())
+        })?;
+
+    // 确认本地路径是目录
+    let metadata = tokio::fs::metadata(local_path).await.map_err(SshError::Io)?;
+    if !metadata.is_dir() {
+        return Err(SshError::ConnectionFailed(
+            "Local path is not a directory".to_string(),
+        ));
+    }
+
+    // 栈：(本地当前目录, 远程当前目录)
+    let mut stack = vec![(local_path.to_string(), remote_path.to_string())];
+
+    while let Some((curr_local, curr_remote)) = stack.pop() {
+        // 逐级创建远程目录（类似 mkdir -p），已存在则忽略
+        let mut partial = String::new();
+        for segment in curr_remote.split('/') {
+            if segment.is_empty() {
+                continue;
+            }
+            partial.push('/');
+            partial.push_str(segment);
+            // 忽略 "已存在" 错误；其他错误（如权限）会在后续文件写入时暴露
+            let _ = sftp.create_dir(&partial).await;
+        }
+
+        // 遍历本地目录
+        let mut read_dir = tokio::fs::read_dir(&curr_local).await.map_err(SshError::Io)?;
+
+        while let Some(entry) = read_dir.next_entry().await.map_err(SshError::Io)? {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let next_local = entry.path();
+            let next_remote = if curr_remote.ends_with('/') {
+                format!("{}{}", curr_remote, file_name)
+            } else {
+                format!("{}/{}", curr_remote, file_name)
+            };
+
+            let entry_meta = entry.metadata().await.map_err(SshError::Io)?;
+            if entry_meta.is_dir() {
+                stack.push((next_local.to_string_lossy().to_string(), next_remote));
+            } else if entry_meta.is_file() {
+                upload_single_file_with_progress(
+                    sftp,
+                    &app_handle,
+                    connection_id,
+                    &next_local.to_string_lossy(),
+                    &next_remote,
+                )
+                .await?;
+            }
+            // 符号链接等其他类型跳过
+        }
+    }
 
     Ok(())
 }

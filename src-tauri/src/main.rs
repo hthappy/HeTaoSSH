@@ -90,6 +90,7 @@ async fn main() -> Result<()> {
             commands::sftp_download_dir,
             commands::sftp_upload_file,
             commands::sftp_upload_file_with_progress,
+            commands::sftp_upload_dir_with_progress,
             commands::sftp_get_home_dir,
             commands::sftp_rename,
             commands::sftp_create_file,

@@ -3,10 +3,12 @@
 ## Project Overview
 
 **HeTaoSSH** - Modern SSH client built with Tauri 2.0
-- **Backend**: Rust (`russh` for SSH, `sqlx` + `SQLite` for storage)
+- **Backend**: Rust (`russh` 0.50 for SSH, `russh-sftp` 2.1, `sqlx` + `SQLite` for storage)
 - **Frontend**: React + TypeScript + Tailwind CSS
 - **Terminal**: xterm.js managed through a DOM-reparenting terminal pool
 - **Editor**: Monaco Editor (VS Code kernel)
+- **i18n**: react-i18next (zh/en locales)
+- **Portability**: Windows (MSVC toolchain), local terminal via portable-pty
 
 ---
 
@@ -14,7 +16,12 @@
 
 ### Prerequisites
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh  # Install Rust
+# Windows: Rust toolchain (includes cargo) + MSVC linker
+winget install Rustlang.Rustup
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+
+# macOS/Linux: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 corepack enable pnpm  # Enable pnpm
 pnpm install  # Install dependencies
 ```
@@ -69,7 +76,7 @@ pub enum SshError {
 pub type Result<T> = std::result::Result<T, SshError>;
 ```
 
-**Async**: Use tokio runtime with `RwLock` for shared state, `Mutex` for exclusive
+**Async**: tokio runtime; Actor model per SSH connection (mpsc command channel), `Mutex` only for short-lived handle map access
 
 ### TypeScript/React Conventions
 
@@ -91,15 +98,22 @@ import type { ServerConfig } from '@/types/config';
 
 ```
 HeTaoSSH/
-├── src/                    # Rust backend
-│   ├── ssh/               # SSH handling (russh)
-│   ├── config/            # Configuration + SQLite storage
-│   └── crypto/            # AES-256 encryption
-├── src-tauri/             # Tauri config
-├── web/src/               # Frontend (React/Vue)
+├── src-tauri/             # Rust backend + Tauri config
+│   ├── src/
+│   │   ├── commands/      # Tauri IPC handlers (config/sftp/ssh/system/tunnel)
+│   │   ├── ssh/           # SSH connections (russh)
+│   │   ├── config/        # Configuration + SQLite storage
+│   │   ├── crypto/        # AES-256 encryption
+│   │   └── security/      # Path traversal protection
+│   └── tauri.conf.json
+├── web/src/               # Frontend (React + TypeScript)
 │   ├── components/
-│   ├── stores/
+│   ├── stores/            # zustand (ssh-store, shortcuts-store)
 │   ├── hooks/
+│   ├── i18n/locales/      # zh.ts / en.ts
+│   ├── lib/               # terminalPool, commandHistory, utils
+│   ├── constants/         # IPC timing constants
+│   ├── themes/
 │   └── types/
 └── docs/
 ```
@@ -329,6 +343,7 @@ DOM Reparenting solves this by:
    - It must use `getSftpPath(serverId)` as the destination; when no SFTP path has been selected, resolve and store the remote home directory first.
    - Do not infer a destination from terminal output or a prompt such as `/data/product`; prompts are customizable and may not represent the shell's real current directory.
    - Before invoking `sftp_upload_file_with_progress`, switch to the SFTP activity so `FileTree` can show its inline progress.
+   - Dropped folders are uploaded recursively via `sftp_upload_dir_with_progress` (check with `local_is_dir`); dropped files on a local terminal open in the editor instead.
 
 2. **Use progress events for transfers, not per-file Toast spam.**
    - `sftp-upload-progress` powers both the SFTP inline progress section and the global `TransferProgress` overlay.
@@ -342,6 +357,17 @@ DOM Reparenting solves this by:
 4. **Workspace tabs and dirty files.**
    - File dirty state is stored in `ssh-store.ts`; use `requestCloseTab` in `App.tsx` for user-initiated closes so unsaved edits are confirmed.
    - `reorderTabs` only changes visual tab order. It must not recreate terminal panes or dispose pooled terminal instances.
+
+5. **Disconnected terminal must offer a way back.**
+   - When `disconnected` is set in `Terminal.tsx`, any key press must call `handleTerminalKeyPress(serverId)` to trigger reconnect — never leave the terminal as a dead end.
+   - Error states (connection failed, file load failed, dir load failed, server list failed) render a retry button (`common.retry`).
+
+6. **Local terminal shell selection.**
+   - `local_term.rs` detects available shells (PowerShell/pwsh/cmd/Git Bash); `list_local_shells` feeds the tab-bar split button, and `open_local_terminal` takes an optional `shell` parameter persisted as the user's default.
+   - Split panes inherit the source pane's shell.
+
+7. **i18n coverage.**
+   - All user-facing strings go through `t()` with keys in both `web/src/i18n/locales/zh.ts` and `en.ts`; the two files must stay key-symmetric.
 
 ### Tauri IPC Commands
 
@@ -377,19 +403,49 @@ await invoke('save_server', { config: serverConfig })
 src-tauri/src/
 ├── main.rs           # Tauri entry point
 ├── lib.rs            # Library exports
-├── commands.rs       # Tauri IPC handlers
-├── error.rs          # Error types (thiserror)
-├── ssh/              # SSH connections (russh)
+├── commands/         # Tauri IPC handlers
 │   ├── mod.rs
-│   ├── connection.rs
-│   ├── handler.rs
-│   ├── manager.rs
-│   └── sftp.rs
+│   ├── config.rs     # Server config CRUD
+│   ├── sftp.rs       # SFTP operations (upload/download, file + recursive dir)
+│   ├── ssh.rs        # SSH connect/send/resize
+│   ├── system.rs     # Local terminal shells, system info
+│   └── tunnel.rs     # Port forwarding
+├── error.rs          # Error types (thiserror)
+├── ssh/              # SSH connections (russh 0.50)
+│   ├── mod.rs
+│   ├── connection.rs # Single connection state, reconnect
+│   ├── handler.rs    # Channel I/O, PTY modes, window_change
+│   ├── manager.rs    # Actor-model connection manager + SFTP handlers
+│   ├── sftp.rs       # SFTP session helpers
+│   └── tunnel.rs     # Local/SOCKS forwarding
 ├── config/           # SQLite storage (sqlx)
 ├── crypto/           # AES-256 encryption
-├── monitor/          # System monitoring
-└── snippets/         # Command snippets
+├── monitor.rs        # Remote system monitoring
+├── local_term.rs     # Local terminal (portable-pty, shell detection)
+├── snippets.rs       # Command snippets storage
+├── theme.rs          # Theme import (.json/.itermcolors)
+├── security/         # Path traversal validation
+└── window_state.rs   # Window size/position persistence
 ```
+
+### Connection Reliability (Actor + Watchdog)
+
+Each SSH connection runs in a dedicated tokio task (Actor) processing commands
+from an mpsc channel. Key invariants in `ssh/manager.rs`:
+
+- **Never await the network without a timeout.** Quick commands (send/recv,
+  resize, latency, monitor, small SFTP ops) run under `QUICK_CMD_TIMEOUT`
+  (30s — must exceed GetSystemUsage's internal worst case ~15s). Channel
+  writes/ctrl ops in `handler.rs` have their own shorter timeouts. On timeout
+  the connection is declared dead: the actor emits `ssh-disconnected` and
+  enters `wait_for_reconnect`, rejecting queued commands with
+  `reply_connection_lost` (every `ConnCommand` variant must be handled there).
+- **Large transfers are exempt from the watchdog** (download/upload file/dir);
+  a dead connection surfaces via russh keepalive errors instead.
+- **Never hold the `handles` Mutex across a blocking send.** Management
+  operations remove the handle from the map first, then `try_send`.
+- **Terminal output is batched** (`MAX_EMIT_BATCH_BYTES = 64KB`) before
+  emitting to the frontend to survive output floods like `tail -f`.
 
 ### Error Handling Pattern
 
@@ -423,20 +479,17 @@ impl serde::Serialize for SshError {
 
 ### Async Patterns
 
+The connection manager uses the **Actor model**: one tokio task per connection,
+an mpsc command channel (`ConnCommand`), and a short-held `Mutex<HashMap>`
+only for handle lookup/insert — no `RwLock` around live connections.
+
 ```rust
-use tokio::sync::RwLock;  // Shared state
-use tokio::sync::Mutex;   // Exclusive access
-use async_trait::async_trait;
+use tokio::sync::{mpsc, oneshot, Mutex};
 
-#[async_trait]
-pub trait SshHandler {
-    async fn connect(&self, config: &ServerConfig) -> Result<()>;
-}
-
-// Shared connection manager
-pub struct ConnectionManager {
-    connections: RwLock<HashMap<i32, SshConnection>>,
-}
+// Command dispatch with reply channel
+let (reply_tx, reply_rx) = oneshot::channel();
+tx.send(ConnCommand::SftpListDir { path, reply: reply_tx }).await?;
+let entries = reply_rx.await??;
 ```
 
 ### Database (sqlx + SQLite)
@@ -590,12 +643,11 @@ pnpm install  # Reinstall dependencies
 ---
 
 #### 2. IPC Debouncing (✅ COMPLETED)
-**Location**: `web/src/stores/ssh-store.ts`
+**Location**: `web/src/stores/ssh-store.ts` + `web/src/constants/ipc.ts`
 
 **Implementation**:
-- 5ms debounce window on terminal input
+- 5ms debounce window (`IPC_DEBOUNCE_MS`), 150ms max wait (`IPC_MAX_WAIT_MS`)
 - Control characters (Ctrl+C, Ctrl+D, Ctrl+Z, Ctrl+\\) bypass buffer and sent immediately
-- Maximum wait time: 5ms for normal input, 0ms for control characters
 
 **Protection**:
 - ✅ Prevents high-frequency backend calls
@@ -625,336 +677,18 @@ None currently.
 
 ---
 
-### ✅ Recently Fixed Issues
+### 📚 Historical Bug Fixes
 
-#### Terminal Split Pane Content Loss (✅ FIXED - 2024-04-10)
-**Problem**: When splitting terminal panes, the original terminal content was cleared due to React component lifecycle conflicts with xterm.js.
-
-**Root Cause**: 
-- React's declarative rendering conflicts with xterm.js's imperative API
-- Component tree reorganization during split causes React to unmount/remount Terminal components
-- xterm.js instances are disposed when components unmount, losing all content
-
-**Solution**: DOM Reparenting pattern
-- Created global `terminalPool` to manage xterm.js instances outside React lifecycle
-- React components only provide placeholder divs
-- Use native DOM API (`appendChild`/`removeChild`) to physically move terminal containers
-- When React unmounts component, only placeholder is removed; xterm.js instance stays alive
-
-**Files Modified**:
-- `web/src/lib/terminalPool.ts` - Global terminal instance pool
-- `web/src/components/Terminal.tsx` - Rewritten to use DOM Reparenting
-- `web/src/components/TerminalArea.tsx` - Pass paneId prop
-- `web/src/stores/ssh-store.ts` - Dispose terminals on tab/pane close
-
-**Documentation**:
-- `docs/troubleshooting/DOM-REPARENTING-FIX.md` - Detailed solution explanation
-- `docs/troubleshooting/分屏问题总结.md` - Chinese summary
-
-**Status**: ✅ **FIXED** - Split panes now preserve terminal content correctly
-
----
-
-### ✅ Completed Bug Fixes
-
-#### 1. Terminal Tab Switching Black Screen (✅ FIXED - 2024-03-23)
-**Problem**: When switching between terminal tabs, terminal showed only blinking cursor with no content, even though SSH connection was active and data was being received.
-
-**Root Cause**: 
-- DOM renderer has asynchronous initialization
-- Calling `fit()` or `refresh()` before renderer ready caused `Cannot read properties of undefined (reading 'dimensions')` error
-- Terminal was being recreated on every tab switch due to incorrect useEffect dependencies
-
-**Solution**:
-1. Changed from Canvas renderer to DOM renderer (`rendererType: 'dom'`)
-2. Added renderer initialization check - wait for `.xterm-rows` element before operations
-3. Changed tab container from `display: none` to `visibility: hidden`
-4. Added proper tab activation logic: write → delay → fit → refresh → scroll → focus
-5. Removed `isActive` from terminal creation useEffect dependencies
-
-**Files Modified**:
-- `web/src/components/Terminal.tsx` - DOM renderer + initialization check + tab activation logic
-- `web/src/App.tsx` - Tab container visibility styling
-
-**Documentation**:
-- `docs/troubleshooting/terminal-tab-switching.md` - Problem analysis
-- `docs/troubleshooting/DOM-RENDERER-TIMING-ISSUE.md` - Root cause and fix details
-- `docs/troubleshooting/TESTING-TAB-SWITCH-FIX.md` - Testing guide
-- `docs/troubleshooting/HOW-TO-FORCE-REBUILD.md` - Rebuild instructions
-
-**Status**: ✅ **FIXED** - Tab switching now works correctly, content appears immediately
-
----
-
-#### 2. Ctrl+C Not Working (✅ FIXED - 2024-03-23)
-**Problem**: Pressing Ctrl+C in terminal did not interrupt commands like `docker logs -f`. The command would hang, and only way to stop was to close tab and reconnect.
-
-**Root Cause**: 
-1. **PTY terminal modes not set**: SSH PTY request didn't set terminal modes, so server didn't know how to handle Ctrl+C
-2. **Output buffer too small**: Backend output buffer was only 1024 messages, causing blocking when docker logs outputs rapidly
-3. **Buffer full causes hang**: When buffer fills up, reader task blocks, SSH channel stops receiving data, docker logs stops outputting
-
-**Solution**:
-1. **Set minimal PTY terminal modes**:
-   ```rust
-   let terminal_modes = vec![
-       (Pty::VINTR, 3),   // Ctrl+C = ASCII 3
-       (Pty::VEOF, 4),    // Ctrl+D = ASCII 4
-       (Pty::VSUSP, 26),  // Ctrl+Z = ASCII 26
-       (Pty::ISIG, 1),    // Enable signals (CRITICAL)
-   ];
-   ```
-
-2. **Increase output buffer**: From 1024 → 10240 (10x larger)
-
-3. **Add blocking detection**: 5-second timeout with detailed logging
-
-4. **Control characters bypass input buffer** (frontend):
-   ```typescript
-   if (CONTROL_CHARS.includes(data)) {
-     // Send immediately without buffering
-     invoke('ssh_send', { data: bufferedData + data });
-   }
-   ```
-
-**Files Modified**:
-- `src-tauri/src/ssh/handler.rs` - PTY modes, buffer size, blocking detection
-- `web/src/stores/ssh-store.ts` - Control character immediate send
-
-**Documentation**:
-- `docs/troubleshooting/ctrl-c-not-working.md` - Problem analysis and fix details
-- `docs/troubleshooting/TESTING-CTRL-C-FIX.md` - Testing guide
-
-**Status**: ✅ **FIXED** - docker logs -f now works correctly, Ctrl+C interrupts immediately
-
----
-
-#### 3. Terminal Size Mismatch and Line Wrapping Issues (✅ FIXED - 2024-04-10)
-**Problem**: 
-- When connecting to macOS SSH, extra `%` symbols appeared at line ends
-- In vim, pressing arrow keys caused cursor to jump lines incorrectly
-- Long input lines would wrap to the beginning of the current line instead of the next line
-- Input characters would overwrite each other at the line start
-
-**Root Cause**: 
-1. **Hardcoded PTY size**: SSH PTY initialization used hardcoded `120×40`, but frontend terminal was actually `155×39` or other sizes
-2. **No dynamic resize**: After converting Channel to stream with `into_stream()`, the `window_change` method was no longer accessible
-3. **Size mismatch**: Shell (bash/zsh) thought line width was 120 chars, but display was 155 chars, causing incorrect line wrapping
-
-**Solution**:
-1. **Changed PTY initialization**: From hardcoded `120×40` to reasonable default `120×30`
-2. **Implemented true dynamic resize**:
-   - Refactored `SshChannelHandler` to keep Channel object instead of converting to stream
-   - Used `tokio::select!` to handle both I/O and resize messages
-   - Implemented `channel.window_change(cols, rows, 0, 0)` for proper PTY resize
-3. **Frontend sends actual size**: Terminal component sends real dimensions (e.g., `155×39`) immediately after creation
-
-**Technical Details**:
-```rust
-// Before: Channel converted to stream, lost window_change capability
-let stream = channel.into_stream();
-let (read_half, write_half) = tokio::io::split(stream);
-
-// After: Keep Channel object, handle I/O manually
-tokio::select! {
-    msg = channel_rx.recv() => {
-        match msg {
-            Some(ChannelMessage::Resize { cols, rows }) => {
-                channel.window_change(cols, rows, 0, 0).await?;
-            }
-            // ... handle data
-        }
-    }
-    msg = channel.wait() => {
-        // ... handle incoming data
-    }
-}
-```
-
-**Files Modified**:
-- `src-tauri/src/ssh/handler.rs` - Refactored to keep Channel object, implement window_change
-- `src-tauri/src/ssh/connection.rs` - Updated resize method to call handler
-- `src-tauri/src/ssh/manager.rs` - Changed default PTY size to 120×30
-- `web/src/components/Terminal.tsx` - Added DOM renderer readiness checks
-- `web/src/components/TerminalArea.tsx` - Ensured resize is called after terminal creation
-
-**Status**: ✅ **FIXED** - Terminal now resizes correctly, line wrapping works as expected
-
-**Follow-up Fix (2026-04-11)**: Even with dynamic resize, macOS occasionally showed `%` symbol on first line due to timing issue. See next section for complete solution.
-
----
-
-#### 3.1. Terminal Size Initialization Optimization (✅ FIXED - 2026-04-11)
-**Problem**: 
-- Even with dynamic resize implemented, macOS still occasionally showed `%` symbol on first line after connection
-- This was a timing issue: PTY initialized with default size (120×30) before frontend could send actual size
-
-**Root Cause**:
-- Backend used hardcoded default size during connection
-- Frontend sent actual size via `ssh_resize` AFTER connection established
-- Shell initialized with wrong dimensions before resize event arrived
-
-**Solution**: Pass terminal dimensions during initial connection
-1. **Backend accepts dimensions**: Modified `ConnectionManager::create_connection()` to accept optional `cols` and `rows` parameters
-2. **Frontend provides dimensions**: Modified `ssh-store.ts` to get terminal dimensions from `terminalPool` and pass them to `ssh_connect`
-3. **Command interface updated**: `ssh_connect` command now accepts optional `cols` and `rows` parameters
-
-**Implementation**:
-```rust
-// Backend: src-tauri/src/ssh/manager.rs
-pub async fn create_connection(
-    &self,
-    id: &str,
-    config: ServerConfig,
-    cols: Option<u32>,  // NEW: Optional terminal columns
-    rows: Option<u32>,  // NEW: Optional terminal rows
-    app_handle: tauri::AppHandle,
-) -> Result<()> {
-    let cols = cols.unwrap_or(120);  // Use provided or default
-    let rows = rows.unwrap_or(30);
-    conn.connect_with_shell(cols, rows).await?;
-}
-```
-
-```typescript
-// Frontend: web/src/stores/ssh-store.ts
-const paneId = `pane-single-${serverId}`;
-const termInstance = terminalPool.get(paneId);
-const cols = termInstance?.term.cols;  // Get actual width
-const rows = termInstance?.term.rows;  // Get actual height
-
-await invoke('ssh_connect', { 
-  tabId: `conn-${serverId}`, 
-  config: server,
-  cols,  // Pass actual dimensions
-  rows
-});
-```
-
-**Files Modified**:
-- `src-tauri/src/commands/ssh.rs` - Added cols/rows parameters to ssh_connect
-- `src-tauri/src/ssh/manager.rs` - Modified create_connection to accept and use dimensions
-- `web/src/stores/ssh-store.ts` - Pass terminal dimensions in connectServer(), splitPane(), and reconnectServer()
-
-**Benefits**:
-- Eliminates % symbol completely - PTY initialized with correct size from the start
-- No resize race condition - no need to wait for ssh_resize after connection
-- Better vim experience - arrow keys work correctly immediately
-- Proper line wrapping - long lines wrap at correct positions
-
-**Status**: ✅ **FIXED** - Terminal dimensions now passed from frontend to backend during initial connection
-
----
-
-#### 4. Arrow Key History Navigation Issues (✅ FIXED - 2024-04-10)
-**Problem**: 
-- Pressing up/down arrow keys to browse command history caused garbled output
-- Lines would break unexpectedly
-- System beep sound occurred
-- Affected both local terminal and remote SSH tabs
-
-**Root Cause**: 
-- Frontend intercepted arrow keys (`keyCode 38/40`) and sent custom sequences (`\x15 + command`)
-- This conflicted with shell's built-in history navigation (bash/zsh handle `\x1b[A` / `\x1b[B` natively)
-- Double processing caused garbled output and unexpected behavior
-
-**Solution**:
-1. **Removed frontend arrow key interception**: Deleted `domEvent.preventDefault()` and custom history logic from `Terminal.tsx`
-2. **Let shell handle history**: Arrow keys now pass through to shell as standard escape sequences
-3. **Kept history saving**: Frontend still saves command history locally for other features, but doesn't interfere with navigation
-
-**Files Modified**:
-- `web/src/components/Terminal.tsx` - Removed arrow key interception in `onKey` handler
-- Simplified `onData` handler to skip escape sequences when tracking current command
-
-**Status**: ✅ **FIXED** - Arrow keys now work correctly for command history navigation
-
----
-
-#### 5. Split Pane Clears Terminal Content (✅ FIXED - 2024-04-10)
-**Problem**: When splitting terminal panes using keyboard shortcuts (Ctrl+Shift+D/E), the original terminal content was cleared, showing only blank screen with cursor.
-
-**Root Cause**: 
-- React's declarative lifecycle conflicts with xterm.js's imperative API
-- When split operations change component tree structure (wrapping in `<SplitPane>`), React unmounts/remounts Terminal components
-- React's `key` only works for same-level siblings; when parent changes, component is unmounted
-- xterm.js `dispose()` is called during unmount, destroying terminal buffer and all content
-
-**Solution**: **DOM Reparenting Pattern** (inspired by VS Code)
-1. **Global Terminal Pool** (`web/src/lib/terminalPool.ts`):
-   - Manages all xterm.js instances and DOM containers OUTSIDE React lifecycle
-   - Instances created once and reused forever
-   - Only disposed when tab is closed, NEVER during splits
-
-2. **Terminal Component Rewrite** (`web/src/components/Terminal.tsx`):
-   - Component only provides placeholder `<div>` (NOT actual terminal container)
-   - Uses native DOM API (`appendChild`/`removeChild`) to attach/detach containers
-   - When React unmounts: only placeholder removed, xterm.js instance stays alive
-   - When React mounts: same terminal container attached to new placeholder
-
-3. **PaneId Consistency** (CRITICAL FIX):
-   - Single pane mode: `pane-single-${serverId}`
-   - First split: MUST reuse same paneId for existing pane
-   - Bug was: first split created new paneId, causing pool miss and content loss
-   - Fix: `const existingPaneId = \`pane-single-${tab.serverId}\``
-
-**Technical Details**:
-```typescript
-// Terminal Pool manages instances outside React
-class TerminalPool {
-  getOrCreate(paneId: string): TerminalInstance {
-    // Create once, reuse forever
-  }
-  dispose(paneId: string): void {
-    // Only called when closing tab/pane
-  }
-}
-
-// Terminal component uses DOM Reparenting
-useEffect(() => {
-  const instance = terminalPool.getOrCreate(paneId);
-  placeholderRef.current.appendChild(instance.container); // Native DOM API
-  
-  return () => {
-    placeholderRef.current.removeChild(instance.container); // NOT dispose!
-  };
-}, [paneId]);
-```
-
-**Files Modified**:
-- `web/src/lib/terminalPool.ts` - Global terminal pool (NEW)
-- `web/src/components/Terminal.tsx` - Complete rewrite using DOM Reparenting
-- `web/src/components/TerminalArea.tsx` - Pass paneId prop
-- `web/src/stores/ssh-store.ts` - Fix paneId consistency + add dispose calls
-
-**Documentation**:
-- `docs/troubleshooting/DOM-REPARENTING-FIX.md` - Detailed technical explanation
-- `docs/troubleshooting/分屏问题总结.md` - Chinese summary
-- `docs/troubleshooting/修复总结-DOM-Reparenting.md` - Quick reference
-
-**Status**: ✅ **FIXED** - Split panes now preserve terminal content perfectly
-
-**IMPORTANT**: See "CRITICAL: Terminal Component Architecture" section in Frontend Architecture for development guidelines.
+Detailed root-cause analyses of past fixes live in `docs/troubleshooting/` and
+`CHANGELOG.md`. The architectural lessons that still constrain new code are
+kept in this file (see "CRITICAL: Terminal Component Architecture",
+"Connection Reliability", and "Terminal, SFTP, and Transfer UX Rules").
 
 ---
 
 ### ⏳ Pending Security Tasks
 
-#### 1. Cargo Audit (📝 MANUAL STEP REQUIRED)
-**Command**:
-```bash
-cargo install cargo-audit
-cd src-tauri
-cargo audit
-```
-
-**Purpose**: Scan dependencies for known vulnerabilities
-
-**Status**: ⏳ **PENDING** - Requires manual installation
-
----
-
-#### 2. CSP Configuration (⚠️ LOW PRIORITY)
+#### 1. CSP Configuration (⚠️ LOW PRIORITY)
 **Current**: CSP disabled (`csp: null` in `tauri.conf.json`)
 
 **Risk**: 🟡 LOW - App uses only local resources
@@ -963,7 +697,7 @@ cargo audit
 
 ---
 
-- [x] **IPC calls debounced** - ✅ IMPLEMENTED (50ms window)
+- [x] **IPC calls debounced** - ✅ IMPLEMENTED (5ms window, 150ms max wait)
 
 ---
 
@@ -1007,6 +741,7 @@ cargo audit
 - [ ] App cold start < 1.5s
 - [ ] Memory per SSH session < 80MB
 - [ ] Terminal input latency < 50ms
-- [x] Use `RwLock` for read-heavy shared state (Actor model used instead)
+- [x] Actor model per connection (no `RwLock` around live connections)
 - [ ] Batch database writes when possible (deferred - no bulk import need)
-- [x] **Debounce rapid IPC calls from frontend** - ✅ IMPLEMENTED
+- [x] **Debounce rapid IPC calls from frontend** - ✅ IMPLEMENTED (5ms window)
+- [x] **Batch terminal output emits** - ✅ IMPLEMENTED (64KB aggregation)
