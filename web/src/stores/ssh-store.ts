@@ -105,6 +105,8 @@ export interface ConnectionStatus {
   isLocal?: boolean;
   /** 本地终端使用的 shell（powershell / pwsh / cmd / gitbash） */
   shell?: string;
+  /** 本地终端的初始工作目录（从资源管理器右键菜单打开时） */
+  cwd?: string;
 }
 
 interface SshState {
@@ -136,7 +138,7 @@ interface SshState {
   // Connection Management
   connectServer: (serverId: number) => Promise<void>;
   reconnectServer: (serverId: number) => Promise<void>; // Added for manual reconnect capability
-  createLocalTerminal: (shell?: string) => Promise<void>;
+  createLocalTerminal: (shell?: string, cwd?: string) => Promise<void>;
   updateConnectionStatus: (serverId: number, status: Partial<ConnectionStatus>) => void;
 
   // Tab Management
@@ -515,8 +517,8 @@ export const useSshStore = create<SshState>((set, get) => ({
     } else {
        // Local terminal: we need to create a new local terminal (same shell as the source tab)
        try {
-           const sourceShell = get().connections.find(c => c.serverId === tab.serverId)?.shell;
-           await invoke('open_local_terminal', { id: newBackendId, rows: 24, cols: 80, shell: sourceShell ?? null });
+           const sourceConn = get().connections.find(c => c.serverId === tab.serverId);
+           await invoke('open_local_terminal', { id: newBackendId, rows: 24, cols: 80, shell: sourceConn?.shell ?? null, cwd: sourceConn?.cwd ?? null });
        } catch (err) {
            console.error('Failed to open local terminal:', err);
        }
@@ -677,7 +679,7 @@ export const useSshStore = create<SshState>((set, get) => ({
     });
   },
 
-  createLocalTerminal: async (shell?: string) => {
+  createLocalTerminal: async (shell?: string, cwd?: string) => {
     // Generate a unique ID for the local terminal
     // We use negative numbers for local terminal IDs to avoid conflict with server IDs (which are usually positive DB IDs)
     // Or just use a timestamp-based ID
@@ -690,7 +692,9 @@ export const useSshStore = create<SshState>((set, get) => ({
       cmd: 'Command Prompt',
       gitbash: 'Git Bash',
     };
-    const title = shellNames[shell || 'powershell'] || 'Local Terminal';
+    // 从右键菜单打开时用目录名作为标签标题
+    const dirName = cwd?.split(/[\\/]/).filter(Boolean).pop();
+    const title = dirName || shellNames[shell || 'powershell'] || 'Local Terminal';
 
     // Add connection status
     set((state) => ({
@@ -699,6 +703,7 @@ export const useSshStore = create<SshState>((set, get) => ({
         status: 'connected', // Local terminal connects immediately (or very fast)
         isLocal: true,
         shell: shell || 'powershell',
+        cwd,
       }],
       workspaceTabs: [
         ...state.workspaceTabs,

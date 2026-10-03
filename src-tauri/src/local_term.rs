@@ -152,11 +152,18 @@ impl LocalTerminalManager {
         rows: u16,
         cols: u16,
         shell: Option<String>,
+        cwd: Option<String>,
         app_handle: AppHandle,
     ) -> Result<()> {
         let pty_system = NativePtySystem::default();
 
-        let cmd = shell_command(shell.as_deref())?;
+        let mut cmd = shell_command(shell.as_deref())?;
+        // 指定工作目录（例如从资源管理器右键菜单打开时）
+        if let Some(dir) = cwd.as_deref() {
+            if std::path::Path::new(dir).is_dir() {
+                cmd.cwd(dir);
+            }
+        }
 
         let pair = pty_system
             .openpty(PtySize {

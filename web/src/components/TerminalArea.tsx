@@ -51,7 +51,7 @@ const SingleTerminal = memo(function SingleTerminal({
     if (isLocal) {
       if (!localTermCreated.current) {
         localTermCreated.current = true;
-        invoke('open_local_terminal', { id: backendId, rows, cols, shell: activeConnection?.shell ?? null })
+        invoke('open_local_terminal', { id: backendId, rows, cols, shell: activeConnection?.shell ?? null, cwd: activeConnection?.cwd ?? null })
           .catch(err => console.error('Failed to start local terminal:', err));
       } else {
         invoke('local_term_resize', { id: backendId, cols, rows })

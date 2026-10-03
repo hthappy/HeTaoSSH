@@ -137,10 +137,11 @@ pub async fn open_local_terminal(
     rows: u16,
     cols: u16,
     shell: Option<String>,
+    cwd: Option<String>,
     app_handle: AppHandle,
     state: State<'_, Arc<LocalTerminalManager>>,
 ) -> Result<()> {
-    state.create_terminal(id, rows, cols, shell, app_handle)
+    state.create_terminal(id, rows, cols, shell, cwd, app_handle)
 }
 
 /// List available local shells (PowerShell / pwsh / cmd / Git Bash)
@@ -184,6 +185,22 @@ pub async fn local_term_close(
 #[tauri::command]
 pub fn local_is_dir(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
+}
+
+/// 查询是否已注册资源管理器右键菜单
+#[tauri::command]
+pub fn explorer_context_menu_status() -> bool {
+    crate::explorer_menu::is_registered()
+}
+
+/// 注册/注销资源管理器右键菜单（「在 HeTaoSSH 中打开」）
+#[tauri::command]
+pub fn set_explorer_context_menu(enabled: bool) -> Result<()> {
+    if enabled {
+        crate::explorer_menu::register().map_err(SshError::Io)
+    } else {
+        crate::explorer_menu::unregister().map_err(SshError::Io)
+    }
 }
 
 /// Open folder in system explorer (Windows Explorer, macOS Finder, etc.)

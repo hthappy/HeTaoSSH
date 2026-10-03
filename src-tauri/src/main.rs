@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod crypto;
 pub mod error;
+pub mod explorer_menu;
 pub mod local_term;
 pub mod monitor;
 pub mod security;
@@ -19,12 +20,32 @@ use log::info;
 use monitor::LocalMonitor;
 use ssh::{ConnectionManager, TunnelManager};
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+/// 启动时待打开的目录（来自资源管理器右键菜单的命令行参数）
+struct StartupDir(std::sync::Mutex<Option<String>>);
+
+/// 取出启动目录（仅首次调用返回 Some）
+#[tauri::command]
+fn take_startup_dir(state: tauri::State<'_, StartupDir>) -> Option<String> {
+    state.0.lock().unwrap().take()
+}
+
+/// 从命令行参数提取目录路径（右键菜单传入 "%V"）
+fn dir_from_args(args: &[String]) -> Option<String> {
+    args.iter()
+        .skip(1)
+        .find(|a| !a.starts_with('-') && std::path::Path::new(a).is_dir())
+        .cloned()
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     info!("Starting HeTaoSSH...");
+
+    // 资源管理器右键菜单以目录路径作为参数启动
+    let startup_dir = dir_from_args(&std::env::args().collect::<Vec<_>>());
 
     let config_manager = Arc::new(ConfigManager::new().await?);
     let snippet_manager = Arc::new(snippets::SnippetManager::new().await?);
@@ -34,6 +55,17 @@ async fn main() -> Result<()> {
     let local_monitor = Arc::new(LocalMonitor::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // 已有实例运行时，右键菜单启动的第二个进程会走到这里：
+            // 聚焦主窗口，并把目录路径转发给前端打开本地终端
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            if let Some(dir) = dir_from_args(&args) {
+                let _ = app.emit("open-in-dir", dir);
+            }
+        }))
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -46,6 +78,7 @@ async fn main() -> Result<()> {
         .manage(tunnel_manager)
         .manage(local_term_manager)
         .manage(local_monitor)
+        .manage(StartupDir(std::sync::Mutex::new(startup_dir)))
         .setup(|app| {
             // Restore window state synchronously before window is shown
             if let Some(window) = app.get_webview_window("main") {
@@ -118,6 +151,9 @@ async fn main() -> Result<()> {
             commands::local_get_home_dir,
             commands::local_is_dir,
             commands::open_path_in_explorer,
+            commands::explorer_context_menu_status,
+            commands::set_explorer_context_menu,
+            take_startup_dir,
             // Session management
             commands::save_session,
             commands::get_session,

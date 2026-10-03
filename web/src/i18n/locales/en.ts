@@ -239,6 +239,9 @@ export default {
     standard_behavior: 'Standard behavior: Right click shows context menu.',
     terminal: 'Terminal',
     mouse: 'Mouse',
+    integration: 'Integration',
+    explorer_menu: 'Explorer Context Menu',
+    explorer_menu_hint: 'Show "Open in HeTaoSSH" when right-clicking folders',
   },
   status: {
     not_connected: 'Not connected',

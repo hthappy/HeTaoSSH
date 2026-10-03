@@ -63,6 +63,10 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-os = "2"
 sysinfo = "0.38.4"
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -14,6 +14,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { cn } from '@/lib/utils';
@@ -185,6 +186,22 @@ function App() {
       window.removeEventListener('contextmenu', handleGlobalContextMenu);
     };
   }, []);
+
+  // 「在 HeTaoSSH 中打开」：处理启动参数目录（冷启动）和 open-in-dir 事件（单实例转发）
+  useEffect(() => {
+    invoke<string | null>('take_startup_dir')
+      .then((dir) => {
+        if (dir) createLocalTerminal(undefined, dir).catch(console.error);
+      })
+      .catch(console.error);
+
+    const unlisten = listen<string>('open-in-dir', (event) => {
+      createLocalTerminal(undefined, event.payload).catch(console.error);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [createLocalTerminal]);
 
   useEffect(() => {
     const checkForUpdates = async () => {

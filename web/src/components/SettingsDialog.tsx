@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Globe, Palette, Trash2, Keyboard, Settings, Monitor, MousePointer2, Code2 } from 'lucide-react';
+import { X, Globe, Palette, Trash2, Keyboard, Settings, Monitor, MousePointer2, Code2, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -34,10 +34,29 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
   const { t, i18n } = useTranslation();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [appVersion, setAppVersion] = useState('');
+  const [explorerMenu, setExplorerMenu] = useState(false);
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(console.error);
   }, []);
+
+  // 读取资源管理器右键菜单注册状态
+  useEffect(() => {
+    if (isOpen) {
+      invoke<boolean>('explorer_context_menu_status')
+        .then(setExplorerMenu)
+        .catch(console.error);
+    }
+  }, [isOpen]);
+
+  const toggleExplorerMenu = async (enabled: boolean) => {
+    try {
+      await invoke('set_explorer_context_menu', { enabled });
+      setExplorerMenu(enabled);
+    } catch (e) {
+      console.error('Failed to set explorer context menu:', e);
+    }
+  };
 
   const handleSave = () => {
     onSave(localSettings);
@@ -418,6 +437,40 @@ export function SettingsDialog({ isOpen, onClose, settings, onSave, onPreviewThe
                     )}
                   >
                     {t('settings.behavior_paste', 'Paste')}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* System Integration */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-term-selection/30 rounded-sm">
+                  <FolderOpen className="w-3.5 h-3.5 text-term-fg/70" />
+                </div>
+                <label className="text-xs font-medium text-term-fg">{t('settings.integration', 'Integration')}</label>
+              </div>
+
+              <div className="space-y-1.5 pl-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs text-term-fg/70 block">{t('settings.explorer_menu', 'Explorer Context Menu')}</label>
+                    <p className="text-[10px] text-term-fg/40 mt-0.5">{t('settings.explorer_menu_hint', 'Show "Open in HeTaoSSH" when right-clicking folders')}</p>
+                  </div>
+                  <button
+                    onClick={() => toggleExplorerMenu(!explorerMenu)}
+                    className={cn(
+                      'relative w-8 h-4.5 rounded-full transition-colors flex-shrink-0 ml-3',
+                      explorerMenu ? 'bg-term-blue' : 'bg-term-selection/50'
+                    )}
+                    style={{ height: '18px' }}
+                  >
+                    <span
+                      className={cn(
+                        'absolute top-0.5 w-3.5 h-3.5 rounded-full bg-term-fg transition-all',
+                        explorerMenu ? 'left-4' : 'left-0.5'
+                      )}
+                    />
                   </button>
                 </div>
               </div>
