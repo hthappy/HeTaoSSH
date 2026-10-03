@@ -188,15 +188,24 @@ function App() {
   }, []);
 
   // 「在 HeTaoSSH 中打开」：处理启动参数目录（冷启动）和 open-in-dir 事件（单实例转发）
+  // 使用用户在标签栏设置的默认 Shell（hetaossh-default-shell），未设置时回退 PowerShell
   useEffect(() => {
+    const openDirInTerminal = (dir: string) => {
+      let shell: string | undefined;
+      try {
+        shell = localStorage.getItem('hetaossh-default-shell') || undefined;
+      } catch { /* ignore */ }
+      createLocalTerminal(shell, dir).catch(console.error);
+    };
+
     invoke<string | null>('take_startup_dir')
       .then((dir) => {
-        if (dir) createLocalTerminal(undefined, dir).catch(console.error);
+        if (dir) openDirInTerminal(dir);
       })
       .catch(console.error);
 
     const unlisten = listen<string>('open-in-dir', (event) => {
-      createLocalTerminal(undefined, event.payload).catch(console.error);
+      openDirInTerminal(event.payload);
     });
     return () => {
       unlisten.then((f) => f());
