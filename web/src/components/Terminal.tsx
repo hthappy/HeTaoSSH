@@ -38,11 +38,12 @@ interface TerminalProps {
   rightClickBehavior?: 'menu' | 'paste';
   isActive?: boolean;
   serverId?: number;
+  initialContent?: string;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   function Terminal(
-    { className, paneId, onData, onResize, onEnter, onReady, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId },
+    { className, paneId, onData, onResize, onEnter, onReady, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId, initialContent },
     ref
   ) {
   const { t } = useTranslation();
@@ -211,6 +212,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     
     // Get or create terminal instance from pool
     const instance = terminalPool.getOrCreate(paneId, { fontSize, lineHeight });
+
+    // Detached windows reconstruct their own xterm instance. Queue the saved
+    // scrollback before live SSH events so output ordering remains stable.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const terminalWithMetadata = instance.term as any;
+    if (initialContent && !terminalWithMetadata._initialContentWritten) {
+      terminalWithMetadata._initialContentWritten = true;
+      instance.term.write(initialContent);
+    }
     
     // Store refs
     termRef.current = instance.term;
@@ -387,7 +397,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       fitAddonRef.current = null;
       searchAddonRef.current = null;
     };
-  }, [paneId, fontSize, lineHeight, serverId]); // Re-attach if paneId changes
+  }, [paneId, fontSize, lineHeight, serverId, initialContent]); // Re-attach if paneId changes
 
   // Handle theme changes
   useEffect(() => {

@@ -84,12 +84,12 @@ async fn main() -> Result<()> {
             if let Some(window) = app.get_webview_window("main") {
                 // Hide window first to avoid flicker
                 let _ = window.hide();
-                
+
                 // Restore state
                 if let Err(e) = window_state::restore_window_state(app.handle()) {
                     eprintln!("Failed to restore window state: {}", e);
                 }
-                
+
                 // Show window after state is restored
                 let _ = window.show();
             }
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
         .on_window_event(|window, event| {
             // Save window state on close
             match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
+                tauri::WindowEvent::CloseRequested { .. } if window.label() == "main" => {
                     // Save immediately on close
                     if let Err(e) = window_state::save_window_state(window.app_handle()) {
                         eprintln!("Failed to save window state on close: {}", e);

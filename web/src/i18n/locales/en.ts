@@ -101,6 +101,7 @@ export default {
     browse: 'Browse...',
   },
   terminal: {
+    detached_session_missing: 'This detached terminal session is no longer available.',
     welcome: 'Welcome to HeTaoSSH',
     start_tip: 'Connect to a server from the left sidebar to start.',
     disconnected: 'Disconnected',

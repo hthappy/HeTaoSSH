@@ -46,10 +46,7 @@ export function TitleBar({ children }: TitleBarProps) {
   };
 
   return (
-    <div 
-      data-tauri-drag-region
-      className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none drag"
-    >
+    <div className="h-10 flex-shrink-0 flex items-center justify-between bg-term-bg border-b border-term-selection select-none">
       {/* Left: App Icon + Title */}
       <div 
         data-tauri-drag-region
@@ -60,8 +57,11 @@ export function TitleBar({ children }: TitleBarProps) {
         <span className="text-xs font-medium text-term-fg/80 flex-shrink-0">HeTaoSSH</span>
       </div>
 
-      {/* Center: Tabs - Container is draggable, only tab elements are not */}
-      <div className="flex-1 min-w-0 px-2 h-full flex items-center overflow-hidden drag-region">
+      {/* Empty space around the no-drag tab strip remains available for moving the window. */}
+      <div
+        data-tauri-drag-region
+        className="flex-1 min-w-0 px-2 h-full flex items-center overflow-hidden drag-region"
+      >
         {children}
       </div>
 

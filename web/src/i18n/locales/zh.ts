@@ -101,6 +101,7 @@ export default {
     browse: '浏览...',
   },
   terminal: {
+    detached_session_missing: '此独立终端会话已不可用。',
     welcome: '欢迎使用 HeTaoSSH',
     start_tip: '从左侧边栏连接服务器以开始。',
     disconnected: '已断开连接',

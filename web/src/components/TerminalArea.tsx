@@ -15,6 +15,7 @@ interface SingleTerminalProps {
   rightClickBehavior?: 'menu' | 'paste';
   isPaneActive: boolean;
   onPaneClick: () => void;
+  initialContent?: string;
 }
 
 // Single terminal instance component
@@ -26,6 +27,7 @@ const SingleTerminal = memo(function SingleTerminal({
   rightClickBehavior,
   isPaneActive,
   onPaneClick,
+  initialContent,
 }: SingleTerminalProps) {
   const { t } = useTranslation();
   const { connections, sendToTerminalBackend, connectServer } = useSshStore();
@@ -61,7 +63,7 @@ const SingleTerminal = memo(function SingleTerminal({
       invoke('ssh_resize', { tabId: backendId, cols, rows })
         .catch(err => console.error('Failed to resize SSH terminal:', err));
     }
-  }, [backendId, isLocal, activeConnection?.shell]);
+  }, [backendId, isLocal, activeConnection?.shell, activeConnection?.cwd]);
 
   const handleTerminalEnter = useCallback(() => {
     window.dispatchEvent(new CustomEvent('ssh-terminal-enter', { 
@@ -196,6 +198,7 @@ const SingleTerminal = memo(function SingleTerminal({
             rightClickBehavior={rightClickBehavior}
             isActive={isPaneActive}
             serverId={serverId}
+            initialContent={initialContent}
           />
         </div>
       ) : (
@@ -227,9 +230,10 @@ interface PaneRendererProps {
   rightClickBehavior?: 'menu' | 'paste';
   activePaneId: string | null;
   onPaneClick: (paneId: string) => void;
+  initialContents?: Record<string, string>;
 }
 
-function PaneRenderer({ group, theme, fontSize, lineHeight, rightClickBehavior, activePaneId, onPaneClick }: PaneRendererProps) {
+function PaneRenderer({ group, theme, fontSize, lineHeight, rightClickBehavior, activePaneId, onPaneClick, initialContents }: PaneRendererProps) {
   const children = group.panes.map((pane) => {
     if ('serverId' in pane) {
       // TerminalPane
@@ -243,6 +247,7 @@ function PaneRenderer({ group, theme, fontSize, lineHeight, rightClickBehavior, 
           rightClickBehavior={rightClickBehavior}
           isPaneActive={activePaneId === pane.id}
           onPaneClick={() => onPaneClick(pane.id)}
+          initialContent={initialContents?.[pane.id]}
         />
       );
     } else {
@@ -257,6 +262,7 @@ function PaneRenderer({ group, theme, fontSize, lineHeight, rightClickBehavior, 
           rightClickBehavior={rightClickBehavior}
           activePaneId={activePaneId}
           onPaneClick={onPaneClick}
+          initialContents={initialContents}
         />
       );
     }
@@ -277,9 +283,10 @@ interface TerminalAreaProps {
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
   isActive?: boolean;
+  initialContents?: Record<string, string>;
 }
 
-export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rightClickBehavior, isActive = false }: TerminalAreaProps) {
+export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rightClickBehavior, isActive = false, initialContents }: TerminalAreaProps) {
   const { t } = useTranslation();
   const { connections, paneGroups, setActivePane, getActivePaneId } = useSshStore();
   
@@ -305,6 +312,7 @@ export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rig
           rightClickBehavior={rightClickBehavior}
           activePaneId={activePaneId}
           onPaneClick={handlePaneClick}
+          initialContents={initialContents}
         />
       </div>
     );
@@ -338,6 +346,7 @@ export function TerminalArea({ tabId, serverId, theme, fontSize, lineHeight, rig
       rightClickBehavior={rightClickBehavior}
       isPaneActive={isActive}
       onPaneClick={() => {}}
+      initialContent={initialContents?.[singlePane.id]}
     />
   );
 }

@@ -145,8 +145,9 @@ interface SshState {
   openTerminalTab: (serverId: number) => void;
   openFileTab: (serverId: number, filePath: string, fileName: string) => void;
   closeTab: (tabId: string) => void;
+  detachTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
-  reorderTabs: (sourceTabId: string, targetTabId: string) => void;
+  reorderTabs: (sourceTabId: string, targetIndex: number) => void;
   
   // Pane Management
   splitPane: (tabId: string, direction: SplitDirection) => Promise<void>;
@@ -425,19 +426,52 @@ export const useSshStore = create<SshState>((set, get) => ({
     set({ workspaceTabs: newTabs, activeTabId: newActiveTabId });
   },
 
+  // Move a terminal tab to another WebView without closing its backend session.
+  // The caller snapshots the terminal first; pooled DOM instances belong to the
+  // current WebView and must be disposed after the detached window is ready.
+  detachTab: (tabId: string) => {
+    const state = get();
+    const tab = state.workspaceTabs.find((candidate) => candidate.id === tabId);
+    if (!tab || tab.type !== 'terminal') return;
+
+    const group = state.paneGroups[tabId];
+    if (group) {
+      const disposePanes = (paneGroup: PaneGroup) => {
+        paneGroup.panes.forEach((pane) => {
+          if ('serverId' in pane) terminalPool.dispose(pane.id);
+          else disposePanes(pane);
+        });
+      };
+      disposePanes(group);
+    } else {
+      terminalPool.dispose(`pane-single-${tab.serverId}`);
+    }
+
+    const workspaceTabs = state.workspaceTabs.filter((candidate) => candidate.id !== tabId);
+    const paneGroups = { ...state.paneGroups };
+    delete paneGroups[tabId];
+    set({
+      workspaceTabs,
+      paneGroups,
+      activeTabId: state.activeTabId === tabId
+        ? workspaceTabs[workspaceTabs.length - 1]?.id ?? null
+        : state.activeTabId,
+    });
+  },
+
   setActiveTab: (tabId: string) => {
     set({ activeTabId: tabId });
   },
 
-  reorderTabs: (sourceTabId: string, targetTabId: string) => {
-    if (sourceTabId === targetTabId) return;
+  reorderTabs: (sourceTabId: string, targetIndex: number) => {
     set((state) => {
       const sourceIndex = state.workspaceTabs.findIndex((tab) => tab.id === sourceTabId);
-      const targetIndex = state.workspaceTabs.findIndex((tab) => tab.id === targetTabId);
-      if (sourceIndex < 0 || targetIndex < 0) return state;
+      if (sourceIndex < 0) return state;
+      const clampedTargetIndex = Math.max(0, Math.min(targetIndex, state.workspaceTabs.length - 1));
+      if (sourceIndex === clampedTargetIndex) return state;
       const workspaceTabs = [...state.workspaceTabs];
       const [source] = workspaceTabs.splice(sourceIndex, 1);
-      workspaceTabs.splice(targetIndex, 0, source);
+      workspaceTabs.splice(clampedTargetIndex, 0, source);
       return { workspaceTabs };
     });
   },
@@ -730,11 +764,6 @@ export const useSshStore = create<SshState>((set, get) => ({
 
   reconnectServer: async (serverId: number) => {
     const server = get().servers.find(s => s.id === serverId);
-    if (!server) {
-      console.error(i18n.t('store.server_not_found', { id: serverId }));
-      return;
-    }
-    
     const connectionKey = `conn-${serverId}`;
     get().updateConnectionStatus(serverId, { status: 'connecting', error: undefined });
     
@@ -745,12 +774,21 @@ export const useSshStore = create<SshState>((set, get) => ({
       
       console.log(`[SSH Reconnect] Reconnecting with standard size: ${cols}×${rows}`);
       
-      await invoke('ssh_connect', { 
-        tabId: connectionKey, 
-        config: server,
-        cols,
-        rows
-      });
+      try {
+        // A disconnected actor still owns the original encrypted credentials,
+        // so detached windows can reconnect without copying secrets between WebViews.
+        await invoke('ssh_manual_reconnect', { tabId: connectionKey });
+      } catch (manualReconnectError) {
+        // Session restoration may leave no actor behind. The main window can
+        // fall back to a fresh connection because it has the server config.
+        if (!server) throw manualReconnectError;
+        await invoke('ssh_connect', {
+          tabId: connectionKey,
+          config: server,
+          cols,
+          rows,
+        });
+      }
       get().updateConnectionStatus(serverId, { status: 'connected', error: undefined });
       // If we had a terminal tab, make sure it becomes active
       const existingTerm = get().workspaceTabs.find(t => t.serverId === serverId && t.type === 'terminal');

@@ -10,9 +10,10 @@ import { CommandSnippets } from '@/components/CommandSnippets';
 import { useSshStore, type PaneGroup, type TerminalPane } from '@/stores/ssh-store';
 import { useShortcutsStore, matchesShortcut } from '@/stores/shortcuts-store';
 import { Terminal, X, FileCode2, Plus, Loader2, ChevronDown } from 'lucide-react';
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { check, type Update } from '@tauri-apps/plugin-updater';
@@ -27,6 +28,11 @@ import { useTheme } from '@/hooks/useTheme';
 import { presets, nordTheme } from '@/themes/presets';
 import { TitleBar } from '@/components/TitleBar';
 import { terminalPool } from '@/lib/terminalPool';
+import {
+  collectTerminalPanes,
+  DETACHED_TERMINAL_STORAGE_PREFIX,
+  type DetachedTerminalPayload,
+} from '@/lib/detachedTerminal';
 import { TransferProgress } from '@/components/TransferProgress';
 import { useTransferProgress } from '@/hooks/useTransferProgress';
 import logo from '@/assets/logo.png';
@@ -37,6 +43,58 @@ function collectPaneIds(group: PaneGroup): string[] {
   return group.panes.flatMap((pane) => 'serverId' in pane
     ? [(pane as TerminalPane).id]
     : collectPaneIds(pane));
+}
+
+function snapshotTerminalBuffer(paneId: string): string {
+  const terminal = terminalPool.get(paneId)?.term;
+  if (!terminal) return '';
+
+  const buffer = terminal.buffer.active;
+  const start = Math.max(0, buffer.length - 2000);
+  let snapshot = '';
+  for (let index = start; index < buffer.length; index += 1) {
+    const line = buffer.getLine(index);
+    if (!line) continue;
+    snapshot += line.translateToString(true);
+    const nextLine = buffer.getLine(index + 1);
+    if (!nextLine?.isWrapped && index < buffer.length - 1) snapshot += '\r\n';
+  }
+
+  // Keep the handoff below the browser storage quota even after JSON encoding.
+  return snapshot.slice(-1_000_000);
+}
+
+function WorkspaceTabTitle({ title }: { title: string }) {
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const label = labelRef.current;
+    if (!label) return;
+
+    const updateTruncation = () => {
+      setIsTruncated(label.scrollWidth > label.clientWidth + 1);
+    };
+    updateTruncation();
+
+    const observer = new ResizeObserver(updateTruncation);
+    observer.observe(label);
+    window.addEventListener('resize', updateTruncation);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateTruncation);
+    };
+  }, [title]);
+
+  return (
+    <span
+      ref={labelRef}
+      className="min-w-0 truncate"
+      title={isTruncated ? title : undefined}
+    >
+      {title}
+    </span>
+  );
 }
 
 function App() {
@@ -50,6 +108,7 @@ function App() {
     setActiveTab,
     reorderTabs,
     closeTab,
+    detachTab,
     connections,
     dirtyFiles,
     openFileTab,
@@ -60,7 +119,8 @@ function App() {
     getActivePaneId,
     setActivePane,
     paneGroups,
-    reconnectServer
+    reconnectServer,
+    updateConnectionStatus,
   } = useSshStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -80,6 +140,32 @@ function App() {
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    title: string;
+    type: 'terminal' | 'file' | 'local';
+    dropping: boolean;
+  } | null>(null);
+  const tabElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  const previousTabRectsRef = useRef(new Map<string, DOMRect>());
+  const dragDropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tabPointerDragRef = useRef<{
+    tabId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+    title: string;
+    type: 'terminal' | 'file' | 'local';
+    active: boolean;
+  } | null>(null);
   const [pendingBulkClose, setPendingBulkClose] = useState<{ mode: 'others' | 'all'; tabId?: string } | null>(null);
 
   // 关闭标签页入口：文件标签有未保存修改时先弹确认框
@@ -105,6 +191,239 @@ function App() {
     setActiveActivity('sftp');
     setIsSidebarOpen(true);
   }, []);
+
+  const snapshotTabPositions = useCallback(() => {
+    const positions = new Map<string, DOMRect>();
+    tabElementsRef.current.forEach((element, tabId) => {
+      positions.set(tabId, element.getBoundingClientRect());
+    });
+    previousTabRectsRef.current = positions;
+  }, []);
+
+  // FLIP animation: after Zustand commits the new tab order, animate every
+  // displaced tab from its previous position into the new one.
+  useLayoutEffect(() => {
+    if (previousTabRectsRef.current.size === 0) return;
+    tabElementsRef.current.forEach((element, tabId) => {
+      if (tabId === draggedTabId) return;
+      const previous = previousTabRectsRef.current.get(tabId);
+      if (!previous) return;
+      const current = element.getBoundingClientRect();
+      const deltaX = previous.left - current.left;
+      if (Math.abs(deltaX) < 1) return;
+      element.getAnimations().filter((animation) => animation.id === 'tab-reorder').forEach((animation) => animation.cancel());
+      const animation = element.animate(
+        [{ transform: `translateX(${deltaX}px)` }, { transform: 'translateX(0)' }],
+        { duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+      );
+      animation.id = 'tab-reorder';
+    });
+    previousTabRectsRef.current.clear();
+  }, [workspaceTabs, draggedTabId]);
+
+  const finishTabDrag = useCallback((cancelled = false) => {
+    const drag = tabPointerDragRef.current;
+    tabPointerDragRef.current = null;
+
+    if (!drag?.active || cancelled) {
+      setDragPreview(null);
+      setDraggedTabId(null);
+      return;
+    }
+
+    const destination = tabElementsRef.current.get(drag.tabId)?.getBoundingClientRect();
+    if (!destination) {
+      setDragPreview(null);
+      setDraggedTabId(null);
+      return;
+    }
+
+    setDragPreview((preview) => preview ? {
+      ...preview,
+      x: destination.left,
+      y: destination.top,
+      width: destination.width,
+      height: destination.height,
+      dropping: true,
+    } : null);
+    dragDropTimerRef.current = setTimeout(() => {
+      setDragPreview(null);
+      setDraggedTabId(null);
+      dragDropTimerRef.current = null;
+    }, 160);
+  }, []);
+
+  const handleTabPointerMove = useCallback((event: PointerEvent) => {
+    const drag = tabPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    if (!drag.active) {
+      const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (distance < 5) return;
+      drag.active = true;
+      setDraggedTabId(drag.tabId);
+    }
+
+    event.preventDefault();
+    setDragPreview({
+      x: event.clientX - drag.offsetX,
+      y: event.clientY - drag.offsetY,
+      width: drag.width,
+      height: drag.height,
+      title: drag.title,
+      type: drag.type,
+      dropping: false,
+    });
+
+    // Once the pointer leaves the title bar it is a window-detach gesture,
+    // not a reorder gesture. Avoid shuffling tabs underneath the floating tab.
+    const stripRect = tabStripRef.current?.getBoundingClientRect();
+    if (!stripRect || event.clientY < stripRect.top || event.clientY > stripRect.bottom) return;
+
+    const currentTabs = useSshStore.getState().workspaceTabs;
+    const sourceIndex = currentTabs.findIndex((tab) => tab.id === drag.tabId);
+    if (sourceIndex < 0) return;
+
+    const otherTabs = currentTabs.filter((tab) => tab.id !== drag.tabId);
+    let insertionIndex = otherTabs.length;
+    for (let index = 0; index < otherTabs.length; index += 1) {
+      const element = tabElementsRef.current.get(otherTabs[index].id);
+      const strip = element?.parentElement;
+      if (!element || !strip) continue;
+      // offsetLeft is layout-based and therefore unaffected by the FLIP
+      // transform currently animating the visual position.
+      const stripRect = strip.getBoundingClientRect();
+      const centerX = stripRect.left - strip.scrollLeft + element.offsetLeft + element.offsetWidth / 2;
+      if (event.clientX < centerX) {
+        insertionIndex = index;
+        break;
+      }
+    }
+
+    if (insertionIndex !== sourceIndex) {
+      snapshotTabPositions();
+      reorderTabs(drag.tabId, insertionIndex);
+    }
+  }, [reorderTabs, snapshotTabPositions]);
+
+  const detachTerminalToWindow = useCallback(async (
+    drag: NonNullable<typeof tabPointerDragRef.current>,
+    event: PointerEvent,
+  ) => {
+    tabPointerDragRef.current = null;
+    const state = useSshStore.getState();
+    const tab = state.workspaceTabs.find((candidate) => candidate.id === drag.tabId);
+    const connection = tab?.serverId == null
+      ? undefined
+      : state.connections.find((candidate) => candidate.serverId === tab.serverId);
+
+    if (!tab || tab.type !== 'terminal' || !connection) {
+      setDragPreview(null);
+      setDraggedTabId(null);
+      return;
+    }
+
+    const paneGroup = state.paneGroups[tab.id] ?? {
+      id: `detached-group-${tab.id}`,
+      direction: 'horizontal' as const,
+      panes: [{
+        id: `pane-single-${tab.serverId}`,
+        serverId: tab.serverId!,
+        backendId: `conn-${tab.serverId}`,
+      }],
+      activePaneId: `pane-single-${tab.serverId}`,
+    };
+    const histories = Object.fromEntries(
+      collectTerminalPanes(paneGroup).map((pane) => [pane.id, snapshotTerminalBuffer(pane.id)]),
+    );
+    const payload: DetachedTerminalPayload = { tab, paneGroup, connection, histories };
+    const token = crypto.randomUUID().replace(/[^a-zA-Z0-9-]/g, '');
+    const storageKey = `${DETACHED_TERMINAL_STORAGE_PREFIX}${token}`;
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+      const currentWindow = getCurrentWindow();
+      const [outerPosition, scaleFactor] = await Promise.all([
+        currentWindow.outerPosition(),
+        currentWindow.scaleFactor(),
+      ]);
+      const label = `terminal-${token}`;
+      const detachedWindow = new WebviewWindow(label, {
+        url: `/?detachedTerminal=${encodeURIComponent(token)}`,
+        title: `${tab.title} - HeTaoSSH`,
+        x: Math.round(outerPosition.x / scaleFactor + event.clientX - drag.offsetX),
+        y: Math.round(outerPosition.y / scaleFactor + event.clientY - drag.offsetY),
+        width: Math.max(680, Math.min(1080, window.innerWidth * 0.78)),
+        height: Math.max(420, Math.min(760, window.innerHeight * 0.82)),
+        minWidth: 480,
+        minHeight: 300,
+        decorations: false,
+        transparent: true,
+        shadow: true,
+        focus: true,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        detachedWindow.once('tauri://created', () => resolve());
+        detachedWindow.once('tauri://error', (creationEvent) => reject(creationEvent.payload));
+      });
+
+      detachTab(tab.id);
+      setDragPreview(null);
+      setDraggedTabId(null);
+    } catch (error) {
+      localStorage.removeItem(storageKey);
+      console.error('Failed to detach terminal tab:', error);
+      setDragPreview(null);
+      setDraggedTabId(null);
+    }
+  }, [detachTab]);
+
+  useEffect(() => {
+    const handlePointerUp = (event: PointerEvent) => {
+      const drag = tabPointerDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      const stripRect = tabStripRef.current?.getBoundingClientRect();
+      const outsideTitleBar = !!stripRect && (
+        event.clientY < stripRect.top - 12
+        || event.clientY > stripRect.bottom + 16
+        || event.clientX < -16
+        || event.clientX > window.innerWidth + 16
+      );
+      if (drag.active && drag.type === 'terminal' && outsideTitleBar) {
+        void detachTerminalToWindow(drag, event);
+      } else {
+        finishTabDrag(false);
+      }
+    };
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (tabPointerDragRef.current?.pointerId === event.pointerId) finishTabDrag(true);
+    };
+    window.addEventListener('pointermove', handleTabPointerMove, { capture: true, passive: false });
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('pointercancel', handlePointerCancel, true);
+    return () => {
+      window.removeEventListener('pointermove', handleTabPointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('pointercancel', handlePointerCancel, true);
+      if (dragDropTimerRef.current) clearTimeout(dragDropTimerRef.current);
+    };
+  }, [detachTerminalToWindow, finishTabDrag, handleTabPointerMove]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let mounted = true;
+    listen<number>('detached-terminal-closed', (event) => {
+      updateConnectionStatus(event.payload, { status: 'disconnected' });
+    }).then((dispose) => {
+      if (mounted) unlisten = dispose;
+      else dispose();
+    });
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, [updateConnectionStatus]);
 
   // Local terminal shell selection (Windows Terminal style dropdown)
   const [localShells, setLocalShells] = useState<{ id: string; name: string; available: boolean }[]>([]);
@@ -586,59 +905,58 @@ function App() {
             <TitleBar>
               {/* Workspace Tabs */}
               <div
-                className="relative flex items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar w-full no-drag after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-gradient-to-l after:from-term-bg after:to-transparent"
-                onDragOver={(event) => {
-                  // The title bar is a native window-drag region. Mark the
-                  // entire tab strip as a valid HTML drop target so Chromium
-                  // does not show the prohibited-drop cursor in its gaps.
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'move';
-                }}
+                ref={tabStripRef}
+                className="relative flex h-full w-fit max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden no-scrollbar no-drag after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-6 after:bg-gradient-to-l after:from-term-bg after:to-transparent"
               >
                 {workspaceTabs.map(tab => (
                   <div
                     key={tab.id}
-                    draggable
-                    onDragStart={(event) => {
-                      event.stopPropagation();
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('text/plain', tab.id);
-                      setDraggedTabId(tab.id);
+                    ref={(element) => {
+                      if (element) tabElementsRef.current.set(tab.id, element);
+                      else tabElementsRef.current.delete(tab.id);
                     }}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = 'move';
+                    data-workspace-tab-id={tab.id}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+                      if (dragDropTimerRef.current) {
+                        clearTimeout(dragDropTimerRef.current);
+                        dragDropTimerRef.current = null;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      tabPointerDragRef.current = {
+                        tabId: tab.id,
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        offsetX: event.clientX - rect.left,
+                        offsetY: event.clientY - rect.top,
+                        width: rect.width,
+                        height: rect.height,
+                        title: tab.title,
+                        type: tab.type,
+                        active: false,
+                      };
                     }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const sourceTabId = event.dataTransfer.getData('text/plain') || draggedTabId;
-                      if (sourceTabId) reorderTabs(sourceTabId, tab.id);
-                      setDraggedTabId(null);
-                    }}
-                    onDragEnd={() => setDraggedTabId(null)}
                     onClick={() => setActiveTab(tab.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setTabContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
                     }}
                     className={cn(
-                      'group flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer border select-none flex-shrink min-w-0 no-drag',
+                      'group flex min-w-[96px] max-w-full flex-shrink items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition-colors cursor-grab active:cursor-grabbing select-none no-drag touch-none',
                       activeTabId === tab.id
                         ? 'bg-term-selection text-term-fg border-term-selection'
                         : 'text-term-fg/60 hover:text-term-fg hover:bg-term-selection/50 border-transparent'
                     )}
-                    style={{ maxWidth: '25%', opacity: draggedTabId === tab.id ? 0.5 : undefined }}
+                    style={{ opacity: draggedTabId === tab.id ? 0.5 : undefined }}
                   >
                     {tab.type === 'terminal' ? (
                       <Terminal className="w-3.5 h-3.5 text-term-blue flex-shrink-0" />
                     ) : (
                       <FileCode2 className="w-3.5 h-3.5 text-term-yellow flex-shrink-0" />
                     )}
-                    <span className="truncate min-w-0">{tab.title}</span>
+                    <WorkspaceTabTitle title={tab.title} />
                     {/* 未保存修改标记（仅文件标签） */}
                     {tab.type === 'file' && tab.filePath && dirtyFiles[`${(tab.isLocal || (tab.serverId && tab.serverId < 0)) ? `local-${tab.serverId}` : `conn-${tab.serverId}`}|${tab.filePath}`] && (
                       <span className="w-1.5 h-1.5 rounded-full bg-term-yellow flex-shrink-0" />
@@ -703,6 +1021,31 @@ function App() {
                 )}
               </div>
             </TitleBar>
+
+            {dragPreview && createPortal(
+              <div
+                className="pointer-events-none fixed z-[10000] flex items-center gap-2 overflow-hidden rounded-md border border-term-blue/70 bg-term-bg/95 px-2 py-1.5 text-xs text-term-fg shadow-2xl backdrop-blur-sm"
+                style={{
+                  left: dragPreview.x,
+                  top: dragPreview.y,
+                  width: dragPreview.width,
+                  height: dragPreview.height,
+                  opacity: dragPreview.dropping ? 0.35 : 0.96,
+                  transform: dragPreview.dropping ? 'scale(0.98)' : 'scale(1.03)',
+                  transition: dragPreview.dropping
+                    ? 'left 160ms cubic-bezier(0.2, 0.8, 0.2, 1), top 160ms cubic-bezier(0.2, 0.8, 0.2, 1), width 160ms ease, opacity 160ms ease, transform 160ms ease'
+                    : 'none',
+                }}
+              >
+                {dragPreview.type === 'file' ? (
+                  <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-term-yellow" />
+                ) : (
+                  <Terminal className="h-3.5 w-3.5 flex-shrink-0 text-term-blue" />
+                )}
+                <span className="min-w-0 truncate">{dragPreview.title}</span>
+              </div>,
+              document.body,
+            )}
 
             {tabContextMenu && (
               <ContextMenu x={tabContextMenu.x} y={tabContextMenu.y} onClose={() => setTabContextMenu(null)}>
