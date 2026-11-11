@@ -164,6 +164,8 @@ export default {
     save_failed: 'Failed to save file: {{error}}',
     load_failed: 'Failed to load file: {{error}}',
     drop_dir_skipped: 'Skipped folder: {{name}} (only files can be dropped)',
+    image_pasted_to_terminal: 'Pasted image into terminal: {{name}}',
+    image_paste_failed: 'Failed to paste image into terminal: {{error}}',
     unsaved_changes: 'Unsaved',
     unsaved_close_confirm: '"{{name}}" has unsaved changes that will be lost. Close anyway?',
     copy_path: 'Copy Path',

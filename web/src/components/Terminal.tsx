@@ -1,11 +1,11 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
 import { ITheme } from 'xterm';
 import { useTranslation } from 'react-i18next';
 import { Clipboard, Copy, Search, Trash2 } from 'lucide-react';
-import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
 import { ContextMenu, ContextMenuItem } from '@/components/ContextMenu';
@@ -37,13 +37,14 @@ interface TerminalProps {
   lineHeight?: number;
   rightClickBehavior?: 'menu' | 'paste';
   isActive?: boolean;
+  isLocal?: boolean;
   serverId?: number;
   initialContent?: string;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   function Terminal(
-    { className, paneId, onData, onResize, onEnter, onReady, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, serverId, initialContent },
+    { className, paneId, onData, onResize, onEnter, onReady, disconnected = false, incomingData, theme, fontSize = 14, lineHeight = 1.2, rightClickBehavior = 'menu', isActive = false, isLocal = false, serverId, initialContent },
     ref
   ) {
   const { t } = useTranslation();
@@ -90,6 +91,34 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     disconnectedRef.current = disconnected;
   }, [disconnected]);
 
+  const pasteClipboard = useCallback(async () => {
+    const term = termRef.current;
+    if (!term) return;
+
+    // A local AI CLI can read image pixels directly from the OS clipboard.
+    // Prefer the image flavor when the clipboard also contains fallback text/HTML.
+    if (isLocal) {
+      try {
+        const clipboardImage = await readImage();
+        await clipboardImage.close();
+        if (!disconnectedRef.current) onDataRef.current?.('\x16');
+        term.focus();
+        return;
+      } catch {
+        // No image flavor is available; fall through to the existing text paste.
+      }
+    }
+
+    try {
+      const text = await readText();
+      if (text) term.paste(text);
+      term.focus();
+    } catch (err) {
+      console.error('[Terminal] Failed to read clipboard:', err);
+      showToast(t('common.paste_failed', 'Paste failed'), 'error');
+    }
+  }, [isLocal, showToast, t]);
+
   // Subscribe to dynamic shortcuts
   const terminalSearchKeys = useShortcutsStore(state => state.shortcuts.find(s => s.id === 'terminal-search')?.keys || 'Ctrl+F');
 
@@ -103,6 +132,21 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // xterm.js treats Ctrl+Alt as AltGr on Windows and may swallow the
+      // shortcut before a WSL-hosted Codex CLI sees it. Codex accepts Alt+V
+      // for image paste, so forward that equivalent terminal sequence.
+      if (
+        isActive
+        && !navigator.userAgent.includes('Mac')
+        && e.ctrlKey
+        && e.altKey
+        && e.key.toLowerCase() === 'v'
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!disconnectedRef.current) onDataRef.current?.('\x1bv');
+        return;
+      }
       if (isActive && matchesShortcut(e, terminalSearchKeys)) {
         e.preventDefault();
         setShowSearch(true);
@@ -543,16 +587,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                     showToast(t('common.copy_failed', 'Copy failed'), 'error');
                 }
             } else {
-                try {
-                    const text = await readText();
-                    if (text && termRef.current) {
-                        termRef.current.paste(text);
-                        termRef.current.focus();
-                    }
-                } catch (err) {
-                    console.error('Failed to read clipboard:', err);
-                    showToast(t('common.paste_failed', 'Paste failed'), 'error');
-                }
+                await pasteClipboard();
             }
         } else {
             setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
@@ -603,7 +638,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         el.removeEventListener('click', handleClick, true);
     };
 
-  }, [rightClickBehavior, onData, t, showToast]);
+  }, [rightClickBehavior, pasteClipboard, t, showToast]);
 
   return (
     <>
@@ -651,16 +686,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               icon={<Clipboard className="w-4 h-4" />}
               shortcut="Ctrl+Shift+V"
               onClick={async () => {
-                try {
-                  const text = await readText();
-                  if (text && termRef.current) {
-                    termRef.current.paste(text);
-                    termRef.current.focus();
-                  }
-                } catch (e) {
-                  console.error(e);
-                  showToast(t('common.paste_failed', 'Paste failed'), 'error');
-                }
+                await pasteClipboard();
                 setContextMenu(prev => ({ ...prev, visible: false }));
               }}
             />

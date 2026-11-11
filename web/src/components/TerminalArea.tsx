@@ -197,6 +197,7 @@ const SingleTerminal = memo(function SingleTerminal({
             lineHeight={lineHeight}
             rightClickBehavior={rightClickBehavior}
             isActive={isPaneActive}
+            isLocal={!!isLocal}
             serverId={serverId}
             initialContent={initialContent}
           />

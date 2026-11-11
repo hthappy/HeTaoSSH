@@ -9,6 +9,38 @@ use crate::monitor;
 use crate::ssh::ConnectionManager;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+
+/// Decode a local image and place its pixels on the operating-system clipboard.
+/// AI terminal applications such as Codex CLI can then consume it through their
+/// native image-paste shortcut, including when they run inside WSL.
+#[tauri::command]
+pub async fn copy_image_file_to_clipboard(app_handle: AppHandle, path: String) -> Result<()> {
+    let image_path = std::path::PathBuf::from(&path);
+    if !image_path.is_file() {
+        return Err(SshError::Config(format!("Image file not found: {path}")));
+    }
+
+    let (rgba, width, height) = tokio::task::spawn_blocking(move || {
+        let decoded = image::ImageReader::open(&image_path)
+            .map_err(|error| SshError::Config(format!("Failed to open image: {error}")))?
+            .with_guessed_format()
+            .map_err(|error| SshError::Config(format!("Unknown image format: {error}")))?
+            .decode()
+            .map_err(|error| SshError::Config(format!("Failed to decode image: {error}")))?;
+        let rgba = decoded.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        Ok::<_, SshError>((rgba.into_raw(), width, height))
+    })
+    .await
+    .map_err(|error| SshError::Config(format!("Image decoding task failed: {error}")))??;
+
+    let clipboard_image = tauri::image::Image::new_owned(rgba, width, height);
+    app_handle
+        .clipboard()
+        .write_image(&clipboard_image)
+        .map_err(|error| SshError::Config(format!("Failed to write image to clipboard: {error}")))
+}
 
 /// 获取系统资源使用情况（CPU、内存、磁盘）
 ///

@@ -164,6 +164,8 @@ export default {
     save_failed: '保存文件失败: {{error}}',
     load_failed: '加载文件失败: {{error}}',
     drop_dir_skipped: '已跳过文件夹：{{name}}（仅支持拖入文件）',
+    image_pasted_to_terminal: '已将图片粘贴到终端：{{name}}',
+    image_paste_failed: '图片粘贴到终端失败：{{error}}',
     unsaved_changes: '未保存',
     unsaved_close_confirm: '文件「{{name}}」有未保存的更改，关闭后将丢失。确定关闭吗？',
     copy_path: '复制路径',

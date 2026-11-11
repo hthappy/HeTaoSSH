@@ -150,6 +150,7 @@ async fn main() -> Result<()> {
             commands::local_list_dir,
             commands::local_get_home_dir,
             commands::local_is_dir,
+            commands::copy_image_file_to_clipboard,
             commands::open_path_in_explorer,
             commands::explorer_context_menu_status,
             commands::set_explorer_context_menu,

@@ -97,6 +97,10 @@ function WorkspaceTabTitle({ title }: { title: string }) {
   );
 }
 
+function isClipboardImage(path: string): boolean {
+  return /\.(?:bmp|gif|ico|jpe?g|png|tiff?|webp)$/i.test(path);
+}
+
 function App() {
   const { t, i18n } = useTranslation();
   const { getKeys, shortcuts } = useShortcutsStore();
@@ -1272,6 +1276,7 @@ function TransferOverlay() {
  * 监听操作系统文件拖放：
  * - 活动标签是已连接的 SSH 远程终端 → 切换到 SFTP 并上传文件
  *   （目标目录 = SFTP 文件浏览器当前路径，未打开过文件浏览器则用远程主目录）
+ * - 活动标签是本地终端且拖入图片 → 将图片写入系统剪贴板并粘贴到当前终端
  * - 其他情况 → 在内置编辑器标签页中打开本地文件
  * 目录会被跳过并提示。同一个本地文件重复拖入会复用已打开的标签页。
  */
@@ -1288,8 +1293,17 @@ function FileDropListener({ onRemoteUploadStart }: { onRemoteUploadStart: () => 
         if (event.payload.type !== 'drop') return;
 
         // 通过 getState() 读取最新状态，避免监听器闭包捕获旧值
-        const { workspaceTabs, activeTabId, connections, getSftpPath, setSftpPath, openFileTab } =
-          useSshStore.getState();
+        const {
+          workspaceTabs,
+          activeTabId,
+          connections,
+          paneGroups,
+          getActivePaneId,
+          getSftpPath,
+          setSftpPath,
+          openFileTab,
+          sendToTerminalBackend,
+        } = useSshStore.getState();
         const activeTab = workspaceTabs.find((tab) => tab.id === activeTabId);
         const activeConn =
           activeTab?.serverId != null
@@ -1297,6 +1311,10 @@ function FileDropListener({ onRemoteUploadStart }: { onRemoteUploadStart: () => 
             : undefined;
         const isRemoteActive =
           !!activeConn && !activeConn.isLocal && activeConn.status === 'connected';
+        const isLocalTerminalActive =
+          activeTab?.type === 'local'
+          && !!activeConn?.isLocal
+          && activeConn.status === 'connected';
 
         if (isRemoteActive) {
           // ---- 远程终端：上传 ----
@@ -1339,12 +1357,33 @@ function FileDropListener({ onRemoteUploadStart }: { onRemoteUploadStart: () => 
           return;
         }
 
-        // ---- 本地：编辑器打开 ----
+        // ---- 本地：图片粘贴到终端，其余文件用编辑器打开 ----
         for (const path of event.payload.paths) {
           try {
             const isDir = await invoke<boolean>('local_is_dir', { path });
             if (isDir) {
               showToast(t('file.drop_dir_skipped', { name: path }), 'info');
+              continue;
+            }
+
+            if (isLocalTerminalActive && activeTab?.serverId != null && isClipboardImage(path)) {
+              const paneGroup = paneGroups[activeTab.id];
+              const activePaneId = getActivePaneId(activeTab.id);
+              const activePane = paneGroup
+                ? collectTerminalPanes(paneGroup).find((pane) => pane.id === activePaneId)
+                : undefined;
+              const backendId = activePane?.backendId ?? activeTab.serverId.toString();
+              const fileName = path.split(/[\\/]/).pop() || path;
+
+              try {
+                await invoke('copy_image_file_to_clipboard', { path });
+                // AI CLI 通常用 Ctrl+V 读取系统剪贴板中的图片。
+                await sendToTerminalBackend(backendId, true, '\x16');
+                showToast(t('file.image_pasted_to_terminal', { name: fileName }), 'success');
+              } catch (err) {
+                console.error('Failed to paste dropped image into terminal:', err);
+                showToast(t('file.image_paste_failed', { error: `${err}` }), 'error');
+              }
               continue;
             }
 

@@ -64,6 +64,7 @@ tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-os = "2"
 sysinfo = "0.38.4"
 tauri-plugin-single-instance = "2"
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
